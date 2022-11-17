@@ -18,6 +18,7 @@ import spline_utils
 
 class Model(object):
     def __init__(self, bands, ignore_unknown_settings=False, settings={}, device='cpu'):
+        self.data = None
         self.device = device
         self.settings = parse_settings(bands, settings,
                                        ignore_unknown_settings=ignore_unknown_settings)
@@ -215,13 +216,16 @@ class Model(object):
             plt.scatter(t[inds], model_flux.detach().numpy().squeeze()[inds])
         plt.show()
 
-    def model(self):
+    def model(self, obs, band_indices):
         sample_size = 10
         with pyro.plate("SNe", sample_size) as sn_index:
             theta = pyro.sample("theta", dist.Normal(0, 1))
+            flux = self.get_flux(theta, band_indices)
+            pyro.sample("obs", dist.Normal(flux, 0.02*flux), obs=obs)
 
     def fit(self, dataset):
         self.process_dataset(dataset)
+        
         return
 
     def process_dataset(self, dataset):
@@ -235,7 +239,7 @@ class Model(object):
             lc = np.reshape(lc, (-1, *lc.shape))
             all_data.append(lc)
         all_data = np.concatenate(all_data)
-        print(all_data.shape)
+        self.data = all_data
 
 
 

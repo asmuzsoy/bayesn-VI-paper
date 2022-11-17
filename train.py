@@ -11,3 +11,4 @@ model = Model(bands)
 model.fit(dataset)
 t = 48
 band_indices = np.array([[i] * int(t/4) for i in range(4)])
+model.get_flux(0, band_indices)
