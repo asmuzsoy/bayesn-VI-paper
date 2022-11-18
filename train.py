@@ -4,11 +4,11 @@ import parsnip
 from model import Model
 
 dataset_path = 'data/bayesn_sim_test_z0_noext_25000.h5'
-dataset = lcdata.read_hdf5(dataset_path)[:100]
+dataset = lcdata.read_hdf5(dataset_path)[:500]
 bands = parsnip.get_bands(dataset)
 
-model = Model(bands)
+model = Model(bands, device='cpu')
 model.fit(dataset)
 t = 48
 band_indices = np.array([[i] * int(t/4) for i in range(4)])
-model.get_flux(0, band_indices)
+# model.get_flux(0, band_indices)
