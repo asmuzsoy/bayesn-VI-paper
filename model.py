@@ -1,23 +1,19 @@
 import os
-
+import torch
 import matplotlib.pyplot as plt
 import numpy as np
 import pyro
+from pyro.infer import MCMC, NUTS, Predictive
 import pyro.distributions as dist
-import numpyro
-from numpyro.infer import MCMC, NUTS, Predictive
-import numpyro.distributions as dist
-from jax import random
 import h5py
 import lcdata
 import sncosmo
 from settings import parse_settings
-import torch
 import spline_utils
-
+import time
 
 class Model(object):
-    def __init__(self, bands, ignore_unknown_settings=False, settings={}, device='cpu'):
+    def __init__(self, bands, ignore_unknown_settings=False, settings={}, device='cuda'):
         self.data = None
         self.device = device
         self.settings = parse_settings(bands, settings,
@@ -36,6 +32,12 @@ class Model(object):
         self.J_l_T = torch.from_numpy(spline_utils.spline_coeffs_irr(self.model_wave, self.l_knots, KD_l)).float()
         self.KD_t = spline_utils.invKD_irr(self.tau_knots)
         self.load_hsiao_template()
+
+        self.W0 = self.W0.to(self.device)
+        self.W1 = self.W1.to(self.device)
+        self.J_l_T = self.J_l_T.to(self.device)
+        self.hsiao_flux = self.hsiao_flux.to(self.device)
+        self.J_l_T_hsiao = self.J_l_T_hsiao.to(self.device)
 
     def load_hsiao_template(self):
         with h5py.File(os.path.join('data', 'hsiao.h5'), 'r') as file:
@@ -166,20 +168,26 @@ class Model(object):
 
         return result
 
-    def get_flux(self, theta, band_indices):
-        t = np.arange(-8, 40, 4)
-        t = np.r_[t, t, t, t]
-        ix = np.argsort(t)
-        t = t[ix]
-        J_t = torch.from_numpy(spline_utils.spline_coeffs_irr(t, self.tau_knots, self.KD_t).T)
+    def get_flux(self, theta, t, redshifts, band_indices):
+        num_batch = theta.shape[0]
+        J_t_list, J_t_hsiao_list = [], []
+        for _ in range(num_batch):
+            J_t_list.append(torch.from_numpy(spline_utils.spline_coeffs_irr(t[:, _], self.tau_knots, self.KD_t).T))
+            J_t_hsiao_list.append(torch.from_numpy(spline_utils.spline_coeffs_irr(t[:, _], self.hsiao_t,
+                                                                                  self.KD_t_hsiao).T))
+        J_t, J_t_hsiao = torch.stack(J_t_list), torch.stack(J_t_hsiao_list)
         J_t = J_t.to(self.device)
         J_t = J_t.float()
-        J_t_hsiao = torch.from_numpy(spline_utils.spline_coeffs_irr(t, self.hsiao_t, self.KD_t_hsiao).T)
         J_t_hsiao = J_t_hsiao.to(self.device)
         J_t_hsiao = J_t_hsiao.float()
+        W0 = torch.reshape(self.W0, (-1, *self.W0.shape))
+        W0 = torch.repeat_interleave(W0, num_batch, dim=0)
+        W1 = torch.reshape(self.W1, (-1, *self.W1.shape))
+        W1 = torch.repeat_interleave(W1, num_batch, dim=0)
 
-        W = self.W0 + theta * self.W1
+        W = W0 + theta[..., None, None] * W1
         W = W.float()
+
         WJt = torch.matmul(W, J_t)
         W_grid = torch.matmul(self.J_l_T, WJt)
 
@@ -187,46 +195,51 @@ class Model(object):
         H_grid = torch.matmul(self.J_l_T_hsiao, HJt)
 
         model_spectra = H_grid * 10 ** W_grid
-        model_spectra = torch.reshape(model_spectra, (-1, *model_spectra.shape))
 
-        redshifts = torch.from_numpy(np.array([0]))
-
-        num_batches = 1
         num_observations = t.shape[0]
+
         band_weights = self._calculate_band_weights(redshifts)
         batch_indices = (
-            torch.arange(num_batches, device=self.device)
+            torch.arange(num_batch, device=self.device)
             .repeat_interleave(num_observations)
         )
 
         obs_band_weights = (
-            band_weights[batch_indices, :, band_indices.flatten()[ix]]
-            .reshape((num_batches, num_observations, -1))
+            band_weights[batch_indices, :, band_indices.flatten()]
+            .reshape((num_batch, num_observations, -1))
             .permute(0, 2, 1)
         )
 
-        # print(obs_band_weights.shape)
-        # return
+        model_flux = torch.sum(model_spectra * obs_band_weights, axis=1).T
 
-        band_indices = band_indices.flatten()[ix]
+        return model_flux
 
-        model_flux = torch.sum(model_spectra * obs_band_weights, axis=1)
-        for i in range(4):
-            inds = band_indices == i
-            plt.scatter(t[inds], model_flux.detach().numpy().squeeze()[inds])
-        plt.show()
-
-    def model(self, obs, band_indices):
-        sample_size = 10
+    def model(self, obs):
+        sample_size = self.data.shape[-1]
         with pyro.plate("SNe", sample_size) as sn_index:
-            theta = pyro.sample("theta", dist.Normal(0, 1))
-            flux = self.get_flux(theta, band_indices)
-            pyro.sample("obs", dist.Normal(flux, 0.02*flux), obs=obs)
+            theta = pyro.sample("theta", dist.Normal(0, torch.tensor(1.0, device=self.device)))
+            t = obs[0, :, :].cpu().numpy()
+            band_indices = obs[-2, :, :].long()
+            redshift = obs[-1, 0, :]
+            start = time.time()
+            flux = self.get_flux(theta, t, redshift, band_indices)
+            end = time.time()
+            elapsed = end - start
+            self.integ_time += elapsed
+            self.total += sample_size
+            pyro.sample("obs", dist.Normal(flux, obs[2, :, :]), obs=obs[1, :, :]).to(self.device)
+
 
     def fit(self, dataset):
         self.process_dataset(dataset)
-        
-        return
+        self.integ_time = 0
+        self.total = 0
+        nuts_kernel = NUTS(self.model)
+        mcmc = MCMC(nuts_kernel, num_samples=2, warmup_steps=2, num_chains=1)
+        mcmc.run(self.data)  # self.rng,
+        print(mcmc.get_samples())
+        print(f'Flux integrals for {self.total} objects in {self.integ_time} seconds')
+        print(f'Average: {self.integ_time / self.total}')
 
     def process_dataset(self, dataset):
         all_data = []
@@ -235,11 +248,15 @@ class Model(object):
             lc = lc.astype({'band': str})
             lc['band'] = lc['band'].apply(lambda band: band[band.find("'") + 1: band.rfind("'")])
             lc['band'] = lc['band'].apply(lambda band: self.band_dict[band])
+            lc['redshift'] = 0
+            lc = lc.sort_values('time')
             lc = lc.values
             lc = np.reshape(lc, (-1, *lc.shape))
             all_data.append(lc)
         all_data = np.concatenate(all_data)
-        self.data = all_data
+        all_data = np.swapaxes(all_data, 0, 2)
+        all_data = torch.from_numpy(all_data)
+        self.data = all_data.to(self.device)
 
 
 
