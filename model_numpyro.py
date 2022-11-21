@@ -1,16 +1,17 @@
 import os
-import torch
 import matplotlib.pyplot as plt
 import numpy as np
-import pyro
-from pyro.infer import MCMC, NUTS, Predictive
-import pyro.distributions as dist
+import numpyro
+from numpyro.infer import MCMC, NUTS, Predictive
+import numpyro.distributions as dist
 import h5py
 import lcdata
 import sncosmo
 from settings import parse_settings
 import spline_utils
 import time
+import jax
+import jax.numpy as jnp
 
 class Model(object):
     def __init__(self, bands, ignore_unknown_settings=False, settings={}, device='cuda'):
@@ -22,24 +23,18 @@ class Model(object):
 
         self.l_knots = np.genfromtxt('model_files/T21_model/l_knots.txt')
         self.tau_knots = np.genfromtxt('model_files/T21_model/tau_knots.txt')
-        self.W0 = torch.from_numpy(np.genfromtxt('model_files/T21_model/W0.txt'))
-        self.W1 = torch.from_numpy(np.genfromtxt('model_files/T21_model/W1.txt'))
+        self.W0 = np.genfromtxt('model_files/T21_model/W0.txt')
+        self.W1 = np.genfromtxt('model_files/T21_model/W1.txt')
         self.band_dict = {band: i for i, band in enumerate(bands)}
 
         self._setup_band_weights()
 
         KD_l = spline_utils.invKD_irr(self.l_knots)
-        self.J_l_T = torch.from_numpy(spline_utils.spline_coeffs_irr(self.model_wave, self.l_knots, KD_l)).float()
+        self.J_l_T = spline_utils.spline_coeffs_irr(self.model_wave, self.l_knots, KD_l)
         self.KD_t = spline_utils.invKD_irr(self.tau_knots)
         self.load_hsiao_template()
-        self.scale = 1e18
 
-        self.W0 = self.W0.to(self.device)
-        self.W1 = self.W1.to(self.device)
         self.ZPT = 27.5
-        self.J_l_T = self.J_l_T.to(self.device)
-        self.hsiao_flux = self.hsiao_flux.to(self.device)
-        self.J_l_T_hsiao = self.J_l_T_hsiao.to(self.device)
 
     def load_hsiao_template(self):
         with h5py.File(os.path.join('data', 'hsiao.h5'), 'r') as file:
@@ -51,13 +46,11 @@ class Model(object):
 
         KD_l_hsiao = spline_utils.invKD_irr(hsiao_wave)
         self.KD_t_hsiao = spline_utils.invKD_irr(hsiao_phase)
-        self.J_l_T_hsiao = torch.from_numpy(spline_utils.spline_coeffs_irr(self.model_wave,
-                                                                           hsiao_wave, KD_l_hsiao)).float()
+        self.J_l_T_hsiao = spline_utils.spline_coeffs_irr(self.model_wave, hsiao_wave, KD_l_hsiao)
 
         self.hsiao_t = hsiao_phase
         self.hsiao_l = hsiao_wave
-        self.hsiao_flux = torch.from_numpy(hsiao_flux).T.float()
-
+        self.hsiao_flux = hsiao_flux.T
 
     def _setup_band_weights(self):
         """Setup the interpolation for the band weights used for photometry"""
@@ -216,14 +209,13 @@ class Model(object):
 
         # Out by factor of 10^8 for some reason, hack fix but investigate this
         model_flux = model_flux * 10 ** (8 + 0.4 * (self.ZPT - self.M0))
-        model_flux /= self.scale
 
         return model_flux
 
     def model(self, obs):
         sample_size = self.data.shape[-1]
-        with pyro.plate("SNe", sample_size) as sn_index:
-            theta = pyro.sample("theta", dist.Normal(0, torch.tensor(1.0, device=self.device)))
+        with numpyro.plate("SNe", sample_size) as sn_index:
+            theta = numpyro.sample("theta", dist.Normal(0, 1))
             t = obs[0, :, :].cpu().numpy()
             band_indices = obs[-2, :, :].long()
             redshift = obs[-1, 0, :]
@@ -233,40 +225,24 @@ class Model(object):
             elapsed = end - start
             self.integ_time += elapsed
             self.total += sample_size
-            # self.thetas.append(theta.detach().numpy()[0])
-            '''
-            if self.count > 75:
-                for i in range(4):
-                    inds = band_indices[:, 0] == i
-                    plt.scatter(t[inds, :], flux.detach().numpy()[inds, :])
-                    plt.errorbar(t[inds, 0], torch.squeeze(obs[1, inds, :]), yerr=torch.squeeze(obs[2, inds, :]), fmt='x')
-                plt.title(theta.detach().numpy()[0])
-                plt.show()
-                # raise ValueError('Nope')
-            '''
-            self.count += 1
-            pyro.sample("obs", dist.Normal(flux, obs[2, :, :]), obs=obs[1, :, :])
+            numpyro.sample("obs", dist.Normal(flux, obs[2, :, :]), obs=obs[1, :, :])
 
     def fit(self, dataset):
         self.process_dataset(dataset)
         self.integ_time = 0
         self.total = 0
-        self.count = 0
-        # self.thetas = []
-        nuts_kernel = NUTS(self.model, adapt_step_size=True)
-        mcmc = MCMC(nuts_kernel, num_samples=50, warmup_steps=50, num_chains=1)
+        nuts_kernel = NUTS(self.model)
+        mcmc = MCMC(nuts_kernel, num_samples=20, num_warmup=10, num_chains=1)
         mcmc.run(self.data)  # self.rng,
-        print(f'{self.total * self.data.shape[1]} flux integrals for {self.total} objects in {self.integ_time} seconds')
-        print(f'Average per object: {self.integ_time / self.total}')
-        print(f'Average per integral: {self.integ_time / (self.total * self.data.shape[0])}')
-        return mcmc.get_samples()
+        print(mcmc.get_samples())
+        print(f'Flux integrals for {self.total} objects in {self.integ_time} seconds')
+        print(f'Average: {self.integ_time / self.total}')
 
     def process_dataset(self, dataset):
         all_data = []
         for lc in dataset.light_curves:
             lc = lc.to_pandas()
             lc = lc.astype({'band': str})
-            lc[['flux', 'fluxerr']] = lc[['flux', 'fluxerr']] / self.scale
             lc['band'] = lc['band'].apply(lambda band: band[band.find("'") + 1: band.rfind("'")])
             lc['band'] = lc['band'].apply(lambda band: self.band_dict[band])
             lc['redshift'] = 0
