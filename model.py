@@ -182,6 +182,7 @@ class Model(object):
         return result
 
     def get_flux(self, theta, t, redshifts, band_indices):
+        theta = 0 * theta - 3
         J_t = torch.from_numpy(spline_utils.spline_coeffs_irr(t, self.tau_knots, self.KD_t).T)
         J_t_hsiao = torch.from_numpy(spline_utils.spline_coeffs_irr(t, self.hsiao_t,
                                                                               self.KD_t_hsiao).T)
@@ -219,6 +220,8 @@ class Model(object):
 
         # Out by factor of 10^8 for some reason, hack fix but investigate this
         model_flux = model_flux * 10 ** (-0.4 * self.M0)
+        print(model_flux)
+        raise ValueError('Nope')
 
         return model_flux
 
@@ -249,9 +252,6 @@ class Model(object):
         H_grid = torch.matmul(self.J_l_T_hsiao, HJt)
 
         model_spectra = H_grid * 10 ** (-0.4 * W_grid)
-        model_spectra_np = model_spectra[0, ...].detach().numpy()
-        model_spectra_np = model_spectra_np * 10 ** (-0.4 * self.M0)
-        band = sncosmo.get_bandpass('ps1::r')(self.model_wave)
         """
         integ1 = self.model_wave[:, None] * model_spectra_np * band[:, None]
         integ2 = self.model_wave * band
@@ -278,7 +278,7 @@ class Model(object):
         )
 
         obs_band_weights = (
-            band_weights[batch_indices, :, band_indices.flatten()]
+            band_weights[batch_indices, :, band_indices.T.flatten()]
             .reshape((num_batch, num_observations, -1))
             .permute(0, 2, 1)
         )
@@ -296,36 +296,37 @@ class Model(object):
 
     def model(self, obs):
         sample_size = self.data.shape[-1]
-        for sn_index in pyro.plate('SNe', sample_size):
-            theta = pyro.sample(f'theta_{sn_index}', dist.Normal(0, torch.tensor(1.0, device=self.device)))
+        #for sn_index in pyro.plate('SNe', sample_size):
+        with pyro.plate('SNe', sample_size) as sn_index:
+            theta = pyro.sample(f'theta', dist.Normal(0, torch.tensor(1.0, device=self.device))) # _{sn_index}
             t = obs[0, :, sn_index].cpu().numpy()
             band_indices = obs[-2, :, sn_index].long()
             redshift = obs[-1, 0, sn_index]
             start = time.time()
-            flux = self.get_flux(theta, t, redshift, band_indices)
+            flux = self.get_flux_batch(theta, t, redshift, band_indices)
             end = time.time()
             elapsed = end - start
             self.integ_time += elapsed
             self.total += sample_size
             self.thetas.append(theta.detach().numpy())
-            '''
-            if self.count > -1:
+            """if self.count > -1:
                 for i in range(4):
-                    inds = band_indices[:, sn_index]
+                    inds = band_indices[:, 0]
                     inds = inds == i
+                    print(t.shape)
                     print(obs.shape)
-                    print(inds)
-                    print(obs[1, inds, sn_index])
+                    print(flux.shape)
                     # plt.scatter(t[inds, :], flux.detach().numpy()[inds, :])
                     # plt.errorbar(t[inds, 0], torch.squeeze(obs[1, inds, :]), yerr=torch.squeeze(obs[2, inds, :]), fmt='x')
-                    plt.scatter(t[inds], flux.detach().numpy()[inds])
-                    plt.errorbar(t[inds], obs[1, inds, sn_index], yerr=obs[2, inds, sn_index], fmt='x')
+                    plt.scatter(t[inds, 0], flux.detach().numpy()[inds, 0])
+                    plt.errorbar(t[inds, 0], obs[1, inds, 0], yerr=obs[2, inds, 0], fmt='x')
+                    plt.show()
+                    raise ValueError('Nope')
                 plt.title(theta.detach().numpy())
                 plt.show()
-                raise ValueError('Nope')
-            '''
+                raise ValueError('Nope')"""
             self.count += 1
-            pyro.sample("obs", dist.Normal(flux, obs[2, :, sn_index]), obs=obs[1, :, sn_index])
+            pyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index]), obs=obs[1, :, sn_index]) # _{sn_index}
             #print('-----------')
             #print(flux)
             #print(obs[2, :, sn_index])
