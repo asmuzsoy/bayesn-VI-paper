@@ -20,7 +20,7 @@ pd_dataset = pd_dataset.astype({'object_id': int})
 params = pd_dataset.merge(params, on='object_id')
 print('Actual:', params.theta.values)
 
-model = Model(bands, device='cuda')
+model = Model(bands, device='cpu')
 # model.compare_gen_theta(dataset, params)
 result = model.fit(dataset)
 # print(np.mean(result['theta'].cpu().numpy(), axis=0), np.std(result['theta'].numpy(), axis=0))

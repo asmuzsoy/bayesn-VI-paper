@@ -11,11 +11,16 @@ import sncosmo
 from settings import parse_settings
 import spline_utils
 import time
+import parsnip
+import pickle
+import pandas as pd
 
 class Model(object):
     def __init__(self, bands, ignore_unknown_settings=False, settings={}, device='cuda'):
         self.data = None
         self.device = device
+        if self.device == 'cuda':
+            torch.multiprocessing.set_start_method('spawn')
         self.settings = parse_settings(bands, settings,
                                        ignore_unknown_settings=ignore_unknown_settings)
         self.M0 = -19.5
@@ -389,6 +394,29 @@ class Model(object):
             plt.suptitle(theta)
             plt.show()
 
+#-------------------------------------------------
+
+dataset_path = 'data/bayesn_sim_test_z0_noext_25000.h5'
+dataset = lcdata.read_hdf5(dataset_path)[:500]
+bands = parsnip.get_bands(dataset)
+
+param_path = 'data/bayesn_sim_test_z0_noext_25000_params.pkl'
+params = pickle.load(open(param_path, 'rb'))
+del params['epsilon']
+params = pd.DataFrame(params)
+
+pd_dataset = dataset.meta.to_pandas()
+pd_dataset = pd_dataset.astype({'object_id': int})
+params = pd_dataset.merge(params, on='object_id')
+print('Actual:', params.theta.values)
+
+model = Model(bands, device='cpu')
+# model.compare_gen_theta(dataset, params)
+result = model.fit(dataset)
+# print(np.mean(result['theta'].cpu().numpy(), axis=0), np.std(result['theta'].numpy(), axis=0))
+# print(np.mean(result['theta_1'].numpy(), axis=0), np.std(result['theta_1'].numpy(), axis=0))
+# plt.scatter(params.theta.values, result['theta'][0, :])
+# plt.show()
 
 
 
