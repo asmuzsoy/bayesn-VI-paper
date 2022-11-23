@@ -6,11 +6,11 @@ import parsnip
 from model import Model
 import pickle
 
-dataset_path = 'data/bayesn_sim_test_z0_noext_thetarange_20.h5'
+dataset_path = 'data/bayesn_sim_test_z0_noext_25000.h5'
 dataset = lcdata.read_hdf5(dataset_path)[:100]
 bands = parsnip.get_bands(dataset)
 
-param_path = 'data/bayesn_sim_test_z0_noext_thetarange_20_params.pkl'
+param_path = 'data/bayesn_sim_test_z0_noext_25000_params.pkl'
 params = pickle.load(open(param_path, 'rb'))
 del params['epsilon']
 params = pd.DataFrame(params)
