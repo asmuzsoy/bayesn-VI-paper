@@ -7,7 +7,7 @@ from model import Model
 import pickle
 
 dataset_path = 'data/bayesn_sim_test_z0_noext_25000.h5'
-dataset = lcdata.read_hdf5(dataset_path)[:100]
+dataset = lcdata.read_hdf5(dataset_path)[:500]
 bands = parsnip.get_bands(dataset)
 
 param_path = 'data/bayesn_sim_test_z0_noext_25000_params.pkl'
@@ -20,7 +20,7 @@ pd_dataset = pd_dataset.astype({'object_id': int})
 params = pd_dataset.merge(params, on='object_id')
 print('Actual:', params.theta.values)
 
-model = Model(bands, device='cpu')
+model = Model(bands, device='cuda')
 # model.compare_gen_theta(dataset, params)
 result = model.fit(dataset)
 # print(np.mean(result['theta'].cpu().numpy(), axis=0), np.std(result['theta'].numpy(), axis=0))
