@@ -19,8 +19,8 @@ class Model(object):
     def __init__(self, bands, ignore_unknown_settings=False, settings={}, device='cuda'):
         self.data = None
         self.device = device
-        if self.device == 'cuda':
-            torch.multiprocessing.set_start_method('spawn')
+        #if self.device == 'cuda':
+        #    torch.multiprocessing.set_start_method('spawn')
         self.settings = parse_settings(bands, settings,
                                        ignore_unknown_settings=ignore_unknown_settings)
         self.M0 = -19.5
@@ -345,7 +345,7 @@ class Model(object):
         self.thetas = []
         # pyro.render_model(self.model, model_args=(self.data,), filename='model.pdf')
         nuts_kernel = NUTS(self.model, adapt_step_size=True)
-        mcmc = MCMC(nuts_kernel, num_samples=10, warmup_steps=10, num_chains=1)
+        mcmc = MCMC(nuts_kernel, num_samples=10, warmup_steps=10, num_chains=4)
         mcmc.run(self.data)  # self.rng,
         print(f'{self.total * self.data.shape[1]} flux integrals for {self.total} objects in {self.integ_time} seconds')
         print(f'Average per object: {self.integ_time / self.total}')
@@ -396,27 +396,28 @@ class Model(object):
 
 #-------------------------------------------------
 
-dataset_path = 'data/bayesn_sim_test_z0_noext_25000.h5'
-dataset = lcdata.read_hdf5(dataset_path)[:500]
-bands = parsnip.get_bands(dataset)
+if __name__ == '__main__':
+    dataset_path = 'data/bayesn_sim_test_z0_noext_25000.h5'
+    dataset = lcdata.read_hdf5(dataset_path)[:100]
+    bands = parsnip.get_bands(dataset)
 
-param_path = 'data/bayesn_sim_test_z0_noext_25000_params.pkl'
-params = pickle.load(open(param_path, 'rb'))
-del params['epsilon']
-params = pd.DataFrame(params)
+    param_path = 'data/bayesn_sim_test_z0_noext_25000_params.pkl'
+    params = pickle.load(open(param_path, 'rb'))
+    del params['epsilon']
+    params = pd.DataFrame(params)
 
-pd_dataset = dataset.meta.to_pandas()
-pd_dataset = pd_dataset.astype({'object_id': int})
-params = pd_dataset.merge(params, on='object_id')
-print('Actual:', params.theta.values)
+    pd_dataset = dataset.meta.to_pandas()
+    pd_dataset = pd_dataset.astype({'object_id': int})
+    params = pd_dataset.merge(params, on='object_id')
+    print('Actual:', params.theta.values)
 
-model = Model(bands, device='cpu')
-# model.compare_gen_theta(dataset, params)
-result = model.fit(dataset)
-# print(np.mean(result['theta'].cpu().numpy(), axis=0), np.std(result['theta'].numpy(), axis=0))
-# print(np.mean(result['theta_1'].numpy(), axis=0), np.std(result['theta_1'].numpy(), axis=0))
-# plt.scatter(params.theta.values, result['theta'][0, :])
-# plt.show()
+    model = Model(bands, device='cuda')
+    # model.compare_gen_theta(dataset, params)
+    result = model.fit(dataset)
+    # print(np.mean(result['theta'].cpu().numpy(), axis=0), np.std(result['theta'].numpy(), axis=0))
+    # print(np.mean(result['theta_1'].numpy(), axis=0), np.std(result['theta_1'].numpy(), axis=0))
+    # plt.scatter(params.theta.values, result['theta'][0, :])
+    # plt.show()
 
 
 
