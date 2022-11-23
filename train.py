@@ -14,14 +14,16 @@ param_path = 'data/bayesn_sim_test_z0_noext_units_25000_params.pkl'
 params = pickle.load(open(param_path, 'rb'))
 del params['epsilon']
 params = pd.DataFrame(params)
+
 pd_dataset = dataset.meta.to_pandas()
 pd_dataset = pd_dataset.astype({'object_id': int})
 params = params.merge(pd_dataset, on='object_id')
-print(params.theta.values[0])
+print('Actual', params.theta.values)
 
 model = Model(bands, device='cpu')
-result = model.fit(dataset)
-print(result['theta'].shape)
-print(result['theta'][:, :])
+model.compare_gen_theta(dataset, params)
+#result = model.fit(dataset)
+#print(result['theta'])
+#print(np.mean(result['theta'].numpy(), axis=0), np.std(result['theta'].numpy(), axis=0))
 # plt.scatter(params.theta.values, result['theta'][0, :])
 # plt.show()

@@ -58,7 +58,6 @@ class Model(object):
         self.hsiao_l = hsiao_wave
         self.hsiao_flux = torch.from_numpy(hsiao_flux).T.float()
 
-
     def _setup_band_weights(self):
         """Setup the interpolation for the band weights used for photometry"""
         # Build the model in log wavelength
@@ -171,6 +170,56 @@ class Model(object):
         return result
 
     def get_flux(self, theta, t, redshifts, band_indices):
+        theta = theta * 0 + 2
+        J_t = torch.from_numpy(spline_utils.spline_coeffs_irr(t, self.tau_knots, self.KD_t).T)
+        J_t_hsiao = torch.from_numpy(spline_utils.spline_coeffs_irr(t, self.hsiao_t,
+                                                                              self.KD_t_hsiao).T)
+        J_t = J_t.to(self.device)
+        J_t = J_t.float()
+        J_t_hsiao = J_t_hsiao.to(self.device)
+        J_t_hsiao = J_t_hsiao.float()
+        # W0 = torch.reshape(self.W0, (-1, *self.W0.shape))
+        # W0 = torch.repeat_interleave(W0, num_batch, dim=0)
+        # W1 = torch.reshape(self.W1, (-1, *self.W1.shape))
+        # W1 = torch.repeat_interleave(W1, num_batch, dim=0)
+
+        redshifts = redshifts[None]
+
+        W = self.W0 + theta[..., None] * self.W1
+        W = W.float()
+        W = W.T
+
+        WJt = torch.matmul(W, J_t)
+        W_grid = torch.matmul(self.J_l_T, WJt)
+
+        HJt = torch.matmul(self.hsiao_flux, J_t_hsiao)
+        H_grid = torch.matmul(self.J_l_T_hsiao, HJt)
+
+        model_spectra = H_grid * 10 ** (-0.4 * W_grid)
+
+        num_observations = t.shape[0]
+
+        band_weights = self._calculate_band_weights(redshifts)
+
+        obs_band_weights = (
+            band_weights[0, :, band_indices.flatten()]
+        )
+
+        model_flux = torch.sum(model_spectra * obs_band_weights, axis=0)
+
+        # Out by factor of 10^8 for some reason, hack fix but investigate this
+        model_flux = model_flux * 10 ** (-0.4 * self.M0)
+
+        zp = 4.70324e-9
+        model_flux = model_flux[band_indices == 0]
+        model_flux = -2.5*np.log10(model_flux / zp)
+
+        print(model_flux)
+        raise ValueError('Nope')
+
+        return model_flux
+
+    def get_flux_batch(self, theta, t, redshifts, band_indices):
         num_batch = theta.shape[0]
         J_t_list, J_t_hsiao_list = [], []
         for _ in range(num_batch):
@@ -215,50 +264,60 @@ class Model(object):
         model_flux = torch.sum(model_spectra * obs_band_weights, axis=1).T
 
         # Out by factor of 10^8 for some reason, hack fix but investigate this
-        model_flux = model_flux * 10 ** (8 + 0.4 * (self.ZPT - self.M0))
-        model_flux /= self.scale
+        model_flux = model_flux * 10 ** -(0.4 * self.M0)
+        # model_flux /= self.scale
 
         return model_flux
 
     def model(self, obs):
         sample_size = self.data.shape[-1]
-        with pyro.plate("SNe", sample_size) as sn_index:
+        for sn_index in range(sample_size): #pyro.plate("SNe", sample_size):
             theta = pyro.sample("theta", dist.Normal(0, torch.tensor(1.0, device=self.device)))
-            t = obs[0, :, :].cpu().numpy()
-            band_indices = obs[-2, :, :].long()
-            redshift = obs[-1, 0, :]
+            t = obs[0, :, sn_index].cpu().numpy()
+            band_indices = obs[-2, :, sn_index].long()
+            redshift = obs[-1, 0, sn_index]
             start = time.time()
             flux = self.get_flux(theta, t, redshift, band_indices)
+            print('----->', flux, -2.5 * np.log10(flux) + self.ZPT)
+            print(obs[1, :, 0], -2.5 * np.log10(obs[1, :, 0]) + self.ZPT)
+            raise ValueError('Nope')
             end = time.time()
             elapsed = end - start
             self.integ_time += elapsed
             self.total += sample_size
-            # self.thetas.append(theta.detach().numpy()[0])
-            '''
-            if self.count > 75:
+            self.thetas.append(theta.detach().numpy())
+            if self.count > 1400:
                 for i in range(4):
-                    inds = band_indices[:, 0] == i
-                    plt.scatter(t[inds, :], flux.detach().numpy()[inds, :])
-                    plt.errorbar(t[inds, 0], torch.squeeze(obs[1, inds, :]), yerr=torch.squeeze(obs[2, inds, :]), fmt='x')
-                plt.title(theta.detach().numpy()[0])
+                    inds = band_indices == i
+                    # plt.scatter(t[inds, :], flux.detach().numpy()[inds, :])
+                    # plt.errorbar(t[inds, 0], torch.squeeze(obs[1, inds, :]), yerr=torch.squeeze(obs[2, inds, :]), fmt='x')
+                    plt.scatter(t[inds], flux.detach().numpy()[inds])
+                    plt.errorbar(t[inds], torch.squeeze(obs[1, inds, sn_index]), yerr=torch.squeeze(obs[2, inds, sn_index]), fmt='x')
+                plt.title(theta.detach().numpy())
                 plt.show()
                 # raise ValueError('Nope')
-            '''
             self.count += 1
-            pyro.sample("obs", dist.Normal(flux, obs[2, :, :]), obs=obs[1, :, :])
+            pyro.sample("obs", dist.Normal(flux, obs[2, :, sn_index]), obs=obs[1, :, sn_index])
+            #print('-----------')
+            #print(flux)
+            #print(obs[2, :, sn_index])
+            #print(torch.normal(flux, obs[2, :, sn_index]))
+            #print(type(x))
 
     def fit(self, dataset):
         self.process_dataset(dataset)
         self.integ_time = 0
         self.total = 0
         self.count = 0
-        # self.thetas = []
+        self.thetas = []
+        pyro.render_model(self.model, model_args=(self.data,), filename='model.pdf')
         nuts_kernel = NUTS(self.model, adapt_step_size=True)
-        mcmc = MCMC(nuts_kernel, num_samples=50, warmup_steps=50, num_chains=1)
+        mcmc = MCMC(nuts_kernel, num_samples=50, warmup_steps=500, num_chains=1)
         mcmc.run(self.data)  # self.rng,
         print(f'{self.total * self.data.shape[1]} flux integrals for {self.total} objects in {self.integ_time} seconds')
         print(f'Average per object: {self.integ_time / self.total}')
         print(f'Average per integral: {self.integ_time / (self.total * self.data.shape[0])}')
+        print(np.array(self.thetas))
         return mcmc.get_samples()
 
     def process_dataset(self, dataset):
@@ -266,7 +325,7 @@ class Model(object):
         for lc in dataset.light_curves:
             lc = lc.to_pandas()
             lc = lc.astype({'band': str})
-            lc[['flux', 'fluxerr']] = lc[['flux', 'fluxerr']] / self.scale
+            lc[['flux', 'fluxerr']] = lc[['flux', 'fluxerr']] # / self.scale
             lc['band'] = lc['band'].apply(lambda band: band[band.find("'") + 1: band.rfind("'")])
             lc['band'] = lc['band'].apply(lambda band: self.band_dict[band])
             lc['redshift'] = 0
@@ -279,24 +338,30 @@ class Model(object):
         all_data = torch.from_numpy(all_data)
         self.data = all_data.to(self.device)
 
-    def compare_gen_theta(self, dataset, params, ind=0):
+    def compare_gen_theta(self, dataset, params):
         self.process_dataset(dataset)
-        lc = self.data[..., ind]
-        lc = torch.reshape(lc, (*lc.shape, -1))
-        t, band_indices, redshifts = lc[0, ...].cpu().numpy(), lc[-2, ...].long(), lc[-1, 0, :]
-        theta = params['theta'].values[ind]
-        theta = torch.tensor(theta)
-        theta = torch.reshape(theta, (*theta.shape, -1))
-        fl = self.get_flux(theta, t, redshifts, band_indices).cpu().numpy()
-        band_indices = band_indices.cpu().numpy()
-        lc = lc[..., 0].cpu().numpy()
-        t, fl, band_indices = np.squeeze(t), np.squeeze(fl), np.squeeze(band_indices)
-        for i in range(4):
-            plt.figure()
-            inds = band_indices == i
-            plt.scatter(t[inds], fl[inds])
-            plt.errorbar(t[inds], lc[1, inds], yerr=lc[2, inds], fmt='x')
-        plt.show()
+        for ind in range(self.data.shape[-1]):
+            lc = self.data[..., ind]
+            lc = torch.reshape(lc, (*lc.shape, -1))
+            t, band_indices, redshifts = lc[0, ...].cpu().numpy(), lc[-2, ...].long(), lc[-1, 0, :]
+            theta = params['theta'].values[ind]
+            print(theta)
+            theta = torch.tensor(theta)
+            theta = torch.reshape(theta, (*theta.shape, -1))
+            fl = self.get_flux_batch(theta, t, redshifts, band_indices).cpu().numpy()
+            band_indices = band_indices.cpu().numpy()
+            lc = lc[..., 0].cpu().numpy()
+            t, fl, band_indices = np.squeeze(t), np.squeeze(fl), np.squeeze(band_indices)
+            fig, ax = plt.subplots(2, 2, figsize=(12, 8), sharex=True, sharey=True)
+            for i in range(4):
+                a = ax.flatten()[i]
+                inds = band_indices == i
+                scale = np.max(fl[inds]) / np.max(lc[1, inds])
+                print(scale)
+                a.scatter(t[inds], fl[inds])
+                a.errorbar(t[inds], lc[1, inds] * scale, yerr=lc[2, inds] * scale, fmt='x')
+            plt.suptitle(theta)
+            plt.show()
 
 
 
