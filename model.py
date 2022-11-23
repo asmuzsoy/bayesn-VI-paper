@@ -182,7 +182,6 @@ class Model(object):
         return result
 
     def get_flux(self, theta, t, redshifts, band_indices):
-        theta = theta * 0
         J_t = torch.from_numpy(spline_utils.spline_coeffs_irr(t, self.tau_knots, self.KD_t).T)
         J_t_hsiao = torch.from_numpy(spline_utils.spline_coeffs_irr(t, self.hsiao_t,
                                                                               self.KD_t_hsiao).T)
@@ -199,7 +198,6 @@ class Model(object):
 
         W = self.W0 + theta[..., None] * self.W1
         W = W.float()
-        W = W.T
 
         WJt = torch.matmul(W, J_t)
         W_grid = torch.matmul(self.J_l_T, WJt)
@@ -221,13 +219,6 @@ class Model(object):
 
         # Out by factor of 10^8 for some reason, hack fix but investigate this
         model_flux = model_flux * 10 ** (-0.4 * self.M0)
-
-        zp = 4.70324e-9
-        model_flux = model_flux[band_indices == 0]
-        model_flux = -2.5*np.log10(model_flux / zp)
-
-        print(model_flux)
-        raise ValueError('Nope')
 
         return model_flux
 
@@ -305,31 +296,34 @@ class Model(object):
 
     def model(self, obs):
         sample_size = self.data.shape[-1]
-        for sn_index in range(sample_size): #pyro.plate("SNe", sample_size):
-            theta = pyro.sample("theta", dist.Normal(0, torch.tensor(1.0, device=self.device)))
+        for sn_index in pyro.plate('SNe', sample_size):
+            theta = pyro.sample(f'theta_{sn_index}', dist.Normal(0, torch.tensor(1.0, device=self.device)))
             t = obs[0, :, sn_index].cpu().numpy()
             band_indices = obs[-2, :, sn_index].long()
             redshift = obs[-1, 0, sn_index]
             start = time.time()
             flux = self.get_flux(theta, t, redshift, band_indices)
-            print('----->', flux, -2.5 * np.log10(flux) + self.ZPT)
-            print(obs[1, :, 0], -2.5 * np.log10(obs[1, :, 0]) + self.ZPT)
-            raise ValueError('Nope')
             end = time.time()
             elapsed = end - start
             self.integ_time += elapsed
             self.total += sample_size
             self.thetas.append(theta.detach().numpy())
-            if self.count > 1400:
+            '''
+            if self.count > -1:
                 for i in range(4):
-                    inds = band_indices == i
+                    inds = band_indices[:, sn_index]
+                    inds = inds == i
+                    print(obs.shape)
+                    print(inds)
+                    print(obs[1, inds, sn_index])
                     # plt.scatter(t[inds, :], flux.detach().numpy()[inds, :])
                     # plt.errorbar(t[inds, 0], torch.squeeze(obs[1, inds, :]), yerr=torch.squeeze(obs[2, inds, :]), fmt='x')
                     plt.scatter(t[inds], flux.detach().numpy()[inds])
-                    plt.errorbar(t[inds], torch.squeeze(obs[1, inds, sn_index]), yerr=torch.squeeze(obs[2, inds, sn_index]), fmt='x')
+                    plt.errorbar(t[inds], obs[1, inds, sn_index], yerr=obs[2, inds, sn_index], fmt='x')
                 plt.title(theta.detach().numpy())
                 plt.show()
-                # raise ValueError('Nope')
+                raise ValueError('Nope')
+            '''
             self.count += 1
             pyro.sample("obs", dist.Normal(flux, obs[2, :, sn_index]), obs=obs[1, :, sn_index])
             #print('-----------')
@@ -344,7 +338,7 @@ class Model(object):
         self.total = 0
         self.count = 0
         self.thetas = []
-        pyro.render_model(self.model, model_args=(self.data,), filename='model.pdf')
+        # pyro.render_model(self.model, model_args=(self.data,), filename='model.pdf')
         nuts_kernel = NUTS(self.model, adapt_step_size=True)
         mcmc = MCMC(nuts_kernel, num_samples=50, warmup_steps=500, num_chains=1)
         mcmc.run(self.data)  # self.rng,
@@ -390,11 +384,8 @@ class Model(object):
             for i in range(4):
                 a = ax.flatten()[i]
                 inds = band_indices == i
-                scale = np.max(fl[inds]) / np.max(lc[1, inds])
-                print(scale)
-                scale = 1
                 a.scatter(t[inds], fl[inds])
-                a.errorbar(t[inds], lc[1, inds] * scale, yerr=lc[2, inds] * scale, fmt='x')
+                a.errorbar(t[inds], lc[1, inds], yerr=lc[2, inds], fmt='x')
             plt.suptitle(theta)
             plt.show()
 
