@@ -19,8 +19,8 @@ class Model(object):
     def __init__(self, bands, ignore_unknown_settings=False, settings={}, device='cuda'):
         self.data = None
         self.device = device
-        #if self.device == 'cuda':
-        #    torch.multiprocessing.set_start_method('spawn')
+        if self.device == 'cuda':
+            torch.multiprocessing.set_start_method('spawn')
         self.settings = parse_settings(bands, settings,
                                        ignore_unknown_settings=ignore_unknown_settings)
         self.M0 = -19.5
