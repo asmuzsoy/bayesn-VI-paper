@@ -104,6 +104,7 @@ class Model(object):
                 np.ones(self.settings['band_oversampling']),
                 mode='valid'
             )
+            band_conv_transmission = np.interp(band_wave, 10 ** band_pad_log_wave, band_transmission)
 
             band_weight = (
                     band_wave
@@ -113,7 +114,16 @@ class Model(object):
                     * 10 ** (0.4 * -20.)
             )
 
+            dlamba = np.diff(band_wave)
+            dlamba = np.r_[dlamba, dlamba[-1]]
+
+            num = band_wave * band_conv_transmission * dlamba
+            denom = np.sum(num)
+            self.func_denom = denom
+            band_weight = num / denom
+
             band_weights.append(band_weight)
+            plt.plot(band_wave, num, label='In function')
 
         # Get the locations that should be sampled at redshift 0. We can scale these to
         # get the locations at any redshift.
@@ -170,7 +180,7 @@ class Model(object):
         return result
 
     def get_flux(self, theta, t, redshifts, band_indices):
-        theta = theta * 0 + 2
+        theta = theta * 0
         J_t = torch.from_numpy(spline_utils.spline_coeffs_irr(t, self.tau_knots, self.KD_t).T)
         J_t_hsiao = torch.from_numpy(spline_utils.spline_coeffs_irr(t, self.hsiao_t,
                                                                               self.KD_t_hsiao).T)
@@ -238,6 +248,7 @@ class Model(object):
 
         W = W0 + theta[..., None, None] * W1
         W = W.float()
+        W = W * 0
 
         WJt = torch.matmul(W, J_t)
         W_grid = torch.matmul(self.J_l_T, WJt)
@@ -246,10 +257,38 @@ class Model(object):
         H_grid = torch.matmul(self.J_l_T_hsiao, HJt)
 
         model_spectra = H_grid * 10 ** (-0.4 * W_grid)
+        model_spectra_np = model_spectra[0, ...].detach().numpy()
+        model_spectra_np = model_spectra_np * 10 ** (-0.4 * self.M0)
+        band = sncosmo.get_bandpass('bessellb')(self.model_wave)
+        """
+        integ1 = self.model_wave[:, None] * model_spectra_np * band[:, None]
+        integ2 = self.model_wave * band
+        ref = sncosmo.get_magsystem(self.settings['magsys'])
+        f1 = np.array([np.trapz(integ1[:, i], x=self.model_wave) / np.trapz(integ2, x=self.model_wave) for i in range(integ1.shape[-1])])
+        m1 = -2.5 * np.log10(f1 / zp)
+        print(m1)
+        """
+        zp = 6.32e-9
+        dlamba = np.diff(self.model_wave)
+        dlamba = np.r_[dlamba, dlamba[-1]]
+        integ1 = self.model_wave[:, None] * model_spectra_np * band[:, None] * dlamba[:, None]
+        integ2 = self.model_wave * band * dlamba
+        num = self.model_wave * band * dlamba
+        denom = np.sum(integ2)
+        weight = num / denom
+        plt.plot(self.model_wave, num, label='Works')
+        plt.show()
+
+        f1 = np.array([np.sum(model_spectra_np[:, i] * weight) for i in range(integ1.shape[-1])])
+        m1 = -2.5 * np.log10(f1 / zp)
+        print(m1)
 
         num_observations = t.shape[0]
 
         band_weights = self._calculate_band_weights(redshifts)
+        plt.plot(self.model_wave, band_weights[0, :, 0], label='Function')
+        plt.legend()
+        plt.show()
         batch_indices = (
             torch.arange(num_batch, device=self.device)
             .repeat_interleave(num_observations)
@@ -265,6 +304,13 @@ class Model(object):
 
         # Out by factor of 10^8 for some reason, hack fix but investigate this
         model_flux = model_flux * 10 ** -(0.4 * self.M0)
+        f2 = model_flux[:, 0]
+        m2 = -2.5 * np.log10(f2 / zp)
+        m2 = m2.detach().numpy()
+        print(f1 / f2)
+        print(m2)
+        print(m1 - m2)
+        raise ValueError('Nope')
         # model_flux /= self.scale
 
         return model_flux

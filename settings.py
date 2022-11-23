@@ -15,7 +15,7 @@ default_settings = {
     'min_wave': l_k[0],
     'max_wave': l_k[-1],
     'l_k': l_k,
-    'spectrum_bins': 300,
+    'spectrum_bins': 5000,
     'max_redshift': 4.,
     'band_oversampling': 51,
     'time_window': 300,
@@ -26,7 +26,7 @@ default_settings = {
     'Av_mean': 0.5,
     'Av_sigma': 0.25,
     'color_sigma': 0.3,
-    'magsys': 'ab',
+    'magsys': 'vega',
     'error_floor': 0.01,
     'zeropoint': 25.0,
 
