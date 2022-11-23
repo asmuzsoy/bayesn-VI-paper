@@ -345,7 +345,7 @@ class Model(object):
         self.thetas = []
         # pyro.render_model(self.model, model_args=(self.data,), filename='model.pdf')
         nuts_kernel = NUTS(self.model, adapt_step_size=True)
-        mcmc = MCMC(nuts_kernel, num_samples=10, warmup_steps=10, num_chains=4)
+        mcmc = MCMC(nuts_kernel, num_samples=250, warmup_steps=250, num_chains=4)
         mcmc.run(self.data)  # self.rng,
         print(f'{self.total * self.data.shape[1]} flux integrals for {self.total} objects in {self.integ_time} seconds')
         print(f'Average per object: {self.integ_time / self.total}')
