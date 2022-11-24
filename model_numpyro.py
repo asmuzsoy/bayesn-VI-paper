@@ -192,15 +192,15 @@ class Model(object):
 
         return result
 
-    def get_flux_batch(self, theta, Av, redshifts, band_indices):
+    def get_flux_batch(self, theta, Av, W0, W1, redshifts, band_indices):
         num_batch = theta.shape[0]
         J_t = jnp.reshape(self.J_t, (-1, *self.J_t.shape))
         J_t = jnp.repeat(J_t, num_batch, axis=0)
         J_t_hsiao = jnp.reshape(self.J_t_hsiao, (-1, *self.J_t_hsiao.shape))
         J_t_hsiao = jnp.repeat(J_t_hsiao, num_batch, axis=0)
-        W0 = jnp.reshape(self.W0, (-1, *self.W0.shape))
+        W0 = jnp.reshape(W0, (-1, *self.W0.shape))
         W0 = jnp.repeat(W0, num_batch, axis=0)
-        W1 = jnp.reshape(self.W1, (-1, *self.W1.shape))
+        W1 = jnp.reshape(W1, (-1, *self.W1.shape))
         W1 = jnp.repeat(W1, num_batch, axis=0)
 
         W = W0 + theta[..., None, None] * W1
@@ -261,10 +261,12 @@ class Model(object):
 
     def model(self, obs):
         sample_size = self.data.shape[-1]
-        W0_mu = np.zeros((self.l_knots.shape[0], self.tau_knots.shape[0]))
-        W0 = numpyro.sample('W0', dist.MultivariateNormal(W0_mu))
-        print(W0)
-        raise ValueError('Nope')
+
+        W_mu = np.zeros(self.l_knots.shape[0] * self.tau_knots.shape[0])
+        W0 = numpyro.sample('W0', dist.MultivariateNormal(W_mu, jnp.eye(self.l_knots.shape[0] * self.tau_knots.shape[0])))
+        W1 = numpyro.sample('W1',dist.MultivariateNormal(W_mu, jnp.eye(self.l_knots.shape[0] * self.tau_knots.shape[0])))
+        W0 = jnp.reshape(W0, (self.l_knots.shape[0], self.tau_knots.shape[0]))
+        W1 = jnp.reshape(W1, (self.l_knots.shape[0], self.tau_knots.shape[0]))
         # for sn_index in pyro.plate('SNe', sample_size):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
@@ -273,7 +275,7 @@ class Model(object):
             band_indices = obs[-2, :, sn_index].astype(int).T
             redshift = obs[-1, 0, sn_index]
             start = time.time()
-            flux = self.get_flux_batch(theta, Av, redshift, band_indices)
+            flux = self.get_flux_batch(theta, Av, W0, W1, redshift, band_indices)
             end = time.time()
             elapsed = end - start
             self.integ_time += elapsed
