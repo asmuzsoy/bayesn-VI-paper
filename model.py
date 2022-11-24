@@ -345,11 +345,11 @@ class Model(object):
         self.thetas = []
         # pyro.render_model(self.model, model_args=(self.data,), filename='model.pdf')
         nuts_kernel = NUTS(self.model, adapt_step_size=True)
-        mcmc = MCMC(nuts_kernel, num_samples=250, warmup_steps=250, num_chains=4)
+        mcmc = MCMC(nuts_kernel, num_samples=5, warmup_steps=5, num_chains=1)
         mcmc.run(self.data)  # self.rng,
         print(f'{self.total * self.data.shape[1]} flux integrals for {self.total} objects in {self.integ_time} seconds')
         print(f'Average per object: {self.integ_time / self.total}')
-        print(f'Average per integral: {self.integ_time / (self.total * self.data.shape[0])}')
+        print(f'Average per integral: {self.integ_time / (self.total * self.data.shape[1])}')
         print(np.array(self.thetas))
         return mcmc.get_samples()
 
@@ -398,7 +398,7 @@ class Model(object):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_test_z0_noext_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:100]
+    dataset = lcdata.read_hdf5(dataset_path)[:10]
     bands = parsnip.get_bands(dataset)
 
     param_path = 'data/bayesn_sim_test_z0_noext_25000_params.pkl'
@@ -411,10 +411,10 @@ if __name__ == '__main__':
     params = pd_dataset.merge(params, on='object_id')
     print('Actual:', params.theta.values)
 
-    model = Model(bands, device='cuda')
+    model = Model(bands, device='cpu')
     # model.compare_gen_theta(dataset, params)
     result = model.fit(dataset)
-    # print(np.mean(result['theta'].cpu().numpy(), axis=0), np.std(result['theta'].numpy(), axis=0))
+    print(np.mean(result['theta'].cpu().numpy(), axis=0), np.std(result['theta'].numpy(), axis=0))
     # print(np.mean(result['theta_1'].numpy(), axis=0), np.std(result['theta_1'].numpy(), axis=0))
     # plt.scatter(params.theta.values, result['theta'][0, :])
     # plt.show()

@@ -15,7 +15,7 @@ default_settings = {
     'min_wave': l_k[0],
     'max_wave': l_k[-1],
     'l_k': l_k,
-    'spectrum_bins': 5000,
+    'spectrum_bins': 300,
     'max_redshift': 4.,
     'band_oversampling': 51,
     'time_window': 300,
