@@ -16,6 +16,7 @@ import jax
 from jax import device_put
 import jax.numpy as jnp
 from jax.random import PRNGKey
+import extinction
 
 jax.config.update('jax_platform_name', 'cpu')
 numpyro.set_host_device_count(4)
@@ -51,6 +52,11 @@ class Model(object):
         self.J_l_T = device_put(self.J_l_T)
         self.hsiao_flux = device_put(self.hsiao_flux)
         self.J_l_T_hsiao = device_put(self.J_l_T_hsiao)
+        self.xk = jnp.array(
+            [0.0, 1e4 / 26500., 1e4 / 12200., 1e4 / 6000., 1e4 / 5470., 1e4 / 4670., 1e4 / 4110., 1e4 / 2700.,
+             1e4 / 2600.])
+        KD_x = spline_utils.invKD_irr(self.xk)
+        self.M_fitz_block = device_put(spline_utils.spline_coeffs_irr(1e4 / self.model_wave, self.xk, KD_x))
 
     def load_hsiao_template(self):
         with h5py.File(os.path.join('data', 'hsiao.h5'), 'r') as file:
@@ -187,49 +193,7 @@ class Model(object):
 
         return result
 
-    def get_flux(self, theta, t, redshifts, band_indices):
-        theta = 0 * theta - 3
-        J_t = torch.from_numpy(spline_utils.spline_coeffs_irr(t, self.tau_knots, self.KD_t).T)
-        J_t_hsiao = torch.from_numpy(spline_utils.spline_coeffs_irr(t, self.hsiao_t,
-                                                                              self.KD_t_hsiao).T)
-        J_t = J_t.to(self.device)
-        J_t = J_t.float()
-        J_t_hsiao = J_t_hsiao.to(self.device)
-        J_t_hsiao = J_t_hsiao.float()
-        # W0 = torch.reshape(self.W0, (-1, *self.W0.shape))
-        # W0 = torch.repeat_interleave(W0, num_batch, dim=0)
-        # W1 = torch.reshape(self.W1, (-1, *self.W1.shape))
-        # W1 = torch.repeat_interleave(W1, num_batch, dim=0)
-
-        redshifts = redshifts[None]
-
-        W = self.W0 + theta[..., None] * self.W1
-        W = W.float()
-
-        WJt = torch.matmul(W, J_t)
-        W_grid = torch.matmul(self.J_l_T, WJt)
-
-        HJt = torch.matmul(self.hsiao_flux, J_t_hsiao)
-        H_grid = torch.matmul(self.J_l_T_hsiao, HJt)
-
-        model_spectra = H_grid * 10 ** (-0.4 * W_grid)
-
-        num_observations = t.shape[0]
-
-        band_weights = self._calculate_band_weights(redshifts)
-
-        obs_band_weights = (
-            band_weights[0, :, band_indices.flatten()]
-        )
-
-        model_flux = torch.sum(model_spectra * obs_band_weights, axis=0)
-
-        # Out by factor of 10^8 for some reason, hack fix but investigate this
-        model_flux = model_flux * 10 ** (-0.4 * self.M0)
-
-        return model_flux
-
-    def get_flux_batch(self, theta, redshifts, band_indices):
+    def get_flux_batch(self, theta, Rv, Av, redshifts, band_indices):
         num_batch = theta.shape[0]
         J_t = jnp.reshape(self.J_t, (-1, *self.J_t.shape))
         J_t = jnp.repeat(J_t, num_batch, axis=0)
@@ -264,6 +228,41 @@ class Model(object):
             .transpose(0, 2, 1)
         )
 
+        # Extinction----------------------------------------------------------
+        f99_x0 = 4.596
+        f99_gamma = 0.99
+        f99_c2 = -0.824 + 4.717 / Rv
+        f99_c1 = 2.030 - 3.007 * f99_c2
+        f99_c3 = 3.23
+        f99_c4 = 0.41
+        f99_c5 = 5.9
+        f99_d1 = self.xk[7] ** 2 / ((self.xk[7] ** 2 - f99_x0 ** 2) ** 2 + (f99_gamma * self.xk[7]) ** 2)
+        f99_d2 = self.xk[8] ** 2 / ((self.xk[8] ** 2 - f99_x0 ** 2) ** 2 + (f99_gamma * self.xk[8]) ** 2)
+        yk = jnp.zeros((num_batch, 9))
+        yk = yk.at[:, 0].set(-Rv)
+        yk = yk.at[:, 1].set(0.26469 * Rv / 3.1 - Rv)
+        yk = yk.at[:, 2].set(0.82925 * Rv / 3.1 - Rv)
+        yk = yk.at[:, 3].set(-0.422809 + 1.00270 * Rv + 2.13572e-4 * Rv ** 2 - Rv)
+        yk = yk.at[:, 4].set(-5.13540e-2 + 1.00216 * Rv - 7.35778e-5 * Rv ** 2 - Rv)
+        yk = yk.at[:, 5].set(0.700127 + 1.00184 * Rv - 3.32598e-5 * Rv ** 2 - Rv)
+        yk = yk.at[:, 6].set(1.19456 + 1.01707 * Rv - 5.46959e-3 * Rv ** 2 + 7.97809e-4 * Rv ** 3 - 4.45636e-5 * Rv ** 4 - Rv)
+        yk = yk.at[:, 7].set(f99_c1 + f99_c2 * self.xk[7] + f99_c3 * f99_d1)
+        yk = yk.at[:, 8].set(f99_c1 + f99_c2 * self.xk[8] + f99_c3 * f99_d2)
+
+        A = Av[..., None] * (1 + (self.M_fitz_block @ yk.T).T / Rv[..., None])
+        print(Av[0], Rv[0])
+        plt.plot(self.model_wave, A[0, :])
+        test = extinction.fitzpatrick99(self.model_wave, Av[0], Rv[0])
+        plt.plot(self.model_wave, test + 0.1)
+        plt.show()
+        raise ValueError('Nope')
+        f_A = 10 ** (-0.4 * A)
+        model_spectra = model_spectra * f_A[..., None]
+
+
+
+
+
         model_flux = jnp.sum(model_spectra * obs_band_weights, axis=1).T
 
         model_flux = model_flux * 10 ** -(0.4 * self.M0)
@@ -274,11 +273,13 @@ class Model(object):
         sample_size = self.data.shape[-1]
         # for sn_index in pyro.plate('SNe', sample_size):
         with numpyro.plate('SNe', sample_size) as sn_index:
-            theta = numpyro.sample(f'theta', dist.Normal(0, 1.0)) # _{sn_index}
+            theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
+            Rv = numpyro.sample(f'Rv', dist.Normal(2.610, 0.001))
+            Av = numpyro.sample(f'Av', dist.Exponential(0.194))
             band_indices = obs[-2, :, sn_index].astype(int).T
             redshift = obs[-1, 0, sn_index]
             start = time.time()
-            flux = self.get_flux_batch(theta, redshift, band_indices)
+            flux = self.get_flux_batch(theta, Rv, Av, redshift, band_indices)
             end = time.time()
             elapsed = end - start
             self.integ_time += elapsed
@@ -311,7 +312,7 @@ class Model(object):
         rng = PRNGKey(123)
         # pyro.render_model(self.model, model_args=(self.data,), filename='model.pdf')
         nuts_kernel = NUTS(self.model, adapt_step_size=True)
-        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=4)
+        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
         mcmc.run(rng, self.data)  # self.rng,
         print(f'{self.total * self.data.shape[1]} flux integrals for {self.total} objects in {self.integ_time} seconds')
         print(f'Average per object: {self.integ_time / self.total}')
@@ -365,7 +366,7 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_test_z0_noext_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:100]
+    dataset = lcdata.read_hdf5(dataset_path)[:10]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
