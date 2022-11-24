@@ -18,8 +18,7 @@ import jax.numpy as jnp
 from jax.random import PRNGKey
 import extinction
 
-jax.config.update('jax_platform_name', 'cpu')
-numpyro.set_host_device_count(4)
+# jax.config.update('jax_platform_name', 'cpu')
 
 print(jax.devices())
 
@@ -250,18 +249,8 @@ class Model(object):
         yk = yk.at[:, 8].set(f99_c1 + f99_c2 * self.xk[8] + f99_c3 * f99_d2)
 
         A = Av[..., None] * (1 + (self.M_fitz_block @ yk.T).T / Rv[..., None])
-        print(Av[0], Rv[0])
-        plt.plot(self.model_wave, A[0, :])
-        test = extinction.fitzpatrick99(self.model_wave, Av[0], Rv[0])
-        plt.plot(self.model_wave, test + 0.1)
-        plt.show()
-        raise ValueError('Nope')
         f_A = 10 ** (-0.4 * A)
         model_spectra = model_spectra * f_A[..., None]
-
-
-
-
 
         model_flux = jnp.sum(model_spectra * obs_band_weights, axis=1).T
 
@@ -366,7 +355,7 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_test_z0_noext_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:10]
+    dataset = lcdata.read_hdf5(dataset_path)[:100]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
@@ -385,7 +374,9 @@ if __name__ == '__main__':
     model = Model(bands, device='cuda')
     # model.compare_gen_theta(dataset, params)
     result = model.fit(dataset)
-    print(np.mean(result['theta'], axis=0))
+    for param in result.keys():
+        print(param, '----------------')
+        print(np.mean(result[param], axis=0))
     # print(np.mean(result['theta_1'].numpy(), axis=0), np.std(result['theta_1'].numpy(), axis=0))
     # plt.scatter(params.theta.values, result['theta'][0, :])
     # plt.show()
