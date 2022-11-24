@@ -261,7 +261,10 @@ class Model(object):
 
     def model(self, obs):
         sample_size = self.data.shape[-1]
-        W0 = numpyro.sample('W0', dist.MultivariateNormal())
+        W0_mu = np.zeros((self.l_knots.shape[0], self.tau_knots.shape[0]))
+        W0 = numpyro.sample('W0', dist.MultivariateNormal(W0_mu))
+        print(W0)
+        raise ValueError('Nope')
         # for sn_index in pyro.plate('SNe', sample_size):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
