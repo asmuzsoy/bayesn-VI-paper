@@ -411,7 +411,7 @@ if __name__ == '__main__':
     model = Model(bands, device='cuda')
     # model.compare_gen_theta(dataset, params)
     result = model.fit(dataset)
-    print(np.mean(result['theta'].cpu().numpy(), axis=0), np.std(result['theta'].numpy(), axis=0))
+    print(np.mean(result['theta'].cpu().numpy(), axis=0))
     # print(np.mean(result['theta_1'].numpy(), axis=0), np.std(result['theta_1'].numpy(), axis=0))
     # plt.scatter(params.theta.values, result['theta'][0, :])
     # plt.show()
