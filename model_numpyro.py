@@ -368,10 +368,31 @@ class Model(object):
 
 # -------------------------------------------------
 
+def get_band_effective_wavelength(band):
+    """Calculate the effective wavelength of a band
+
+    The results of this calculation are cached, and the effective wavelength will only
+    be calculated once for each band.
+
+    Parameters
+    ----------
+    band : str
+        Name of a band in the `sncosmo` band registry
+
+    Returns
+    -------
+    float
+        Effective wavelength of the band.
+    """
+    return sncosmo.get_bandpass(band).wave_eff
+
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_test_z0_noext_25000.h5'
     dataset = lcdata.read_hdf5(dataset_path)[:1]
-    bands = get_bands(dataset)
+    bands = set()
+    for lc in dataset.light_curves:
+        bands = bands.union(lc['band'])
+    bands = np.array(sorted(bands, key=get_band_effective_wavelength))
 
     param_path = 'data/bayesn_sim_test_z0_noext_25000_params.pkl'
     params = pickle.load(open(param_path, 'rb'))
