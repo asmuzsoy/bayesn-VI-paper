@@ -10,7 +10,7 @@ import sncosmo
 from settings import parse_settings
 import spline_utils
 import time
-import parsnip
+from parsnip import get_bands
 import pickle
 import pandas as pd
 import jax
@@ -18,7 +18,7 @@ from jax import device_put
 import jax.numpy as jnp
 from jax.random import PRNGKey
 
-# jax.config.update('jax_platform_name', 'cpu')
+jax.config.update('jax_platform_name', 'cpu')
 
 print(jax.devices())
 
@@ -370,8 +370,8 @@ class Model(object):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_test_z0_noext_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:100]
-    bands = parsnip.get_bands(dataset)
+    dataset = lcdata.read_hdf5(dataset_path)[:1]
+    bands = get_bands(dataset)
 
     param_path = 'data/bayesn_sim_test_z0_noext_25000_params.pkl'
     params = pickle.load(open(param_path, 'rb'))
