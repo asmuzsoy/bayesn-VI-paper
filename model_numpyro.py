@@ -17,7 +17,7 @@ from jax import device_put
 import jax.numpy as jnp
 from jax.random import PRNGKey
 
-jax.config.update('jax_platform_name', 'cpu')
+# jax.config.update('jax_platform_name', 'cpu')
 
 print(jax.devices())
 
@@ -387,7 +387,7 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_test_z0_noext_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:1]
+    dataset = lcdata.read_hdf5(dataset_path)[:100]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
