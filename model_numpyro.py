@@ -192,7 +192,7 @@ class Model(object):
 
         return result
 
-    def get_flux_batch(self, theta, Rv, Av, redshifts, band_indices):
+    def get_flux_batch(self, theta, Av, redshifts, band_indices):
         num_batch = theta.shape[0]
         J_t = jnp.reshape(self.J_t, (-1, *self.J_t.shape))
         J_t = jnp.repeat(J_t, num_batch, axis=0)
@@ -228,6 +228,7 @@ class Model(object):
         )
 
         # Extinction----------------------------------------------------------
+        Rv = 2.610
         f99_x0 = 4.596
         f99_gamma = 0.99
         f99_c2 = -0.824 + 4.717 / Rv
@@ -248,7 +249,7 @@ class Model(object):
         yk = yk.at[:, 7].set(f99_c1 + f99_c2 * self.xk[7] + f99_c3 * f99_d1)
         yk = yk.at[:, 8].set(f99_c1 + f99_c2 * self.xk[8] + f99_c3 * f99_d2)
 
-        A = Av[..., None] * (1 + (self.M_fitz_block @ yk.T).T / Rv[..., None])
+        A = Av[..., None] * (1 + (self.M_fitz_block @ yk.T).T / Rv) #Rv[..., None]
         f_A = 10 ** (-0.4 * A)
         model_spectra = model_spectra * f_A[..., None]
 
@@ -263,12 +264,12 @@ class Model(object):
         # for sn_index in pyro.plate('SNe', sample_size):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
-            Rv = numpyro.sample(f'Rv', dist.Normal(2.610, 0.001))
-            Av = numpyro.sample(f'Av', dist.Exponential(0.194))
+            # Rv = numpyro.sample(f'RV', dist.Normal(2.610, 0.001))
+            Av = numpyro.sample(f'AV', dist.Exponential(0.194))
             band_indices = obs[-2, :, sn_index].astype(int).T
             redshift = obs[-1, 0, sn_index]
             start = time.time()
-            flux = self.get_flux_batch(theta, Rv, Av, redshift, band_indices)
+            flux = self.get_flux_batch(theta, Av, redshift, band_indices)
             end = time.time()
             elapsed = end - start
             self.integ_time += elapsed
@@ -354,14 +355,14 @@ def get_band_effective_wavelength(band):
     return sncosmo.get_bandpass(band).wave_eff
 
 if __name__ == '__main__':
-    dataset_path = 'data/bayesn_sim_test_z0_noext_25000.h5'
+    dataset_path = 'data/bayesn_sim_test_z0_ext_25000.h5'
     dataset = lcdata.read_hdf5(dataset_path)[:100]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
     bands = np.array(sorted(bands, key=get_band_effective_wavelength))
 
-    param_path = 'data/bayesn_sim_test_z0_noext_25000_params.pkl'
+    param_path = 'data/bayesn_sim_test_z0_ext_25000_params.pkl'
     params = pickle.load(open(param_path, 'rb'))
     del params['epsilon']
     params = pd.DataFrame(params)
@@ -369,14 +370,14 @@ if __name__ == '__main__':
     pd_dataset = dataset.meta.to_pandas()
     pd_dataset = pd_dataset.astype({'object_id': int})
     params = pd_dataset.merge(params, on='object_id')
-    print('Actual:', params.theta.values)
 
     model = Model(bands, device='cuda')
     # model.compare_gen_theta(dataset, params)
     result = model.fit(dataset)
-    for param in result.keys():
-        print(param, '----------------')
-        print(np.mean(result[param], axis=0))
+    for p in result.keys():
+        params[f'fit_mu_{p}'] = np.mean(result[p], axis=0)
+        params[f'fit_sigma_{p}'] = np.std(result[p], axis=0)
+        print(params[[p, f'fit_mu_{p}', f'fit_sigma_{p}']])
     # print(np.mean(result['theta_1'].numpy(), axis=0), np.std(result['theta_1'].numpy(), axis=0))
     # plt.scatter(params.theta.values, result['theta'][0, :])
     # plt.show()
