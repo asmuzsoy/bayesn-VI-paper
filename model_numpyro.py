@@ -339,6 +339,43 @@ class Model(object):
         self.J_t_hsiao = device_put(spline_utils.spline_coeffs_irr(self.t, self.hsiao_t,
                                                                               self.KD_t_hsiao).T)
 
+    def test_params(self, dataset, params):
+        W0 = np.array([[ 0.02843043,  0.04476366,  0.06112441, -0.23980577,
+              -0.08485551,  0.04843032],
+             [-0.23098515, -0.23349613, -0.11757389,  0.04894118,
+               0.02036298, -0.15651262],
+             [-0.0737702 , -0.02131584,  0.07040393, -0.03109362,
+               0.12782198,  0.0853846 ],
+             [ 0.04165616,  0.10970783,  0.20132607,  0.07913643,
+               0.3516916 ,  0.1236105 ],
+             [ 0.23193596,  0.38430038,  0.23069869,  0.38082343,
+               0.5336762 ,  0.41139618],
+             [ 0.01643108,  0.06762994, -0.33552772,  0.03039794,
+               0.34380898,  0.0389217 ]])
+        W1 = np.array([[-0.07149906, -0.02313145,  0.01846762, -0.03358179,
+              -0.03148113,  0.00937884],
+             [-0.09837569,  0.04041047,  0.08954334, -0.07346792,
+              -0.03544673,  0.05813475],
+             [ 0.0031817 ,  0.02680052, -0.00534067,  0.05260898,
+              -0.01268515, -0.04824333],
+             [-0.0051503 , -0.00312684,  0.03961379, -0.11544725,
+               0.11368799, -0.01974327],
+             [-0.032797  , -0.04462327,  0.03097872,  0.02268409,
+               0.04832925,  0.03014707],
+             [ 0.02944787,  0.01431686, -0.1145957 , -0.05868089,
+              -0.01599171,  0.08024302]])
+        self.process_dataset(dataset)
+        band_indices = self.data[-2, :, 0:1].astype(int)
+        redshift = self.data[-1, 0, 0:1]
+        theta, Av = params.theta.values, params.AV.values
+        flux = self.get_flux_batch(theta, Av, W0, W1, redshift, band_indices)
+        for i in range(4):
+            inds = band_indices[:, 0] == i
+            plt.scatter(self.t[inds], flux[inds, 0])
+            plt.errorbar(self.t[inds], self.data[1, inds, 0], yerr=self.data[2, inds, 0], fmt='x')
+        plt.show()
+
+
 
 # -------------------------------------------------
 
@@ -378,15 +415,15 @@ if __name__ == '__main__':
     params = pd_dataset.merge(params, on='object_id')
 
     model = Model(bands, device='cuda')
-    # model.compare_gen_theta(dataset, params)
     result = model.fit(dataset)
     for p in result.keys():
-        params[f'fit_mu_{p}'] = np.mean(result[p], axis=0)
-        params[f'fit_sigma_{p}'] = np.std(result[p], axis=0)
-        print(params[[p, f'fit_mu_{p}', f'fit_sigma_{p}']])
-    # print(np.mean(result['theta_1'].numpy(), axis=0), np.std(result['theta_1'].numpy(), axis=0))
-    # plt.scatter(params.theta.values, result['theta'][0, :])
-    # plt.show()
+        if p in ['W0', 'W1']:
+            print(p, repr(np.reshape(np.mean(result[p], axis=0), (6, 6))))
+        else:
+            params[f'fit_mu_{p}'] = np.mean(result[p], axis=0)
+            params[f'fit_sigma_{p}'] = np.std(result[p], axis=0)
+            print(params[[p, f'fit_mu_{p}', f'fit_sigma_{p}']])
+    # model.test_params(dataset, params)
 
 
 
