@@ -10,7 +10,6 @@ import sncosmo
 from settings import parse_settings
 import spline_utils
 import time
-from parsnip import get_bands
 import pickle
 import pandas as pd
 import jax
