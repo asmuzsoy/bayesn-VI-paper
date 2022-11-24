@@ -295,7 +295,7 @@ class Model(object):
         sample_size = self.data.shape[-1]
         # for sn_index in pyro.plate('SNe', sample_size):
         with pyro.plate('SNe', sample_size) as sn_index:
-            theta = pyro.sample(f'theta_{sn_index}', dist.Normal(0, torch.tensor(1.0, device=self.device))) # _{sn_index}
+            theta = pyro.sample(f'theta', dist.Normal(0, torch.tensor(1.0, device=self.device))) # _{sn_index}
             band_indices = obs[-2, :, sn_index].long()
             redshift = obs[-1, 0, sn_index]
             start = time.time()
@@ -321,7 +321,7 @@ class Model(object):
                 plt.show()
                 raise ValueError('Nope')"""
             self.count += 1
-            pyro.sample(f'obs_{sn_index}', dist.Normal(flux, obs[2, :, sn_index]), obs=obs[1, :, sn_index]) # _{sn_index}
+            pyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index]), obs=obs[1, :, sn_index]) # _{sn_index}
             #print('-----------')
             #print(flux)
             #print(obs[2, :, sn_index])
