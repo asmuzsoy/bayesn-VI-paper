@@ -17,7 +17,8 @@ from jax import device_put
 import jax.numpy as jnp
 from jax.random import PRNGKey
 
-# jax.config.update('jax_platform_name', 'cpu')
+jax.config.update('jax_platform_name', 'cpu')
+numpyro.set_host_device_count(4)
 
 print(jax.devices())
 
@@ -310,7 +311,7 @@ class Model(object):
         rng = PRNGKey(123)
         # pyro.render_model(self.model, model_args=(self.data,), filename='model.pdf')
         nuts_kernel = NUTS(self.model, adapt_step_size=True)
-        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
+        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=4)
         mcmc.run(rng, self.data)  # self.rng,
         print(f'{self.total * self.data.shape[1]} flux integrals for {self.total} objects in {self.integ_time} seconds')
         print(f'Average per object: {self.integ_time / self.total}')
@@ -340,29 +341,6 @@ class Model(object):
         self.J_t = device_put(spline_utils.spline_coeffs_irr(self.t, self.tau_knots, self.KD_t).T)
         self.J_t_hsiao = device_put(spline_utils.spline_coeffs_irr(self.t, self.hsiao_t,
                                                                               self.KD_t_hsiao).T)
-
-    def compare_gen_theta(self, dataset, params):
-        self.process_dataset(dataset)
-        for ind in range(self.data.shape[-1]):
-            lc = self.data[..., ind]
-            lc = torch.reshape(lc, (*lc.shape, -1))
-            t, band_indices, redshifts = lc[0, ...].cpu().numpy(), lc[-2, ...].long(), lc[-1, 0, :]
-            theta = params['theta'].values[ind]
-            print(theta)
-            theta = torch.tensor(theta)
-            theta = torch.reshape(theta, (*theta.shape, -1))
-            fl = self.get_flux_batch(theta, t, redshifts, band_indices).cpu().numpy()
-            band_indices = band_indices.cpu().numpy()
-            lc = lc[..., 0].cpu().numpy()
-            t, fl, band_indices = np.squeeze(t), np.squeeze(fl), np.squeeze(band_indices)
-            fig, ax = plt.subplots(2, 2, figsize=(12, 8))
-            for i in range(4):
-                a = ax.flatten()[i]
-                inds = band_indices == i
-                a.scatter(t[inds], fl[inds])
-                a.errorbar(t[inds], lc[1, inds], yerr=lc[2, inds], fmt='x')
-            plt.suptitle(theta)
-            plt.show()
 
 
 # -------------------------------------------------
