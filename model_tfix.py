@@ -228,18 +228,12 @@ class Model(object):
 
         return model_flux
 
-    def get_flux_batch(self, theta, t, redshifts, band_indices):
+    def get_flux_batch(self, theta, redshifts, band_indices):
         num_batch = theta.shape[0]
-        J_t_list, J_t_hsiao_list = [], []
-        for _ in range(num_batch):
-            J_t_list.append(torch.from_numpy(spline_utils.spline_coeffs_irr(t[:, _], self.tau_knots, self.KD_t).T))
-            J_t_hsiao_list.append(torch.from_numpy(spline_utils.spline_coeffs_irr(t[:, _], self.hsiao_t,
-                                                                                  self.KD_t_hsiao).T))
-        J_t, J_t_hsiao = torch.stack(J_t_list), torch.stack(J_t_hsiao_list)
-        J_t = J_t.to(self.device)
-        J_t = J_t.float()
-        J_t_hsiao = J_t_hsiao.to(self.device)
-        J_t_hsiao = J_t_hsiao.float()
+        J_t = torch.reshape(self.J_t, (-1, *self.J_t.shape))
+        J_t = torch.repeat_interleave(J_t, num_batch, dim=0)
+        J_t_hsiao = torch.reshape(self.J_t_hsiao, (-1, *self.J_t_hsiao.shape))
+        J_t_hsiao = torch.repeat_interleave(J_t_hsiao, num_batch, dim=0)
         W0 = torch.reshape(self.W0, (-1, *self.W0.shape))
         W0 = torch.repeat_interleave(W0, num_batch, dim=0)
         W1 = torch.reshape(self.W1, (-1, *self.W1.shape))
@@ -272,7 +266,7 @@ class Model(object):
         f1 = np.array([np.sum(model_spectra_np[:, i] * weight) for i in range(model_spectra_np.shape[-1])])[inds]
         m1 = -2.5 * np.log10(f1 / zp)"""
 
-        num_observations = t.shape[0]
+        num_observations = band_indices.shape[0]
 
         band_weights = self._calculate_band_weights(redshifts)
         batch_indices = (
@@ -299,14 +293,13 @@ class Model(object):
 
     def model(self, obs):
         sample_size = self.data.shape[-1]
-        for sn_index in pyro.plate('SNe', sample_size):
-            #with pyro.plate('SNe', sample_size) as sn_index:
+        # for sn_index in pyro.plate('SNe', sample_size):
+        with pyro.plate('SNe', sample_size) as sn_index:
             theta = pyro.sample(f'theta_{sn_index}', dist.Normal(0, torch.tensor(1.0, device=self.device))) # _{sn_index}
-            t = obs[0, :, sn_index].cpu().numpy()
             band_indices = obs[-2, :, sn_index].long()
             redshift = obs[-1, 0, sn_index]
             start = time.time()
-            flux = self.get_flux(theta, t, redshift, band_indices)
+            flux = self.get_flux_batch(theta, redshift, band_indices)
             end = time.time()
             elapsed = end - start
             self.integ_time += elapsed
@@ -353,6 +346,7 @@ class Model(object):
 
     def process_dataset(self, dataset):
         all_data = []
+        self.t = None
         for lc in dataset.light_curves:
             lc = lc.to_pandas()
             lc = lc.astype({'band': str})
@@ -361,6 +355,8 @@ class Model(object):
             lc['band'] = lc['band'].apply(lambda band: self.band_dict[band])
             lc['redshift'] = 0
             lc = lc.sort_values('time')
+            if self.t is None:
+                self.t = lc.time.values
             lc = lc.values
             lc = np.reshape(lc, (-1, *lc.shape))
             all_data.append(lc)
@@ -368,6 +364,9 @@ class Model(object):
         all_data = np.swapaxes(all_data, 0, 2)
         all_data = torch.from_numpy(all_data)
         self.data = all_data.to(self.device)
+        self.J_t = torch.from_numpy(spline_utils.spline_coeffs_irr(self.t, self.tau_knots, self.KD_t).T).float().to(self.device)
+        self.J_t_hsiao = torch.from_numpy(spline_utils.spline_coeffs_irr(self.t, self.hsiao_t,
+                                                                              self.KD_t_hsiao).T).float().to(self.device)
 
     def compare_gen_theta(self, dataset, params):
         self.process_dataset(dataset)
@@ -396,7 +395,7 @@ class Model(object):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_test_z0_noext_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:1]
+    dataset = lcdata.read_hdf5(dataset_path)[:100]
     bands = parsnip.get_bands(dataset)
 
     param_path = 'data/bayesn_sim_test_z0_noext_25000_params.pkl'
@@ -409,7 +408,7 @@ if __name__ == '__main__':
     params = pd_dataset.merge(params, on='object_id')
     print('Actual:', params.theta.values)
 
-    model = Model(bands, device='cpu')
+    model = Model(bands, device='cuda')
     # model.compare_gen_theta(dataset, params)
     result = model.fit(dataset)
     print(np.mean(result['theta'].cpu().numpy(), axis=0), np.std(result['theta'].numpy(), axis=0))
