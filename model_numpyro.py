@@ -263,13 +263,14 @@ class Model(object):
     def model(self, obs):
         sample_size = self.data.shape[-1]
         N_knots = self.l_knots.shape[0] * self.tau_knots.shape[0]
+        N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
         W_mu = jnp.zeros(N_knots)
         W0 = numpyro.sample('W0', dist.MultivariateNormal(W_mu, jnp.eye(N_knots)))
         W1 = numpyro.sample('W1', dist.MultivariateNormal(W_mu, jnp.eye(N_knots)))
         W0 = jnp.reshape(W0, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
         W1 = jnp.reshape(W1, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
-        sigmaepsilon = numpyro.sample('sigmaepsilon', dist.HalfNormal(0.25 * jnp.ones(N_knots)))
-        L_Omega = numpyro.sample('L_Omega', dist.LKJCholesky(N_knots))
+        sigmaepsilon = numpyro.sample('sigmaepsilon', dist.HalfNormal(0.25 * jnp.ones(N_knots_sig)))
+        L_Omega = numpyro.sample('L_Omega', dist.LKJCholesky(N_knots_sig))
         L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon), L_Omega)
 
         # for sn_index in pyro.plate('SNe', sample_size):
@@ -277,9 +278,11 @@ class Model(object):
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             # Rv = numpyro.sample(f'RV', dist.Normal(2.610, 0.001))
             Av = numpyro.sample(f'AV', dist.Exponential(0.194))
-            eps_mu = jnp.zeros(N_knots)
+            eps_mu = jnp.zeros(N_knots_sig)
             eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=L_Sigma))
-            eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
+            eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+            eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            eps = eps_full.at[:, 1:-1, :].set(eps)
             band_indices = obs[-2, :, sn_index].astype(int).T
             redshift = obs[-1, 0, sn_index]
             start = time.time()
