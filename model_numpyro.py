@@ -2,7 +2,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import numpyro
-from numpyro.infer import MCMC, NUTS, Predictive, HMC
+from numpyro.infer import MCMC, NUTS, Predictive, HMC, init_to_median
 import numpyro.distributions as dist
 import h5py
 import lcdata
@@ -18,9 +18,10 @@ import jax.numpy as jnp
 from jax.random import PRNGKey
 import extinction
 
-# jax.config.update('jax_platform_name', 'cpu')
+jax.config.update('jax_platform_name', 'cpu')
 
 print(jax.devices())
+
 
 class Model(object):
     def __init__(self, bands, ignore_unknown_settings=False, settings={}, device='cuda'):
@@ -192,7 +193,7 @@ class Model(object):
 
         return result
 
-    def get_flux_batch(self, theta, Av, W0, W1, redshifts, band_indices):
+    def get_flux_batch(self, theta, Av, W0, W1, eps, redshifts, band_indices):
         num_batch = theta.shape[0]
         J_t = jnp.reshape(self.J_t, (-1, *self.J_t.shape))
         J_t = jnp.repeat(J_t, num_batch, axis=0)
@@ -203,7 +204,7 @@ class Model(object):
         W1 = jnp.reshape(W1, (-1, *self.W1.shape))
         W1 = jnp.repeat(W1, num_batch, axis=0)
 
-        W = W0 + theta[..., None, None] * W1
+        W = W0 + theta[..., None, None] * W1 + eps
 
         WJt = jnp.matmul(W, J_t)
         W_grid = jnp.matmul(self.J_l_T, WJt)
@@ -261,21 +262,28 @@ class Model(object):
 
     def model(self, obs):
         sample_size = self.data.shape[-1]
+        N_knots = self.l_knots.shape[0] * self.tau_knots.shape[0]
+        W_mu = jnp.zeros(N_knots)
+        W0 = numpyro.sample('W0', dist.MultivariateNormal(W_mu, jnp.eye(N_knots)))
+        W1 = numpyro.sample('W1', dist.MultivariateNormal(W_mu, jnp.eye(N_knots)))
+        W0 = jnp.reshape(W0, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
+        W1 = jnp.reshape(W1, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
+        sigmaepsilon = numpyro.sample('sigmaepsilon', dist.HalfNormal(0.25 * jnp.ones(N_knots)))
+        L_Omega = numpyro.sample('L_Omega', dist.LKJCholesky(N_knots))
+        L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon), L_Omega)
 
-        W_mu = np.zeros(self.l_knots.shape[0] * self.tau_knots.shape[0])
-        W0 = numpyro.sample('W0', dist.MultivariateNormal(W_mu, jnp.eye(self.l_knots.shape[0] * self.tau_knots.shape[0])))
-        W1 = numpyro.sample('W1',dist.MultivariateNormal(W_mu, jnp.eye(self.l_knots.shape[0] * self.tau_knots.shape[0])))
-        W0 = jnp.reshape(W0, (self.l_knots.shape[0], self.tau_knots.shape[0]))
-        W1 = jnp.reshape(W1, (self.l_knots.shape[0], self.tau_knots.shape[0]))
         # for sn_index in pyro.plate('SNe', sample_size):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             # Rv = numpyro.sample(f'RV', dist.Normal(2.610, 0.001))
             Av = numpyro.sample(f'AV', dist.Exponential(0.194))
+            eps_mu = jnp.zeros(N_knots)
+            eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=L_Sigma))
+            eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
             band_indices = obs[-2, :, sn_index].astype(int).T
             redshift = obs[-1, 0, sn_index]
             start = time.time()
-            flux = self.get_flux_batch(theta, Av, W0, W1, redshift, band_indices)
+            flux = self.get_flux_batch(theta, Av, W0, W1, eps, redshift, band_indices)
             end = time.time()
             elapsed = end - start
             self.integ_time += elapsed
@@ -307,7 +315,7 @@ class Model(object):
         self.thetas = []
         rng = PRNGKey(123)
         # pyro.render_model(self.model, model_args=(self.data,), filename='model.pdf')
-        nuts_kernel = NUTS(self.model, adapt_step_size=True)
+        nuts_kernel = NUTS(self.model, adapt_step_size=True, init_strategy=init_to_median())
         mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
         mcmc.run(rng, self.data)  # self.rng,
         print(f'{self.total * self.data.shape[1]} flux integrals for {self.total} objects in {self.integ_time} seconds')
@@ -376,7 +384,6 @@ class Model(object):
         plt.show()
 
 
-
 # -------------------------------------------------
 
 def get_band_effective_wavelength(band):
@@ -398,14 +405,14 @@ def get_band_effective_wavelength(band):
     return sncosmo.get_bandpass(band).wave_eff
 
 if __name__ == '__main__':
-    dataset_path = 'data/bayesn_sim_test_z0_ext_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:1]
+    dataset_path = 'data/bayesn_sim_tam_z0_ext_25000.h5'
+    dataset = lcdata.read_hdf5(dataset_path)[:100]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
     bands = np.array(sorted(bands, key=get_band_effective_wavelength))
 
-    param_path = 'data/bayesn_sim_test_z0_ext_25000_params.pkl'
+    param_path = 'data/bayesn_sim_tam_z0_ext_25000_params.pkl'
     params = pickle.load(open(param_path, 'rb'))
     del params['epsilon']
     params = pd.DataFrame(params)
@@ -415,15 +422,15 @@ if __name__ == '__main__':
     params = pd_dataset.merge(params, on='object_id')
 
     model = Model(bands, device='cuda')
-    """result = model.fit(dataset)
+    result = model.fit(dataset)
     for p in result.keys():
         if p in ['W0', 'W1']:
             print(p, repr(np.reshape(np.mean(result[p], axis=0), (6, 6))))
         else:
             params[f'fit_mu_{p}'] = np.mean(result[p], axis=0)
             params[f'fit_sigma_{p}'] = np.std(result[p], axis=0)
-            print(params[[p, f'fit_mu_{p}', f'fit_sigma_{p}']])"""
-    model.test_params(dataset, params)
+            print(params[[p, f'fit_mu_{p}', f'fit_sigma_{p}']])
+    # model.test_params(dataset, params)
 
 
 
