@@ -363,7 +363,7 @@ class Model(object):
         rng = PRNGKey(123)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, init_strategy=init_to_median())
-        mcmc = MCMC(nuts_kernel, num_samples=500, num_warmup=250, num_chains=1)
+        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=500, num_chains=1)
         mcmc.run(rng, self.data)  # self.rng,
         print(f'{self.total * self.data.shape[1]} flux integrals for {self.total} objects in {self.integ_time} seconds')
         print(f'Average per object: {self.integ_time / self.total}')
@@ -460,6 +460,7 @@ class Model(object):
 
     def save_results_to_yaml(self, result, output_path):
         results_dict = {}
+        result = result.get_samples()
         fit_params = result.keys()
         if 'W0' not in fit_params:
             results_dict['W0'] = self.W0
@@ -493,32 +494,26 @@ def get_band_effective_wavelength(band):
 
 
 if __name__ == '__main__':
-    dataset_path = 'data/bayesn_sim_tam_z0_ext_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:1]
+    dataset_path = 'data/bayesn_sim_tea_z0_25000.h5'
+    dataset = lcdata.read_hdf5(dataset_path)
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
     bands = np.array(sorted(bands, key=get_band_effective_wavelength))
 
-    param_path = 'data/bayesn_sim_tam_z0_ext_25000_params.pkl'
-    params = pickle.load(open(param_path, 'rb'))
-    del params['epsilon']
-    params = pd.DataFrame(params)
+    param_path = 'data/bayesn_sim_tea_z0_25000_params.csv'
+    params = pd.read_csv(param_path)
 
     pd_dataset = dataset.meta.to_pandas()
     pd_dataset = pd_dataset.astype({'object_id': int})
     params = pd_dataset.merge(params, on='object_id')
 
     model = Model(bands, device='cuda')
-    result = model.fit(dataset)
-    # result = model.train(dataset)
+    # result = model.fit(dataset)
+    result = model.train(dataset)
     # inf_data = az.from_numpyro(result)
     # print(az.summary(inf_data))
-    # model.save_results_to_yaml(result, 'gpu_fit_test')
-    # result = model.train(dataset)
-    # output_path = 'fit_test'
-    # with open(os.path.join('results', f'{output_path}.yaml'), 'w') as file:
-    #    yaml.dump(result, file, default_flow_style=False)
+    model.save_results_to_yaml(result, 'gpu_train')
     # model.fit_assess(params, 'fit_test')
     #model.fit_from_results(dataset, 'gpu_test')
 
