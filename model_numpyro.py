@@ -18,6 +18,7 @@ import jax.numpy as jnp
 from jax.random import PRNGKey
 import extinction
 import yaml
+import arviz as az
 
 # jax.config.update('jax_platform_name', 'cpu')
 
@@ -265,15 +266,15 @@ class Model(object):
 
     def fit_model(self, obs):
         sample_size = self.data.shape[-1]
-        N_knots = self.l_knots.shape[0] * self.tau_knots.shape[0]
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
 
+        # for sn_index in numpyro.plate('SNe', sample_size):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             # Rv = numpyro.sample(f'RV', dist.Normal(2.610, 0.001))
             Av = numpyro.sample(f'AV', dist.Exponential(0.194))
             eps_mu = jnp.zeros(N_knots_sig)
-            eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
+            eps = numpyro.sample(f'eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
@@ -285,10 +286,11 @@ class Model(object):
     def fit(self, dataset):
         self.process_dataset(dataset)
         rng = PRNGKey(123)
+        numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_to_median())
-        mcmc = MCMC(nuts_kernel, num_samples=500, num_warmup=250, num_chains=1)
+        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
         mcmc.run(rng, self.data)  # self.rng,
-        return mcmc.get_samples()
+        return mcmc
 
     def fit_assess(self, params, yaml_dir):
         with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
@@ -359,7 +361,7 @@ class Model(object):
         self.count = 0
         self.thetas = []
         rng = PRNGKey(123)
-        # pyro.render_model(self.model, model_args=(self.data,), filename='model.pdf')
+        numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, init_strategy=init_to_median())
         mcmc = MCMC(nuts_kernel, num_samples=500, num_warmup=250, num_chains=1)
         mcmc.run(rng, self.data)  # self.rng,
@@ -367,7 +369,7 @@ class Model(object):
         print(f'Average per object: {self.integ_time / self.total}')
         print(f'Average per integral: {self.integ_time / (self.total * self.data.shape[1])}')
         print(np.array(self.thetas))
-        return mcmc.get_samples()
+        return mcmc
 
     def process_dataset(self, dataset):
         all_data = []
@@ -492,7 +494,7 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_tam_z0_ext_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:1000]
+    dataset = lcdata.read_hdf5(dataset_path)[:1]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
@@ -509,7 +511,10 @@ if __name__ == '__main__':
 
     model = Model(bands, device='cuda')
     result = model.fit(dataset)
-    model.save_results_to_yaml(result, 'gpu_fit_test')
+    # result = model.train(dataset)
+    inf_data = az.from_numpyro(result)
+    print(az.summary(inf_data))
+    # model.save_results_to_yaml(result, 'gpu_fit_test')
     # result = model.train(dataset)
     # output_path = 'fit_test'
     # with open(os.path.join('results', f'{output_path}.yaml'), 'w') as file:
