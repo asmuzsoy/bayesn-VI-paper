@@ -36,10 +36,12 @@ class Model(object):
         self.tau_knots = np.genfromtxt('model_files/T21_model/tau_knots.txt')
         self.W0 = np.genfromtxt('model_files/T21_model/W0.txt')
         self.W1 = np.genfromtxt('model_files/T21_model/W1.txt')
+        self.L_Sigma = np.genfromtxt('model_files/T21_model/L_Sigma_epsilon.txt')
         self.l_knots = device_put(self.l_knots)
         self.tau_knots = device_put(self.tau_knots)
         self.W0 = device_put(self.W0)
         self.W1 = device_put(self.W1)
+        self.L_Sigma = device_put(self.L_Sigma)
         self.band_dict = {band: i for i, band in enumerate(bands)}
 
         self._setup_band_weights()
@@ -261,7 +263,46 @@ class Model(object):
 
         return model_flux
 
-    def model(self, obs):
+    def fit_model(self, obs):
+        sample_size = self.data.shape[-1]
+        N_knots = self.l_knots.shape[0] * self.tau_knots.shape[0]
+        N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
+
+        with numpyro.plate('SNe', sample_size) as sn_index:
+            theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
+            # Rv = numpyro.sample(f'RV', dist.Normal(2.610, 0.001))
+            Av = numpyro.sample(f'AV', dist.Exponential(0.194))
+            eps_mu = jnp.zeros(N_knots_sig)
+            eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
+            eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+            eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            eps = eps_full.at[:, 1:-1, :].set(eps)
+            band_indices = obs[-2, :, sn_index].astype(int).T
+            redshift = obs[-1, 0, sn_index]
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, redshift, band_indices)
+            numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)
+
+    def fit(self, dataset):
+        self.process_dataset(dataset)
+        rng = PRNGKey(123)
+        nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_to_median())
+        mcmc = MCMC(nuts_kernel, num_samples=500, num_warmup=250, num_chains=1)
+        mcmc.run(rng, self.data)  # self.rng,
+        return mcmc.get_samples()
+
+    def fit_assess(self, params, yaml_dir):
+        with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
+            result = yaml.load(file, yaml.Loader)
+        # Theta
+        params['fit_theta_mu'] = np.median(result['theta'], axis=0)
+        params['fit_theta_std'] = np.std(result['theta'], axis=0)
+        print(params[['theta', 'fit_theta_mu', 'fit_theta_std']])
+        # Av
+        params['fit_AV_mu'] = np.median(result['AV'], axis=0)
+        params['fit_AV_std'] = np.std(result['AV'], axis=0)
+        print(params[['AV', 'fit_AV_mu', 'fit_AV_std']])
+
+    def train_model(self, obs):
         sample_size = self.data.shape[-1]
         N_knots = self.l_knots.shape[0] * self.tau_knots.shape[0]
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
@@ -311,7 +352,7 @@ class Model(object):
             self.count += 1
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T) # _{sn_index}
 
-    def fit(self, dataset):
+    def train(self, dataset):
         self.process_dataset(dataset)
         self.integ_time = 0
         self.total = 0
@@ -319,8 +360,8 @@ class Model(object):
         self.thetas = []
         rng = PRNGKey(123)
         # pyro.render_model(self.model, model_args=(self.data,), filename='model.pdf')
-        nuts_kernel = NUTS(self.model, adapt_step_size=True, init_strategy=init_to_median())
-        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
+        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, init_strategy=init_to_median())
+        mcmc = MCMC(nuts_kernel, num_samples=500, num_warmup=250, num_chains=1)
         mcmc.run(rng, self.data)  # self.rng,
         print(f'{self.total * self.data.shape[1]} flux integrals for {self.total} objects in {self.integ_time} seconds')
         print(f'Average per object: {self.integ_time / self.total}')
@@ -350,6 +391,34 @@ class Model(object):
         self.J_t = device_put(spline_utils.spline_coeffs_irr(self.t, self.tau_knots, self.KD_t).T)
         self.J_t_hsiao = device_put(spline_utils.spline_coeffs_irr(self.t, self.hsiao_t,
                                                                               self.KD_t_hsiao).T)
+
+    def fit_from_results(self, dataset, input_file):
+        self.process_dataset(dataset)
+        with open(os.path.join('results', f'{input_file}.yaml'), 'r') as file:
+            result = yaml.load(file, yaml.Loader)
+        N = result['theta'].shape[1]
+        W0 = np.reshape(np.mean(result['W0'], axis=0), (6, 6), order='F')
+        print(W0)
+        print(np.reshape(np.std(result['W0'], axis=0), (6, 6), order='F'))
+        plt.hist(result['W0'][:, 0])
+        plt.show()
+        raise ValueError('Nope')
+        W1 = np.reshape(np.mean(result['W1'], axis=0), (6, 6), order='F')
+        eps = np.reshape(np.mean(result['eps'], axis=0), (N, 4, 6), order='F')
+        new_eps = np.zeros((eps.shape[0], eps.shape[1] + 2, eps.shape[2]))
+        theta, Av = np.mean(result['theta'], axis=0), np.mean(result['AV'], axis=0)
+        new_eps[:, 1:-1, :] = eps
+        eps = new_eps
+        band_indices = self.data[-2, :, :].astype(int)
+        redshift = self.data[-1, 0, :]
+        model_flux = self.get_flux_batch(theta, Av, W0, W1, eps, redshift, band_indices)
+        for _ in range(10):
+            plt.figure()
+            for i in range(4):
+                inds = band_indices[:, 0] == i
+                plt.errorbar(self.t[inds], self.data[1, inds, _], yerr=self.data[2, inds, _], fmt='x')
+                plt.scatter(self.t[inds], model_flux[inds, i])
+        plt.show()
 
     def test_params(self, dataset, params):
         W0 = np.array([[-0.11843238,  0.5618372 ,  0.38466904,  0.23944603,
@@ -387,6 +456,18 @@ class Model(object):
             plt.errorbar(self.t[inds], self.data[1, inds, 0], yerr=self.data[2, inds, 0], fmt='x')
         plt.show()
 
+    def save_results_to_yaml(self, result, output_path):
+        results_dict = {}
+        fit_params = result.keys()
+        if 'W0' not in fit_params:
+            results_dict['W0'] = self.W0
+            results_dict['W1'] = self.W1
+            results_dict['L_sigma'] = self.L_Sigma
+        for k, v in result.items():
+            results_dict[k] = v
+        with open(os.path.join('results', f'{output_path}.yaml'), 'w') as file:
+            yaml.dump(result, file, default_flow_style=False)
+
 
 # -------------------------------------------------
 
@@ -408,9 +489,10 @@ def get_band_effective_wavelength(band):
     """
     return sncosmo.get_bandpass(band).wave_eff
 
+
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_tam_z0_ext_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:100]
+    dataset = lcdata.read_hdf5(dataset_path)[:1000]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
@@ -427,17 +509,14 @@ if __name__ == '__main__':
 
     model = Model(bands, device='cuda')
     result = model.fit(dataset)
-    output_path = 'test'
-    with open(os.path.join('results', f'{output_path}.yaml'), 'w') as file:
-        yaml.dump(result, file, default_flow_style=False)
-    """for p in result.keys():
-        if p in ['W0', 'W1']:
-            print(p, repr(np.reshape(np.mean(result[p], axis=0), (6, 6))))
-        else:
-            params[f'fit_mu_{p}'] = np.mean(result[p], axis=0)
-            params[f'fit_sigma_{p}'] = np.std(result[p], axis=0)
-            print(params[[p, f'fit_mu_{p}', f'fit_sigma_{p}']])"""
-    # model.test_params(dataset, params)
+    model.save_results_to_yaml(result, 'gpu_fit_test')
+    # result = model.train(dataset)
+    # output_path = 'fit_test'
+    # with open(os.path.join('results', f'{output_path}.yaml'), 'w') as file:
+    #    yaml.dump(result, file, default_flow_style=False)
+    # model.fit_assess(params, 'fit_test')
+    #model.fit_from_results(dataset, 'gpu_test')
+
 
 
 
