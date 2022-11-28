@@ -286,7 +286,7 @@ class Model(object):
     def fit(self, dataset):
         self.process_dataset(dataset)
         rng = PRNGKey(123)
-        numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
+        # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_to_median())
         mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
         mcmc.run(rng, self.data)  # self.rng,
@@ -361,7 +361,7 @@ class Model(object):
         self.count = 0
         self.thetas = []
         rng = PRNGKey(123)
-        numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
+        # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, init_strategy=init_to_median())
         mcmc = MCMC(nuts_kernel, num_samples=500, num_warmup=250, num_chains=1)
         mcmc.run(rng, self.data)  # self.rng,
@@ -512,8 +512,8 @@ if __name__ == '__main__':
     model = Model(bands, device='cuda')
     result = model.fit(dataset)
     # result = model.train(dataset)
-    inf_data = az.from_numpyro(result)
-    print(az.summary(inf_data))
+    # inf_data = az.from_numpyro(result)
+    # print(az.summary(inf_data))
     # model.save_results_to_yaml(result, 'gpu_fit_test')
     # result = model.train(dataset)
     # output_path = 'fit_test'
