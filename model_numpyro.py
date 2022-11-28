@@ -17,6 +17,7 @@ from jax import device_put
 import jax.numpy as jnp
 from jax.random import PRNGKey
 import extinction
+import yaml
 
 jax.config.update('jax_platform_name', 'cpu')
 
@@ -426,13 +427,16 @@ if __name__ == '__main__':
 
     model = Model(bands, device='cuda')
     result = model.fit(dataset)
-    for p in result.keys():
+    output_path = 'test'
+    with open(os.path.join('results', f'{output_path}.yaml'), 'w') as file:
+        yaml.dump(result, file, default_flow_style=False)
+    """for p in result.keys():
         if p in ['W0', 'W1']:
             print(p, repr(np.reshape(np.mean(result[p], axis=0), (6, 6))))
         else:
             params[f'fit_mu_{p}'] = np.mean(result[p], axis=0)
             params[f'fit_sigma_{p}'] = np.std(result[p], axis=0)
-            print(params[[p, f'fit_mu_{p}', f'fit_sigma_{p}']])
+            print(params[[p, f'fit_mu_{p}', f'fit_sigma_{p}']])"""
     # model.test_params(dataset, params)
 
 
