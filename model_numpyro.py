@@ -19,7 +19,7 @@ from jax.random import PRNGKey
 import extinction
 import yaml
 
-jax.config.update('jax_platform_name', 'cpu')
+# jax.config.update('jax_platform_name', 'cpu')
 
 print(jax.devices())
 
