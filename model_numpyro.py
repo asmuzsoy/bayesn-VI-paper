@@ -17,20 +17,17 @@ from jax import device_put
 import jax.numpy as jnp
 from jax.random import PRNGKey
 import extinction
-from datetime import datetime
-import yaml
 
-# jax.config.update('jax_platform_name', 'cpu')
+jax.config.update('jax_platform_name', 'cpu')
 
 print(jax.devices())
 
 
 class Model(object):
-    def __init__(self, ignore_unknown_settings=False, settings={}, device='cuda'):
+    def __init__(self, bands, ignore_unknown_settings=False, settings={}, device='cuda'):
         self.data = None
-        self.params = None
         self.device = device
-        self.settings = parse_settings(settings,
+        self.settings = parse_settings(bands, settings,
                                        ignore_unknown_settings=ignore_unknown_settings)
         self.M0 = -19.5
 
@@ -42,9 +39,24 @@ class Model(object):
         self.tau_knots = device_put(self.tau_knots)
         self.W0 = device_put(self.W0)
         self.W1 = device_put(self.W1)
-        self.band_dict = None
+        self.band_dict = {band: i for i, band in enumerate(bands)}
 
+        self._setup_band_weights()
+
+        KD_l = spline_utils.invKD_irr(self.l_knots)
+        self.J_l_T = device_put(spline_utils.spline_coeffs_irr(self.model_wave, self.l_knots, KD_l))
+        self.KD_t = device_put(spline_utils.invKD_irr(self.tau_knots))
         self.load_hsiao_template()
+
+        self.ZPT = 27.5
+        self.J_l_T = device_put(self.J_l_T)
+        self.hsiao_flux = device_put(self.hsiao_flux)
+        self.J_l_T_hsiao = device_put(self.J_l_T_hsiao)
+        self.xk = jnp.array(
+            [0.0, 1e4 / 26500., 1e4 / 12200., 1e4 / 6000., 1e4 / 5470., 1e4 / 4670., 1e4 / 4110., 1e4 / 2700.,
+             1e4 / 2600.])
+        KD_x = spline_utils.invKD_irr(self.xk)
+        self.M_fitz_block = device_put(spline_utils.spline_coeffs_irr(1e4 / self.model_wave, self.xk, KD_x))
 
     def load_hsiao_template(self):
         with h5py.File(os.path.join('data', 'hsiao.h5'), 'r') as file:
@@ -53,6 +65,11 @@ class Model(object):
             hsiao_phase = data['phase'][()].astype('float64')
             hsiao_wave = data['wave'][()].astype('float64')
             hsiao_flux = data['flux'][()].astype('float64')
+
+        KD_l_hsiao = spline_utils.invKD_irr(hsiao_wave)
+        self.KD_t_hsiao = spline_utils.invKD_irr(hsiao_phase)
+        self.J_l_T_hsiao = device_put(spline_utils.spline_coeffs_irr(self.model_wave,
+                                                                           hsiao_wave, KD_l_hsiao))
 
         self.hsiao_t = device_put(hsiao_phase)
         self.hsiao_l = device_put(hsiao_wave)
@@ -293,9 +310,8 @@ class Model(object):
             self.count += 1
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T) # _{sn_index}
 
-    def fit(self, output_path=None):
-        if self.data is None:
-            raise ValueError('Please process a dataset before training')
+    def fit(self, dataset):
+        self.process_dataset(dataset)
         self.integ_time = 0
         self.total = 0
         self.count = 0
@@ -304,60 +320,14 @@ class Model(object):
         # pyro.render_model(self.model, model_args=(self.data,), filename='model.pdf')
         nuts_kernel = NUTS(self.model, adapt_step_size=True, init_strategy=init_to_median())
         mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
-        mcmc.run(rng, self.data)
-        result = mcmc.get_samples()
-        for k, v in result.items():
-            result[k] = np.array(v)
-        result['dataset_path'] = self.dataset_path
-        if output_path is None:
-            now = datetime.now()
-            print(f'File name for output not provided, saving as {output_path}.yaml')
-            output_path = now.strftime("%Y%m%d%H%M%S")
-        with open(os.path.join('results', f'{output_path}.yaml'), 'w') as file:
-            yaml.dump(result, file, default_flow_style=False)
+        mcmc.run(rng, self.data)  # self.rng,
+        print(f'{self.total * self.data.shape[1]} flux integrals for {self.total} objects in {self.integ_time} seconds')
+        print(f'Average per object: {self.integ_time / self.total}')
+        print(f'Average per integral: {self.integ_time / (self.total * self.data.shape[1])}')
+        print(np.array(self.thetas))
+        return mcmc.get_samples()
 
-    def load_trained_params(self, param_file):
-        with open(os.path.join('results', f'{param_file}.yaml'), 'r') as file:
-            new_result = yaml.load(file, yaml.Loader)
-        means = {}
-        for k, v in new_result.items():
-            if type(v) == np.ndarray:
-                means[k] = np.mean(v, axis=0)
-        N = means['theta'].shape[0]
-        W0 = np.reshape(means['W0'], (6, 6), order='f')
-        W1 = np.reshape(means['W1'], (6, 6), order='f')
-        eps = np.reshape(means['eps'], (N, 4, 6), order='f')
-        new_eps = np.zeros((N, *W0.shape))
-        new_eps[:, 1:-1, :] = eps
-        eps = new_eps
-        theta = means['theta']
-        Av = means['AV']
-        redshifts = np.zeros(2)
-        band_indices = np.tile(np.arange(4), (N, 12)).T
-
-        fit_flux = self.get_flux_batch(theta, Av, W0, W1, eps, redshifts, band_indices)
-        print(fit_flux)
-
-    def process_dataset(self, dataset_path):
-        self.dataset_path = dataset_path
-        dataset = lcdata.read_hdf5(dataset_path)[:100]
-        bands = set()
-        for lc in dataset.light_curves:
-            bands = bands.union(lc['band'])
-        bands = np.array(sorted(bands, key=get_band_effective_wavelength))
-        self.settings['bands'] = bands
-        self._setup_band_weights()
-        self.band_dict = {band: i for i, band in enumerate(bands)}
-
-        param_path = f'{dataset_path[:dataset_path.find(".")]}_params.pkl'
-        params = pickle.load(open(param_path, 'rb'))
-        del params['epsilon']
-        params = pd.DataFrame(params)
-
-        pd_dataset = dataset.meta.to_pandas()
-        pd_dataset = pd_dataset.astype({'object_id': int})
-        params = pd_dataset.merge(params, on='object_id')
-
+    def process_dataset(self, dataset):
         all_data = []
         self.t = None
         for lc in dataset.light_curves:
@@ -376,29 +346,9 @@ class Model(object):
         all_data = np.concatenate(all_data)
         all_data = np.swapaxes(all_data, 0, 2)
         self.data = device_put(all_data)
-        self.params = params
-
-        KD_l_hsiao = spline_utils.invKD_irr(self.hsiao_l)
-        self.KD_t_hsiao = spline_utils.invKD_irr(self.hsiao_t)
-        self.J_l_T_hsiao = device_put(spline_utils.spline_coeffs_irr(self.model_wave,
-                                                                     self.hsiao_l, KD_l_hsiao))
-
-        KD_l = spline_utils.invKD_irr(self.l_knots)
-        self.KD_t = device_put(spline_utils.invKD_irr(self.tau_knots))
         self.J_t = device_put(spline_utils.spline_coeffs_irr(self.t, self.tau_knots, self.KD_t).T)
         self.J_t_hsiao = device_put(spline_utils.spline_coeffs_irr(self.t, self.hsiao_t,
                                                                               self.KD_t_hsiao).T)
-        self.J_l_T = device_put(spline_utils.spline_coeffs_irr(self.model_wave, self.l_knots, KD_l))
-
-        self.ZPT = 27.5
-        self.J_l_T = device_put(self.J_l_T)
-        self.hsiao_flux = device_put(self.hsiao_flux)
-        self.J_l_T_hsiao = device_put(self.J_l_T_hsiao)
-        self.xk = jnp.array(
-            [0.0, 1e4 / 26500., 1e4 / 12200., 1e4 / 6000., 1e4 / 5470., 1e4 / 4670., 1e4 / 4110., 1e4 / 2700.,
-             1e4 / 2600.])
-        KD_x = spline_utils.invKD_irr(self.xk)
-        self.M_fitz_block = device_put(spline_utils.spline_coeffs_irr(1e4 / self.model_wave, self.xk, KD_x))
 
     def test_params(self, dataset, params):
         W0 = np.array([[-0.11843238,  0.5618372 ,  0.38466904,  0.23944603,
@@ -457,13 +407,33 @@ def get_band_effective_wavelength(band):
     """
     return sncosmo.get_bandpass(band).wave_eff
 
-
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_tam_z0_ext_25000.h5'
-    model = Model(device='cuda')
-    model.process_dataset(dataset_path)
-    result = model.fit(output_path='test')
-    # model.load_trained_params('test')
+    dataset = lcdata.read_hdf5(dataset_path)[:100]
+    bands = set()
+    for lc in dataset.light_curves:
+        bands = bands.union(lc['band'])
+    bands = np.array(sorted(bands, key=get_band_effective_wavelength))
+
+    param_path = 'data/bayesn_sim_tam_z0_ext_25000_params.pkl'
+    params = pickle.load(open(param_path, 'rb'))
+    del params['epsilon']
+    params = pd.DataFrame(params)
+
+    pd_dataset = dataset.meta.to_pandas()
+    pd_dataset = pd_dataset.astype({'object_id': int})
+    params = pd_dataset.merge(params, on='object_id')
+
+    model = Model(bands, device='cuda')
+    result = model.fit(dataset)
+    for p in result.keys():
+        if p in ['W0', 'W1']:
+            print(p, repr(np.reshape(np.mean(result[p], axis=0), (6, 6))))
+        else:
+            params[f'fit_mu_{p}'] = np.mean(result[p], axis=0)
+            params[f'fit_sigma_{p}'] = np.std(result[p], axis=0)
+            print(params[[p, f'fit_mu_{p}', f'fit_sigma_{p}']])
+    # model.test_params(dataset, params)
 
 
 

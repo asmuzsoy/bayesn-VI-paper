@@ -79,7 +79,7 @@ def update_settings_version(settings):
     return settings
 
 
-def parse_settings(settings={}, ignore_unknown_settings=False):
+def parse_settings(bands, settings={}, ignore_unknown_settings=False):
     """Parse the settings for a ParSNIP model
 
     Parameters
@@ -109,7 +109,7 @@ def parse_settings(settings={}, ignore_unknown_settings=False):
         prebuilt_model = False
 
     use_settings = default_settings.copy()
-    #use_settings['bands'] = bands
+    use_settings['bands'] = bands
 
     for key, value in settings.items():
         if key not in default_settings:
