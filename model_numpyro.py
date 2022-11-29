@@ -18,7 +18,13 @@ import jax.numpy as jnp
 from jax.random import PRNGKey
 import extinction
 import yaml
-import arviz as az
+from astropy.cosmology import FlatLambdaCDM
+import matplotlib as mpl
+from matplotlib import rc
+rc('font', **{'family': 'serif', 'serif': ['cmr10']})
+mpl.rcParams['axes.unicode_minus'] = False
+mpl.rcParams['mathtext.fontset'] = 'cm'
+plt.rcParams.update({'font.size': 22})
 
 # jax.config.update('jax_platform_name', 'cpu')
 
@@ -26,12 +32,15 @@ print(jax.devices())
 
 
 class Model(object):
-    def __init__(self, bands, ignore_unknown_settings=False, settings={}, device='cuda'):
+    def __init__(self, bands, ignore_unknown_settings=False, settings={}, device='cuda',
+                 fiducial_cosmology={"H0": 73.24, "Om0": 0.28}):
         self.data = None
         self.device = device
         self.settings = parse_settings(bands, settings,
                                        ignore_unknown_settings=ignore_unknown_settings)
         self.M0 = -19.5
+        self.cosmo = FlatLambdaCDM(**fiducial_cosmology)
+        self.sigma_pec = 150 / 3e5
 
         self.l_knots = np.genfromtxt('model_files/T21_model/l_knots.txt')
         self.tau_knots = np.genfromtxt('model_files/T21_model/tau_knots.txt')
@@ -197,7 +206,7 @@ class Model(object):
 
         return result
 
-    def get_flux_batch(self, theta, Av, W0, W1, eps, redshifts, band_indices):
+    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, redshifts, band_indices):
         num_batch = theta.shape[0]
         J_t = jnp.reshape(self.J_t, (-1, *self.J_t.shape))
         J_t = jnp.repeat(J_t, num_batch, axis=0)
@@ -260,7 +269,7 @@ class Model(object):
 
         model_flux = jnp.sum(model_spectra * obs_band_weights, axis=1).T
 
-        model_flux = model_flux * 10 ** -(0.4 * self.M0)
+        model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
 
         return model_flux
 
@@ -278,8 +287,8 @@ class Model(object):
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
-            band_indices = obs[-2, :, sn_index].astype(int).T
-            redshift = obs[-1, 0, sn_index]
+            band_indices = obs[-3, :, sn_index].astype(int).T
+            redshift = obs[-2, 0, sn_index]
             flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, redshift, band_indices)
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)
 
@@ -293,85 +302,6 @@ class Model(object):
         return mcmc
 
     def fit_assess(self, params, yaml_dir):
-        with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
-            result = yaml.load(file, yaml.Loader)
-        # Theta
-        params['fit_theta_mu'] = np.median(result['theta'], axis=0)
-        params['fit_theta_std'] = np.std(result['theta'], axis=0)
-        print(params[['theta', 'fit_theta_mu', 'fit_theta_std']])
-        # Av
-        params['fit_AV_mu'] = np.median(result['AV'], axis=0)
-        params['fit_AV_std'] = np.std(result['AV'], axis=0)
-        print(params[['AV', 'fit_AV_mu', 'fit_AV_std']])
-
-    def train_model(self, obs):
-        sample_size = self.data.shape[-1]
-        N_knots = self.l_knots.shape[0] * self.tau_knots.shape[0]
-        N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
-        W_mu = jnp.zeros(N_knots)
-        W0 = numpyro.sample('W0', dist.MultivariateNormal(W_mu, jnp.eye(N_knots)))
-        W1 = numpyro.sample('W1', dist.MultivariateNormal(W_mu, jnp.eye(N_knots)))
-        W0 = jnp.reshape(W0, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
-        W1 = jnp.reshape(W1, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
-        sigmaepsilon = numpyro.sample('sigmaepsilon', dist.HalfNormal(0.25 * jnp.ones(N_knots_sig)))
-        L_Omega = numpyro.sample('L_Omega', dist.LKJCholesky(N_knots_sig))
-        L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon), L_Omega)
-
-        # for sn_index in pyro.plate('SNe', sample_size):
-        with numpyro.plate('SNe', sample_size) as sn_index:
-            theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
-            # Rv = numpyro.sample(f'RV', dist.Normal(2.610, 0.001))
-            Av = numpyro.sample(f'AV', dist.Exponential(1 / 0.194))
-            eps_mu = jnp.zeros(N_knots_sig)
-            eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=L_Sigma))
-            eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
-            eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
-            eps = eps_full.at[:, 1:-1, :].set(eps)
-            band_indices = obs[-2, :, sn_index].astype(int).T
-            redshift = obs[-1, 0, sn_index]
-            start = time.time()
-            flux = self.get_flux_batch(theta, Av, W0, W1, eps, redshift, band_indices)
-            end = time.time()
-            elapsed = end - start
-            self.integ_time += elapsed
-            self.total += sample_size
-            """if self.count > -1:
-                for i in range(4):
-                    inds = band_indices[:, 0]
-                    inds = inds == i
-                    print(t.shape)
-                    print(obs.shape)
-                    print(flux.shape)
-                    # plt.scatter(t[inds, :], flux.detach().numpy()[inds, :])
-                    # plt.errorbar(t[inds, 0], torch.squeeze(obs[1, inds, :]), yerr=torch.squeeze(obs[2, inds, :]), fmt='x')
-                    plt.scatter(t[inds, 0], flux.detach().numpy()[inds, 0])
-                    plt.errorbar(t[inds, 0], obs[1, inds, 0], yerr=obs[2, inds, 0], fmt='x')
-                    plt.show()
-                    raise ValueError('Nope')
-                plt.title(theta.detach().numpy())
-                plt.show()
-                raise ValueError('Nope')"""
-            self.count += 1
-            numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T) # _{sn_index}
-
-    def train(self, dataset):
-        self.process_dataset(dataset)
-        self.integ_time = 0
-        self.total = 0
-        self.count = 0
-        self.thetas = []
-        rng = PRNGKey(123)
-        # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
-        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, init_strategy=init_to_median())
-        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=500, num_chains=1)
-        mcmc.run(rng, self.data)  # self.rng,
-        print(f'{self.total * self.data.shape[1]} flux integrals for {self.total} objects in {self.integ_time} seconds')
-        print(f'Average per object: {self.integ_time / self.total}')
-        print(f'Average per integral: {self.integ_time / (self.total * self.data.shape[1])}')
-        print(np.array(self.thetas))
-        return mcmc
-
-    def train_assess(self, params, yaml_dir):
         with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
             result = yaml.load(file, yaml.Loader)
         # Theta
@@ -391,16 +321,100 @@ class Model(object):
         plt.show()
         print(params[['AV', 'fit_AV_mu', 'fit_AV_std']])
 
+    def train_model(self, obs):
+        sample_size = self.data.shape[-1]
+        N_knots = self.l_knots.shape[0] * self.tau_knots.shape[0]
+        N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
+        W_mu = jnp.zeros(N_knots)
+        W0 = numpyro.sample('W0', dist.MultivariateNormal(W_mu, jnp.eye(N_knots)))
+        W1 = numpyro.sample('W1', dist.MultivariateNormal(W_mu, jnp.eye(N_knots)))
+        W0 = jnp.reshape(W0, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
+        W1 = jnp.reshape(W1, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
+        sigmaepsilon = numpyro.sample('sigmaepsilon', dist.HalfNormal(0.25 * jnp.ones(N_knots_sig)))
+        L_Omega = numpyro.sample('L_Omega', dist.LKJCholesky(N_knots_sig))
+        L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon), L_Omega)
+        sigma0 = numpyro.sample('sigma0', dist.HalfCauchy(0.1))
+
+        # for sn_index in pyro.plate('SNe', sample_size):
+        with numpyro.plate('SNe', sample_size) as sn_index:
+            theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
+            # Rv = numpyro.sample(f'RV', dist.Normal(2.610, 0.001))
+            Av = numpyro.sample(f'AV', dist.Exponential(1 / 0.194))
+            eps_mu = jnp.zeros(N_knots_sig)
+            eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=L_Sigma))
+            eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+            eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            eps = eps_full.at[:, 1:-1, :].set(eps)
+            band_indices = obs[-3, :, sn_index].astype(int).T
+            redshift = obs[-2, 0, sn_index]
+            muhat = obs[-1, 0, sn_index]
+            muhat_err = 5 / (redshift * jnp.log(10)) * self.sigma_pec
+            Ds_err = jnp.sqrt(muhat_err * muhat_err + sigma0 * sigma0)
+            Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
+            start = time.time()
+            flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, redshift, band_indices)
+            end = time.time()
+            elapsed = end - start
+            numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T) # _{sn_index}
+
+    def train(self, dataset):
+        self.process_dataset(dataset)
+        self.integ_time = 0
+        self.total = 0
+        self.count = 0
+        self.thetas = []
+        rng = PRNGKey(123)
+        # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
+        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, init_strategy=init_to_median())
+        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
+        mcmc.run(rng, self.data)  # self.rng,
+        print(f'{self.total * self.data.shape[1]} flux integrals for {self.total} objects in {self.integ_time} seconds')
+        print(f'Average per object: {self.integ_time / self.total}')
+        print(f'Average per integral: {self.integ_time / (self.total * self.data.shape[1])}')
+        print(np.array(self.thetas))
+        return mcmc
+
+    def train_assess(self, params, yaml_dir):
+        with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
+            result = yaml.load(file, yaml.Loader)
+        # Theta
+        params['fit_theta_mu'] = np.median(result['theta'], axis=0)
+        params['fit_theta_std'] = np.std(result['theta'], axis=0)
+        fig, ax = plt.subplots(2, 1, figsize=(9, 12), sharex='col')
+        ax[0].errorbar(params.theta, params.fit_theta_mu, yerr=params.fit_theta_std, fmt='x')
+        ax[1].errorbar(params.theta, params.fit_theta_mu - params.theta, yerr=params.fit_theta_std, fmt='x')
+        ax[1].set_xlabel(rf'True $\theta$')
+        ax[0].set_ylabel(rf'Fit $\theta$')
+        ax[1].set_ylabel(rf'Residual')
+        plt.subplots_adjust(hspace=0, wspace=0)
+        plt.show()
+        print(params[['theta', 'fit_theta_mu', 'fit_theta_std']])
+        # Av
+        params['fit_AV_mu'] = np.median(result['AV'], axis=0)
+        params['fit_AV_std'] = np.std(result['AV'], axis=0)
+        fig, ax = plt.subplots(2, 1, figsize=(9, 12), sharex='col')
+        ax[0].scatter(params.AV, params.fit_AV_mu) #, yerr=params.fit_AV_std, fmt='x')
+        ax[1].scatter(params.AV, params.fit_AV_mu - params.AV)#, yerr=params.fit_AV_std, fmt='x')
+        ax[1].set_xscale('log')
+        ax[0].set_yscale('log')
+        # ax[1].set_yscale('log')
+        ax[1].set_xlabel(rf'True $A_V$')
+        ax[0].set_ylabel(rf'Fit $A_V$')
+        ax[1].set_ylabel(rf'Residual')
+        plt.subplots_adjust(hspace=0, wspace=0)
+        plt.show()
+
     def process_dataset(self, dataset):
         all_data = []
         self.t = None
-        for lc in dataset.light_curves:
+        for lc_ind, lc in enumerate(dataset.light_curves):
             lc = lc.to_pandas()
             lc = lc.astype({'band': str})
             lc[['flux', 'fluxerr']] = lc[['flux', 'fluxerr']] # / self.scale
             lc['band'] = lc['band'].apply(lambda band: band[band.find("'") + 1: band.rfind("'")])
             lc['band'] = lc['band'].apply(lambda band: self.band_dict[band])
-            lc['redshift'] = 0
+            lc['redshift'] = dataset.meta[lc_ind][-1]
+            lc['dist_mod'] = self.cosmo.distmod(dataset.meta[lc_ind][-1])
             lc = lc.sort_values('time')
             if self.t is None:
                 self.t = lc.time.values
@@ -509,14 +523,14 @@ def get_band_effective_wavelength(band):
 
 
 if __name__ == '__main__':
-    dataset_path = 'data/bayesn_sim_tea_z0_25000.h5'
+    dataset_path = 'data/bayesn_sim_team_z0.1_25000.h5'
     dataset = lcdata.read_hdf5(dataset_path)[:1000]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
     bands = np.array(sorted(bands, key=get_band_effective_wavelength))
 
-    param_path = 'data/bayesn_sim_tea_z0_25000_params.csv'
+    param_path = 'data/bayesn_sim_team_z0.1_25000_params.csv'
     params = pd.read_csv(param_path)
 
     pd_dataset = dataset.meta.to_pandas()
@@ -528,10 +542,10 @@ if __name__ == '__main__':
     result = model.train(dataset)
     # inf_data = az.from_numpyro(result)
     # print(az.summary(inf_data))
-    model.save_results_to_yaml(result, 'gpu_train_Av')
+    # model.save_results_to_yaml(result, 'fit_test')
     # model.fit_assess(params, 'fit_test')
     # model.fit_from_results(dataset, 'gpu_train')
-    # model.train_assess(params, 'gpu_train')
+    # model.train_assess(params, 'gpu_train_Av')
 
 
 
