@@ -352,7 +352,6 @@ class Model(object):
             Ds_err = jnp.sqrt(muhat_err * muhat_err + sigma0 * sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
             start = time.time()
-            flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, redshift, band_indices)
             end = time.time()
             elapsed = end - start
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T) # _{sn_index}
@@ -542,9 +541,9 @@ if __name__ == '__main__':
     result = model.train(dataset)
     # inf_data = az.from_numpyro(result)
     # print(az.summary(inf_data))
-    model.save_results_to_yaml(result, 'gpu_train_dist')
+    # model.save_results_to_yaml(result, 'gpu_train_dist')
     # model.fit_assess(params, 'fit_test')
-    # model.fit_from_results(dataset, 'gpu_train')
+    model.fit_from_results(dataset, 'gpu_train')
     # model.train_assess(params, 'gpu_train_Av')
 
 
