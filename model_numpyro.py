@@ -542,7 +542,7 @@ if __name__ == '__main__':
     result = model.train(dataset)
     # inf_data = az.from_numpyro(result)
     # print(az.summary(inf_data))
-    # model.save_results_to_yaml(result, 'fit_test')
+    model.save_results_to_yaml(result, 'gpu_train_dist')
     # model.fit_assess(params, 'fit_test')
     # model.fit_from_results(dataset, 'gpu_train')
     # model.train_assess(params, 'gpu_train_Av')
