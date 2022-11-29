@@ -272,7 +272,7 @@ class Model(object):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             # Rv = numpyro.sample(f'RV', dist.Normal(2.610, 0.001))
-            Av = numpyro.sample(f'AV', dist.Exponential(0.194))
+            Av = numpyro.sample(f'AV', dist.Exponential(1 / 0.194))
             eps_mu = jnp.zeros(N_knots_sig)
             eps = numpyro.sample(f'eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
@@ -321,7 +321,7 @@ class Model(object):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             # Rv = numpyro.sample(f'RV', dist.Normal(2.610, 0.001))
-            Av = numpyro.sample(f'AV', dist.Exponential(0.194))
+            Av = numpyro.sample(f'AV', dist.Exponential(1 / 0.194))
             eps_mu = jnp.zeros(N_knots_sig)
             eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=L_Sigma))
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
@@ -371,6 +371,26 @@ class Model(object):
         print(np.array(self.thetas))
         return mcmc
 
+    def train_assess(self, params, yaml_dir):
+        with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
+            result = yaml.load(file, yaml.Loader)
+        # Theta
+        params['fit_theta_mu'] = np.median(result['theta'], axis=0)
+        params['fit_theta_std'] = np.std(result['theta'], axis=0)
+        fig, ax = plt.subplots(2, 1, figsize=(8, 12))
+        ax[0].errorbar(params.theta, params.fit_theta_mu, yerr=params.fit_theta_std, fmt='x')
+        ax[1].errorbar(params.theta, params.fit_theta_mu + params.theta, yerr=params.fit_theta_std, fmt='x')
+        plt.show()
+        print(params[['theta', 'fit_theta_mu', 'fit_theta_std']])
+        # Av
+        params['fit_AV_mu'] = np.median(result['AV'], axis=0)
+        params['fit_AV_std'] = np.std(result['AV'], axis=0)
+        plt.errorbar(params.AV, params.fit_AV_mu, yerr=params.fit_AV_std, fmt='x')
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.show()
+        print(params[['AV', 'fit_AV_mu', 'fit_AV_std']])
+
     def process_dataset(self, dataset):
         all_data = []
         self.t = None
@@ -400,11 +420,6 @@ class Model(object):
             result = yaml.load(file, yaml.Loader)
         N = result['theta'].shape[1]
         W0 = np.reshape(np.mean(result['W0'], axis=0), (6, 6), order='F')
-        print(W0)
-        print(np.reshape(np.std(result['W0'], axis=0), (6, 6), order='F'))
-        plt.hist(result['W0'][:, 0])
-        plt.show()
-        raise ValueError('Nope')
         W1 = np.reshape(np.mean(result['W1'], axis=0), (6, 6), order='F')
         eps = np.reshape(np.mean(result['eps'], axis=0), (N, 4, 6), order='F')
         new_eps = np.zeros((eps.shape[0], eps.shape[1] + 2, eps.shape[2]))
@@ -419,7 +434,7 @@ class Model(object):
             for i in range(4):
                 inds = band_indices[:, 0] == i
                 plt.errorbar(self.t[inds], self.data[1, inds, _], yerr=self.data[2, inds, _], fmt='x')
-                plt.scatter(self.t[inds], model_flux[inds, i])
+                plt.scatter(self.t[inds], model_flux[inds, _])
         plt.show()
 
     def test_params(self, dataset, params):
@@ -495,7 +510,7 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_tea_z0_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)
+    dataset = lcdata.read_hdf5(dataset_path)[:1000]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
@@ -513,9 +528,10 @@ if __name__ == '__main__':
     result = model.train(dataset)
     # inf_data = az.from_numpyro(result)
     # print(az.summary(inf_data))
-    model.save_results_to_yaml(result, 'gpu_train')
+    model.save_results_to_yaml(result, 'gpu_train_Av')
     # model.fit_assess(params, 'fit_test')
-    #model.fit_from_results(dataset, 'gpu_test')
+    # model.fit_from_results(dataset, 'gpu_train')
+    # model.train_assess(params, 'gpu_train')
 
 
 
