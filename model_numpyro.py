@@ -26,7 +26,7 @@ mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 
-# jax.config.update('jax_platform_name', 'cpu')
+jax.config.update('jax_platform_name', 'cpu')
 
 print(jax.devices())
 
@@ -276,6 +276,7 @@ class Model(object):
     def fit_model(self, obs):
         sample_size = self.data.shape[-1]
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
+        sigma0 = 0.103
 
         # for sn_index in numpyro.plate('SNe', sample_size):
         with numpyro.plate('SNe', sample_size) as sn_index:
@@ -289,7 +290,11 @@ class Model(object):
             eps = eps_full.at[:, 1:-1, :].set(eps)
             band_indices = obs[-3, :, sn_index].astype(int).T
             redshift = obs[-2, 0, sn_index]
-            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, redshift, band_indices)
+            muhat = obs[-1, 0, sn_index]
+            muhat_err = 5 / (redshift * jnp.log(10)) * self.sigma_pec
+            Ds_err = jnp.sqrt(muhat_err * muhat_err + sigma0 * sigma0)
+            Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, redshift, band_indices)
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)
 
     def fit(self, dataset):
@@ -524,7 +529,7 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_team_z0.1_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:1000]
+    dataset = lcdata.read_hdf5(dataset_path)[:1]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
@@ -538,12 +543,10 @@ if __name__ == '__main__':
     params = pd_dataset.merge(params, on='object_id')
 
     model = Model(bands, device='cuda')
-    # result = model.fit(dataset)
-    result = model.train(dataset)
-    # inf_data = az.from_numpyro(result)
-    # print(az.summary(inf_data))
-    model.save_results_to_yaml(result, 'gpu_train_dist')
-    # model.fit_assess(params, 'fit_test')
+    result = model.fit(dataset)
+    # result = model.train(dataset)
+    model.save_results_to_yaml(result, 'fit_test')
+    model.fit_assess(params, 'fit_test')
     # model.fit_from_results(dataset, 'gpu_train')
     # model.train_assess(params, 'gpu_train_Av')
 
