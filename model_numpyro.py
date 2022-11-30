@@ -436,8 +436,6 @@ class Model(object):
         W1 = jnp.reshape(W1, (-1, *self.W1.shape))
         W1 = jnp.repeat(W1, num_batch, axis=0)
 
-        print(np.array(eps))
-
         W = W0 + theta[..., None, None] * W1 + eps
 
         WJt = jnp.matmul(W, J_t)
