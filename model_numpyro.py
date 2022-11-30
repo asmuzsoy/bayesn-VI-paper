@@ -29,7 +29,7 @@ mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 
 # jax.config.update('jax_platform_name', 'cpu')
-numpyro.set_host_device_count(4)
+# numpyro.set_host_device_count(4)
 
 print(jax.devices())
 
@@ -525,7 +525,7 @@ class Model(object):
     def fit(self, dataset):
         self.process_dataset(dataset)
         rng = PRNGKey(123)
-        numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
+        # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_to_median())
         mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
         mcmc.run(rng, self.data)  # self.rng,
