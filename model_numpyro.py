@@ -21,6 +21,7 @@ import yaml
 from astropy.cosmology import FlatLambdaCDM
 import matplotlib as mpl
 from matplotlib import rc
+
 rc('font', **{'family': 'serif', 'serif': ['cmr10']})
 mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
@@ -82,7 +83,7 @@ class Model(object):
         KD_l_hsiao = spline_utils.invKD_irr(hsiao_wave)
         self.KD_t_hsiao = spline_utils.invKD_irr(hsiao_phase)
         self.J_l_T_hsiao = device_put(spline_utils.spline_coeffs_irr(self.model_wave,
-                                                                           hsiao_wave, KD_l_hsiao))
+                                                                     hsiao_wave, KD_l_hsiao))
 
         self.hsiao_t = device_put(hsiao_phase)
         self.hsiao_l = device_put(hsiao_wave)
@@ -259,11 +260,12 @@ class Model(object):
         yk = yk.at[:, 3].set(-0.422809 + 1.00270 * Rv + 2.13572e-4 * Rv ** 2 - Rv)
         yk = yk.at[:, 4].set(-5.13540e-2 + 1.00216 * Rv - 7.35778e-5 * Rv ** 2 - Rv)
         yk = yk.at[:, 5].set(0.700127 + 1.00184 * Rv - 3.32598e-5 * Rv ** 2 - Rv)
-        yk = yk.at[:, 6].set(1.19456 + 1.01707 * Rv - 5.46959e-3 * Rv ** 2 + 7.97809e-4 * Rv ** 3 - 4.45636e-5 * Rv ** 4 - Rv)
+        yk = yk.at[:, 6].set(
+            1.19456 + 1.01707 * Rv - 5.46959e-3 * Rv ** 2 + 7.97809e-4 * Rv ** 3 - 4.45636e-5 * Rv ** 4 - Rv)
         yk = yk.at[:, 7].set(f99_c1 + f99_c2 * self.xk[7] + f99_c3 * f99_d1)
         yk = yk.at[:, 8].set(f99_c1 + f99_c2 * self.xk[8] + f99_c3 * f99_d2)
 
-        A = Av[..., None] * (1 + (self.M_fitz_block @ yk.T).T / Rv) #Rv[..., None]
+        A = Av[..., None] * (1 + (self.M_fitz_block @ yk.T).T / Rv)  # Rv[..., None]
         f_A = 10 ** (-0.4 * A)
         model_spectra = model_spectra * f_A[..., None]
 
@@ -285,7 +287,12 @@ class Model(object):
             Av = numpyro.sample(f'AV', dist.Exponential(1 / 0.194))
             eps_mu = jnp.zeros(N_knots_sig)
             eps = numpyro.sample(f'eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
+            test = eps
+
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+            print(jnp.mean(test[0, ...] == eps[0, ...].T.flatten()))
+            # if jnp.mean(test[0, ...] == eps[0, ...].T.flatten()) < 1:
+            #    raise ValueError('Parameters cross contaminating')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
             band_indices = obs[-3, :, sn_index].astype(int).T
@@ -309,22 +316,20 @@ class Model(object):
     def fit_assess(self, params, yaml_dir):
         with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
             result = yaml.load(file, yaml.Loader)
+        # Add dist mods
+        params['distmod'] = self.cosmo.distmod(params.redshift.values).value
         # Theta
         params['fit_theta_mu'] = np.median(result['theta'], axis=0)
         params['fit_theta_std'] = np.std(result['theta'], axis=0)
-        fig, ax = plt.subplots(2, 1, figsize=(8, 12))
-        ax[0].errorbar(params.theta, params.fit_theta_mu, yerr=params.fit_theta_std, fmt='x')
-        ax[1].errorbar(params.theta, params.fit_theta_mu + params.theta, yerr=params.fit_theta_std, fmt='x')
-        plt.show()
         print(params[['theta', 'fit_theta_mu', 'fit_theta_std']])
         # Av
         params['fit_AV_mu'] = np.median(result['AV'], axis=0)
         params['fit_AV_std'] = np.std(result['AV'], axis=0)
-        plt.errorbar(params.AV, params.fit_AV_mu, yerr=params.fit_AV_std, fmt='x')
-        plt.xscale('log')
-        plt.yscale('log')
-        plt.show()
         print(params[['AV', 'fit_AV_mu', 'fit_AV_std']])
+        # Ds
+        params['fit_distmod_mu'] = np.median(result['Ds'], axis=0)
+        params['fit_distmod_std'] = np.std(result['Ds'], axis=0)
+        print(params[['distmod', 'fit_distmod_mu', 'fit_distmod_std']])
 
     def train_model(self, obs):
         sample_size = self.data.shape[-1]
@@ -360,34 +365,36 @@ class Model(object):
             flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, redshift, band_indices)
             end = time.time()
             elapsed = end - start
-            numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T) # _{sn_index}
+            numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)  # _{sn_index}
 
     def train(self, dataset):
         self.process_dataset(dataset)
-        self.integ_time = 0
-        self.total = 0
-        self.count = 0
-        self.thetas = []
         rng = PRNGKey(123)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, init_strategy=init_to_median())
         mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
-        mcmc.run(rng, self.data)  # self.rng,
-        print(f'{self.total * self.data.shape[1]} flux integrals for {self.total} objects in {self.integ_time} seconds')
-        print(f'Average per object: {self.integ_time / self.total}')
-        print(f'Average per integral: {self.integ_time / (self.total * self.data.shape[1])}')
-        print(np.array(self.thetas))
+        mcmc.run(rng, self.data)
         return mcmc
 
     def train_assess(self, params, yaml_dir):
         with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
             result = yaml.load(file, yaml.Loader)
+        # Add dist mods
+        params['distmod'] = self.cosmo.distmod(params.redshift.values).value
         # Theta
         params['fit_theta_mu'] = np.median(result['theta'], axis=0)
         params['fit_theta_std'] = np.std(result['theta'], axis=0)
+        if (params.fit_theta_mu - params.theta).min() < -4:
+            sign = -1
+        else:
+            sign = 1
         fig, ax = plt.subplots(2, 1, figsize=(9, 12), sharex='col')
-        ax[0].errorbar(params.theta, params.fit_theta_mu, yerr=params.fit_theta_std, fmt='x')
-        ax[1].errorbar(params.theta, params.fit_theta_mu - params.theta, yerr=params.fit_theta_std, fmt='x')
+        ax[0].errorbar(params.theta, sign * params.fit_theta_mu, yerr=params.fit_theta_std, fmt='x')
+        ax[1].errorbar(params.theta, sign * params.fit_theta_mu - params.theta, yerr=params.fit_theta_std, fmt='x')
+        xlim = ax[0].get_xlim()
+        ax[0].autoscale(tight=True)
+        ax[0].plot(xlim, xlim, 'k--')
+        ax[1].hlines(0, *xlim, colors='k', ls='--')
         ax[1].set_xlabel(rf'True $\theta$')
         ax[0].set_ylabel(rf'Fit $\theta$')
         ax[1].set_ylabel(rf'Residual')
@@ -398,13 +405,57 @@ class Model(object):
         params['fit_AV_mu'] = np.median(result['AV'], axis=0)
         params['fit_AV_std'] = np.std(result['AV'], axis=0)
         fig, ax = plt.subplots(2, 1, figsize=(9, 12), sharex='col')
-        ax[0].scatter(params.AV, params.fit_AV_mu) #, yerr=params.fit_AV_std, fmt='x')
-        ax[1].scatter(params.AV, params.fit_AV_mu - params.AV)#, yerr=params.fit_AV_std, fmt='x')
+        ax[0].scatter(params.AV, params.fit_AV_mu)  # , yerr=params.fit_AV_std, fmt='x')
+        ax[1].scatter(params.AV, params.fit_AV_mu - params.AV)  # , yerr=params.fit_AV_std, fmt='x')
         ax[1].set_xscale('log')
         ax[0].set_yscale('log')
+        xlim = ax[0].get_xlim()
+        ax[0].autoscale(tight=True)
+        ax[0].plot(xlim, xlim, 'k--')
+        ax[1].hlines(0, *xlim, colors='k', ls='--')
         # ax[1].set_yscale('log')
         ax[1].set_xlabel(rf'True $A_V$')
         ax[0].set_ylabel(rf'Fit $A_V$')
+        ax[1].set_ylabel(rf'Residual')
+        plt.subplots_adjust(hspace=0, wspace=0)
+        plt.show()
+        # dist_mod
+        muhat = params['distmod'].values
+        muhat_err = 5 / (params.redshift.values * jnp.log(10)) * self.sigma_pec
+        sigma0 = np.mean(result['sigma0'], axis=0)
+        mu = (result['Ds'] * np.power(muhat_err, 2) + muhat * np.power(result['sigma0'][..., None], 2)) \
+             / (muhat_err * muhat_err + result['sigma0'][..., None] * result['sigma0'][..., None])
+        std = np.sqrt(np.power(sigma0 * muhat_err, 2) / (muhat_err * muhat_err + sigma0 * sigma0))
+        distmod = np.random.normal(mu, std)
+        del_M = result['Ds'] - distmod
+        result['distmod'] = distmod
+        result['del_M'] = del_M
+        params['fit_distmod_mu'] = np.median(result['distmod'], axis=0)
+        params['fit_distmod_std'] = np.std(result['distmod'], axis=0)
+        fig, ax = plt.subplots(2, 1, figsize=(9, 12), sharex='col')
+        ax[0].errorbar(params.distmod, params.fit_distmod_mu, yerr=params.fit_distmod_std, fmt='x')
+        ax[1].errorbar(params.distmod, params.fit_distmod_mu - params.distmod, yerr=params.fit_distmod_std, fmt='x')
+        xlim = ax[0].get_xlim()
+        ax[0].autoscale(tight=True)
+        ax[0].plot(xlim, xlim, 'k--')
+        ax[1].hlines(0, *xlim, colors='k', ls='--')
+        ax[1].set_xlabel(rf'True $\mu$')
+        ax[0].set_ylabel(rf'Fit $\mu$')
+        ax[1].set_ylabel(rf'Residual')
+        plt.subplots_adjust(hspace=0, wspace=0)
+        plt.show()
+        # dist_mod
+        params['fit_delM_mu'] = np.median(result['del_M'], axis=0)
+        params['fit_delM_std'] = np.std(result['del_M'], axis=0)
+        fig, ax = plt.subplots(2, 1, figsize=(9, 12), sharex='col')
+        ax[0].errorbar(params.del_M, params.fit_delM_mu, yerr=params.fit_delM_std, fmt='x')
+        ax[1].errorbar(params.del_M, params.fit_delM_mu - params.del_M, yerr=params.fit_delM_std, fmt='x')
+        xlim = ax[0].get_xlim()
+        ax[0].autoscale(tight=True)
+        ax[0].plot(xlim, xlim, 'k--')
+        ax[1].hlines(0, *xlim, colors='k', ls='--')
+        ax[1].set_xlabel(rf'True $\delta M$')
+        ax[0].set_ylabel(rf'Fit $\delta M$')
         ax[1].set_ylabel(rf'Residual')
         plt.subplots_adjust(hspace=0, wspace=0)
         plt.show()
@@ -415,7 +466,7 @@ class Model(object):
         for lc_ind, lc in enumerate(dataset.light_curves):
             lc = lc.to_pandas()
             lc = lc.astype({'band': str})
-            lc[['flux', 'fluxerr']] = lc[['flux', 'fluxerr']] # / self.scale
+            lc[['flux', 'fluxerr']] = lc[['flux', 'fluxerr']]  # / self.scale
             lc['band'] = lc['band'].apply(lambda band: band[band.find("'") + 1: band.rfind("'")])
             lc['band'] = lc['band'].apply(lambda band: self.band_dict[band])
             lc['redshift'] = dataset.meta[lc_ind][-1]
@@ -431,7 +482,7 @@ class Model(object):
         self.data = device_put(all_data)
         self.J_t = device_put(spline_utils.spline_coeffs_irr(self.t, self.tau_knots, self.KD_t).T)
         self.J_t_hsiao = device_put(spline_utils.spline_coeffs_irr(self.t, self.hsiao_t,
-                                                                              self.KD_t_hsiao).T)
+                                                                   self.KD_t_hsiao).T)
 
     def fit_from_results(self, dataset, input_file):
         self.process_dataset(dataset)
@@ -442,12 +493,12 @@ class Model(object):
         W1 = np.reshape(np.mean(result['W1'], axis=0), (6, 6), order='F')
         eps = np.reshape(np.mean(result['eps'], axis=0), (N, 4, 6), order='F')
         new_eps = np.zeros((eps.shape[0], eps.shape[1] + 2, eps.shape[2]))
-        theta, Av = np.mean(result['theta'], axis=0), np.mean(result['AV'], axis=0)
+        theta, Av, Ds = np.mean(result['theta'], axis=0), np.mean(result['AV'], axis=0), np.mean(result['Ds'], axis=0)
         new_eps[:, 1:-1, :] = eps
         eps = new_eps
-        band_indices = self.data[-2, :, :].astype(int)
-        redshift = self.data[-1, 0, :]
-        model_flux = self.get_flux_batch(theta, Av, W0, W1, eps, redshift, band_indices)
+        band_indices = self.data[-3, :, :].astype(int)
+        redshift = self.data[-2, 0, :]
+        model_flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, redshift, band_indices)
         for _ in range(10):
             plt.figure()
             for i in range(4):
@@ -457,30 +508,30 @@ class Model(object):
         plt.show()
 
     def test_params(self, dataset, params):
-        W0 = np.array([[-0.11843238,  0.5618372 ,  0.38466904,  0.23944603,
-              -0.48216674,  0.63915277],
-             [ 0.08652873,  0.18803605,  0.26729473,  0.31465054,
-               0.39766428,  0.1856934 ],
-             [ 0.09866332,  0.24971685,  0.31222486,  0.27499378,
-               0.29981762,  0.2305843 ],
-             [ 0.1864955 ,  0.3214951 ,  0.34273627,  0.29547283,
-               0.43862557,  0.29078126],
-             [ 0.29226252,  0.39753425,  0.36405647,  0.47865516,
-               0.44378856,  0.43702376],
-             [ 1.1537213 ,  1.0743428 ,  0.0494406 ,  0.46162465,
-               1.333291  ,  0.04616207]])
-        W1 = np.array([[ 0.21677628, -0.15750809,  0.7421827 ,  0.0212789 ,
-               0.64179885, -0.3533681 ],
-             [ 0.41216654,  0.20722015,  0.2119322 ,  0.4584896 ,
-               0.39576882,  0.3574507 ],
-             [ 0.29122993,  0.13642277,  0.20810808,  0.11366853,
-               0.4389719 ,  0.23162062],
-             [ 0.29141757,  0.0731663 ,  0.12748136, -0.01537234,
-               0.33767635,  0.31357116],
-             [ 0.21928684,  0.18876176,  0.12241068,  0.08746054,
-               0.36593395,  0.4919144 ],
-             [ 0.08234484,  0.21387804, -0.3760478 ,  1.0113571 ,
-               1.0101043 ,  1.4508004 ]])
+        W0 = np.array([[-0.11843238, 0.5618372, 0.38466904, 0.23944603,
+                        -0.48216674, 0.63915277],
+                       [0.08652873, 0.18803605, 0.26729473, 0.31465054,
+                        0.39766428, 0.1856934],
+                       [0.09866332, 0.24971685, 0.31222486, 0.27499378,
+                        0.29981762, 0.2305843],
+                       [0.1864955, 0.3214951, 0.34273627, 0.29547283,
+                        0.43862557, 0.29078126],
+                       [0.29226252, 0.39753425, 0.36405647, 0.47865516,
+                        0.44378856, 0.43702376],
+                       [1.1537213, 1.0743428, 0.0494406, 0.46162465,
+                        1.333291, 0.04616207]])
+        W1 = np.array([[0.21677628, -0.15750809, 0.7421827, 0.0212789,
+                        0.64179885, -0.3533681],
+                       [0.41216654, 0.20722015, 0.2119322, 0.4584896,
+                        0.39576882, 0.3574507],
+                       [0.29122993, 0.13642277, 0.20810808, 0.11366853,
+                        0.4389719, 0.23162062],
+                       [0.29141757, 0.0731663, 0.12748136, -0.01537234,
+                        0.33767635, 0.31357116],
+                       [0.21928684, 0.18876176, 0.12241068, 0.08746054,
+                        0.36593395, 0.4919144],
+                       [0.08234484, 0.21387804, -0.3760478, 1.0113571,
+                        1.0101043, 1.4508004]])
         self.process_dataset(dataset)
         band_indices = self.data[-2, :, 0:1].astype(int)
         redshift = self.data[-1, 0, 0:1]
@@ -529,7 +580,7 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_team_z0.1_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:1]
+    dataset = lcdata.read_hdf5(dataset_path)[:2]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
@@ -545,11 +596,7 @@ if __name__ == '__main__':
     model = Model(bands, device='cuda')
     result = model.fit(dataset)
     # result = model.train(dataset)
-    model.save_results_to_yaml(result, 'fit_test')
-    model.fit_assess(params, 'fit_test')
-    # model.fit_from_results(dataset, 'gpu_train')
-    # model.train_assess(params, 'gpu_train_Av')
-
-
-
-
+    # model.save_results_to_yaml(result, 'fit_test')
+    # model.fit_assess(params, 'fit_test')
+    # model.fit_from_results(dataset, 'gpu_train_dist')
+    # model.train_assess(params, 'gpu_train_dist')
