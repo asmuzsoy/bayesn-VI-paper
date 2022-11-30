@@ -29,6 +29,7 @@ mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 
 # jax.config.update('jax_platform_name', 'cpu')
+numpyro.set_host_device_count(4)
 
 print(jax.devices())
 
@@ -522,13 +523,15 @@ class Model(object):
         rng = PRNGKey(123)
         # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_to_median())
-        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
+        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=4)
         mcmc.run(rng, self.data)  # self.rng,
         return mcmc
 
     def fit_assess(self, params, yaml_dir):
         with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
             result = yaml.load(file, yaml.Loader)
+        print(result['theta'].shape)
+        return
         # Add dist mods
         params['distmod'] = self.cosmo.distmod(params.redshift.values).value
         # Theta
@@ -874,7 +877,7 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_team_z0.1_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:1000]
+    dataset = lcdata.read_hdf5(dataset_path)[:10]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
@@ -890,7 +893,11 @@ if __name__ == '__main__':
     model = Model(bands, device='cuda')
     # result = model.fit(dataset)
     result = model.train(dataset)
-    # model.save_results_to_yaml(result, 'fit_test')
-    # model.fit_assess(params, 'gpu_fit')
+    print()
+    print('-------')
+    print(result.print_summary())
+    print()
+    model.save_results_to_yaml(result, '4chain_train_test')
+    # model.fit_assess(params, '4chain_fit_test')
     # model.fit_from_results(dataset, 'gpu_train_dist')
     # model.train_assess(params, 'gpu_train_dist')
