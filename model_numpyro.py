@@ -27,7 +27,7 @@ mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 
-jax.config.update('jax_platform_name', 'cpu')
+# jax.config.update('jax_platform_name', 'cpu')
 
 print(jax.devices())
 
@@ -590,6 +590,7 @@ if __name__ == '__main__':
 
     model = Model(bands, device='cuda')
     result = model.fit(dataset)
+    print('-------------')
     result = model.train(dataset)
     # model.save_results_to_yaml(result, 'fit_test')
     # model.fit_assess(params, 'fit_test')
