@@ -287,12 +287,7 @@ class Model(object):
             Av = numpyro.sample(f'AV', dist.Exponential(1 / 0.194))
             eps_mu = jnp.zeros(N_knots_sig)
             eps = numpyro.sample(f'eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
-            test = eps
-
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
-            print(jnp.mean(test[0, ...] == eps[0, ...].T.flatten()))
-            # if jnp.mean(test[0, ...] == eps[0, ...].T.flatten()) < 1:
-            #    raise ValueError('Parameters cross contaminating')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
             band_indices = obs[-3, :, sn_index].astype(int).T
@@ -580,7 +575,7 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_team_z0.1_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:2]
+    dataset = lcdata.read_hdf5(dataset_path)[:1]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
@@ -595,7 +590,7 @@ if __name__ == '__main__':
 
     model = Model(bands, device='cuda')
     result = model.fit(dataset)
-    # result = model.train(dataset)
+    result = model.train(dataset)
     # model.save_results_to_yaml(result, 'fit_test')
     # model.fit_assess(params, 'fit_test')
     # model.fit_from_results(dataset, 'gpu_train_dist')
