@@ -575,7 +575,7 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_team_z0.1_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:1]
+    dataset = lcdata.read_hdf5(dataset_path)[:1000]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
@@ -590,9 +590,8 @@ if __name__ == '__main__':
 
     model = Model(bands, device='cuda')
     result = model.fit(dataset)
-    print('-------------')
-    result = model.train(dataset)
-    # model.save_results_to_yaml(result, 'fit_test')
+    # result = model.train(dataset)
+    model.save_results_to_yaml(result, 'gpu_fit')
     # model.fit_assess(params, 'fit_test')
     # model.fit_from_results(dataset, 'gpu_train_dist')
     # model.train_assess(params, 'gpu_train_dist')
