@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import pearsonr
 import numpyro
-from numpyro.infer import MCMC, NUTS, Predictive, HMC, init_to_median
+from numpyro.infer import MCMC, NUTS, Predictive, HMC, init_to_median, init_to_sample, init_to_value
 import numpyro.distributions as dist
 import h5py
 import lcdata
@@ -41,9 +41,11 @@ class Model(object):
         self.device = device
         self.settings = parse_settings(bands, settings,
                                        ignore_unknown_settings=ignore_unknown_settings)
-        self.M0 = -19.5
+        self.M0 = device_put(jnp.array(-19.5))
+        self.scale = 1e18
+        self.device_scale = device_put(jnp.array(self.scale))
         self.cosmo = FlatLambdaCDM(**fiducial_cosmology)
-        self.sigma_pec = 150 / 3e5
+        self.sigma_pec = device_put(jnp.array(150 / 3e5))
 
         self.l_knots = np.genfromtxt('model_files/T21_model/l_knots.txt')
         self.tau_knots = np.genfromtxt('model_files/T21_model/tau_knots.txt')
@@ -492,6 +494,8 @@ class Model(object):
 
         model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
 
+        model_flux *= self.device_scale
+
         return model_flux
 
     def fit_model(self, obs):
@@ -521,9 +525,9 @@ class Model(object):
     def fit(self, dataset):
         self.process_dataset(dataset)
         rng = PRNGKey(123)
-        # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
+        numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_to_median())
-        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=4)
+        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
         mcmc.run(rng, self.data)  # self.rng,
         return mcmc
 
@@ -632,7 +636,7 @@ class Model(object):
         W1 = numpyro.sample('W1', dist.MultivariateNormal(W_mu, jnp.eye(N_knots)))
         W0 = jnp.reshape(W0, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
         W1 = jnp.reshape(W1, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
-        sigmaepsilon = numpyro.sample('sigmaepsilon', dist.HalfNormal(0.25 * jnp.ones(N_knots_sig)))
+        sigmaepsilon = numpyro.sample('sigmaepsilon', dist.HalfNormal(1 * jnp.ones(N_knots_sig)))
         L_Omega = numpyro.sample('L_Omega', dist.LKJCholesky(N_knots_sig))
         L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon), L_Omega)
         sigma0 = numpyro.sample('sigma0', dist.HalfCauchy(0.1))
@@ -655,6 +659,7 @@ class Model(object):
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
             start = time.time()
             flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, redshift, band_indices)
+
             end = time.time()
             elapsed = end - start
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)  # _{sn_index}
@@ -663,8 +668,8 @@ class Model(object):
         self.process_dataset(dataset)
         rng = PRNGKey(123)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
-        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, init_strategy=init_to_median())
-        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=4)
+        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.9, init_strategy=init_to_median())
+        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
         mcmc.run(rng, self.data)
         return mcmc
 
@@ -763,7 +768,7 @@ class Model(object):
         for lc_ind, lc in enumerate(dataset.light_curves):
             lc = lc.to_pandas()
             lc = lc.astype({'band': str})
-            lc[['flux', 'fluxerr']] = lc[['flux', 'fluxerr']]  # / self.scale
+            lc[['flux', 'fluxerr']] = lc[['flux', 'fluxerr']]  * self.scale
             lc['band'] = lc['band'].apply(lambda band: band[band.find("'") + 1: band.rfind("'")])
             lc['band'] = lc['band'].apply(lambda band: self.band_dict[band])
             lc['redshift'] = dataset.meta[lc_ind][-1]
@@ -877,7 +882,7 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_team_z0.1_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:10]
+    dataset = lcdata.read_hdf5(dataset_path)[:1]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
@@ -891,13 +896,10 @@ if __name__ == '__main__':
     params = pd_dataset.merge(params, on='object_id')
 
     model = Model(bands, device='cuda')
-    # result = model.fit(dataset)
-    result = model.train(dataset)
-    print()
-    print('-------')
-    print(result.print_summary())
-    print()
-    model.save_results_to_yaml(result, '4chain_train_test')
+    result = model.fit(dataset)
+    # result = model.train(dataset)
+    # result.print_summary()
+    # model.save_results_to_yaml(result, '4chain_train_test')
     # model.fit_assess(params, '4chain_fit_test')
     # model.fit_from_results(dataset, 'gpu_train_dist')
     # model.train_assess(params, 'gpu_train_dist')
