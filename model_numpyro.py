@@ -884,7 +884,7 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_team_z0.1_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[1000]
+    dataset = lcdata.read_hdf5(dataset_path)[:1000]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
