@@ -669,7 +669,7 @@ class Model(object):
         rng = PRNGKey(123)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.9, init_strategy=init_to_median())
-        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
+        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=4)
         mcmc.run(rng, self.data)
         return mcmc
 
@@ -855,8 +855,10 @@ class Model(object):
             results_dict['L_sigma'] = self.L_Sigma
         for k, v in result.items():
             results_dict[k] = v
-        with open(os.path.join('results', f'{output_path}.yaml'), 'w') as file:
-            yaml.dump(result, file, default_flow_style=False)
+        #with open(os.path.join('results', f'{output_path}.yaml'), 'w') as file:
+        #    yaml.dump(result, file, default_flow_style=False)
+        with open(os.path.join('results', f'{output_path}.pkl'), 'wb') as file:
+            pickle.dump(result, file)
 
 
 # -------------------------------------------------
@@ -882,7 +884,7 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     dataset_path = 'data/bayesn_sim_team_z0.1_25000.h5'
-    dataset = lcdata.read_hdf5(dataset_path)[:10]
+    dataset = lcdata.read_hdf5(dataset_path)[1000]
     bands = set()
     for lc in dataset.light_curves:
         bands = bands.union(lc['band'])
@@ -899,7 +901,7 @@ if __name__ == '__main__':
     # result = model.fit(dataset)
     result = model.train(dataset)
     # result.print_summary()
-    # model.save_results_to_yaml(result, '4chain_train_test')
+    model.save_results_to_yaml(result, 'storage_test')
     # model.fit_assess(params, '4chain_fit_test')
     # model.fit_from_results(dataset, 'gpu_train_dist')
     # model.train_assess(params, 'gpu_train_dist')
