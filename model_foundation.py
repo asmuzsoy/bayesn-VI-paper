@@ -771,6 +771,7 @@ class Model(object):
         sn_list['sn'] = sn_list.file.apply(lambda x: x[x.rfind('_') + 1: x.rfind('.')])
         meta_file = pd.read_csv('data/LCs/meta/T21_training_set_meta.txt', delim_whitespace=True)
         sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')
+        print(sn_list.shape)
         zp_dict = {'g': 4.62937e-9, 'r': 2.83071e-9, 'i': 1.91728e-9, 'z': 1.44673e-9}
 
         for i, row in sn_list.iterrows():
