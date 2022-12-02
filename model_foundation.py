@@ -37,10 +37,9 @@ print(jax.devices())
 class Model(object):
     def __init__(self, ignore_unknown_settings=False, settings={}, device='cuda',
                  fiducial_cosmology={"H0": 73.24, "Om0": 0.28}):
-        bands = ['g', 'r', 'i', 'z']
-        self.band_dict = {band: i for i, band in enumerate(bands)}
-        self.process_dataset()
-        raise ValueError('Nope')
+        bands = ['ps1::g', 'ps1::r', 'ps1::i', 'ps1::z']
+        self.band_dict = {band[-1]: i for i, band in enumerate(bands)}
+        self.cosmo = FlatLambdaCDM(**fiducial_cosmology)
         self.data = None
         self.device = device
         self.settings = parse_settings(bands, settings,
@@ -48,7 +47,6 @@ class Model(object):
         self.M0 = device_put(jnp.array(-19.5))
         self.scale = 1e18
         self.device_scale = device_put(jnp.array(self.scale))
-        self.cosmo = FlatLambdaCDM(**fiducial_cosmology)
         self.sigma_pec = device_put(jnp.array(150 / 3e5))
 
         self.l_knots = np.genfromtxt('model_files/T21_model/l_knots.txt')
@@ -278,7 +276,6 @@ class Model(object):
         self.W0 = device_put(self.W0)
         self.W1 = device_put(self.W1)
         self.L_Sigma = device_put(self.L_Sigma)
-        self.band_dict = {band: i for i, band in enumerate(bands)}
 
         self._setup_band_weights()
 
@@ -296,6 +293,8 @@ class Model(object):
              1e4 / 2600.])
         KD_x = spline_utils.invKD_irr(self.xk)
         self.M_fitz_block = device_put(spline_utils.spline_coeffs_irr(1e4 / self.model_wave, self.xk, KD_x))
+
+        self.process_dataset()
 
     def load_hsiao_template(self):
         with h5py.File(os.path.join('data', 'hsiao.h5'), 'r') as file:
@@ -432,12 +431,8 @@ class Model(object):
 
         return result
 
-    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, redshifts, band_indices):
+    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, redshifts, band_indices, flag):
         num_batch = theta.shape[0]
-        J_t = jnp.reshape(self.J_t, (-1, *self.J_t.shape))
-        J_t = jnp.repeat(J_t, num_batch, axis=0)
-        J_t_hsiao = jnp.reshape(self.J_t_hsiao, (-1, *self.J_t_hsiao.shape))
-        J_t_hsiao = jnp.repeat(J_t_hsiao, num_batch, axis=0)
         W0 = jnp.reshape(W0, (-1, *self.W0.shape))
         W0 = jnp.repeat(W0, num_batch, axis=0)
         W1 = jnp.reshape(W1, (-1, *self.W1.shape))
@@ -445,10 +440,10 @@ class Model(object):
 
         W = W0 + theta[..., None, None] * W1 + eps
 
-        WJt = jnp.matmul(W, J_t)
+        WJt = jnp.matmul(W, self.J_t)
         W_grid = jnp.matmul(self.J_l_T, WJt)
 
-        HJt = jnp.matmul(self.hsiao_flux, J_t_hsiao)
+        HJt = jnp.matmul(self.hsiao_flux, self.J_t_hsiao)
         H_grid = jnp.matmul(self.J_l_T_hsiao, HJt)
 
         model_spectra = H_grid * 10 ** (-0.4 * W_grid)
@@ -495,10 +490,9 @@ class Model(object):
         model_spectra = model_spectra * f_A[..., None]
 
         model_flux = jnp.sum(model_spectra * obs_band_weights, axis=1).T
-
         model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
-
         model_flux *= self.device_scale
+        model_flux *= flag
 
         return model_flux
 
@@ -655,25 +649,21 @@ class Model(object):
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
-            band_indices = obs[-3, :, sn_index].astype(int).T
-            redshift = obs[-2, 0, sn_index]
-            muhat = obs[-1, 0, sn_index]
+            band_indices = obs[-4, :, sn_index].astype(int).T
+            redshift = obs[-3, 0, sn_index]
+            muhat = obs[-2, 0, sn_index]
+            flag = obs[-1, :, sn_index].T
             muhat_err = 5 / (redshift * jnp.log(10)) * self.sigma_pec
             Ds_err = jnp.sqrt(muhat_err * muhat_err + sigma0 * sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
-            start = time.time()
-            flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, redshift, band_indices)
-
-            end = time.time()
-            elapsed = end - start
+            flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, redshift, band_indices, flag)
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)  # _{sn_index}
 
-    def train(self, dataset):
-        self.process_dataset(dataset)
+    def train(self):
         rng = PRNGKey(123)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.9, init_strategy=init_to_median())
-        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=4)
+        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
         mcmc.run(rng, self.data)
         return mcmc
 
@@ -771,16 +761,41 @@ class Model(object):
         sn_list['sn'] = sn_list.file.apply(lambda x: x[x.rfind('_') + 1: x.rfind('.')])
         meta_file = pd.read_csv('data/LCs/meta/T21_training_set_meta.txt', delim_whitespace=True)
         sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')
-        print(sn_list.shape)
         zp_dict = {'g': 4.62937e-9, 'r': 2.83071e-9, 'i': 1.91728e-9, 'z': 1.44673e-9}
+        n_obs = []
 
+        all_lcs = []
         for i, row in sn_list.iterrows():
             data = pd.read_csv(os.path.join('data', 'LCs', 'Foundation', 'Foundation_DR1', row.file),
                                skiprows=19, delim_whitespace=True, skipfooter=1, engine='python')
             data['t'] = (data.MJD - row.SEARCH_PEAKMJD) / (1 + row.REDSHIFT_CMB)
             data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[x])
             data['zp'] = data.FLT.apply(lambda x: zp_dict[x])
-            data['flux'] = data.FLUXCAL * np.power(10, -0.4 * 27.5)
+            data['flux'] = data['zp'] * np.power(10, -0.4 * data['MAG']) * self.scale
+            data['flux_err'] = (np.log(10) / 2.5) * data['flux'] * data['MAGERR']
+            data['redshift'] = row.REDSHIFT_CMB
+            data['redshift_error'] = row.REDSHIFT_CMB_ERR
+            data['dist_mod'] = self.cosmo.distmod(row.REDSHIFT_CMB)
+            data['flag'] = 1
+            lc = data[['t', 'flux', 'flux_err', 'band_indices', 'redshift', 'dist_mod', 'flag']]
+            lc = lc[(lc['t'] > -10) & (lc['t'] < 40)]
+            lc = lc.dropna(subset=['flux', 'flux_err'])
+            n_obs.append(lc.shape[0])
+            all_lcs.append(lc)
+        N_sn = sn_list.shape[0]
+        N_obs = np.max(n_obs)
+        N_col = lc.shape[1]
+        all_data = np.zeros((N_sn, N_obs, N_col))
+        all_J_t = np.zeros((N_sn, self.tau_knots.shape[0], N_obs))
+        all_J_t_hsiao = np.zeros((N_sn, self.hsiao_t.shape[0], N_obs))
+        for i, lc in enumerate(all_lcs):
+            all_data[i, :lc.shape[0], :] = lc.values
+            all_data[i, lc.shape[0]:, 2] = 1e-8
+            all_J_t[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.tau_knots, self.KD_t).T
+            all_J_t_hsiao[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.hsiao_t, self.KD_t_hsiao).T
+        self.data = device_put(all_data.T)
+        self.J_t = device_put(all_J_t)
+        self.J_t_hsiao = device_put(all_J_t_hsiao)
 
     def fit_from_results(self, dataset, input_file):
         self.process_dataset(dataset)
@@ -881,9 +896,9 @@ def get_band_effective_wavelength(band):
 if __name__ == '__main__':
     model = Model()
     # result = model.fit(dataset)
-    # result = model.train(dataset)
+    result = model.train()
     # result.print_summary()
-    # model.save_results_to_yaml(result, 'storage_test')
+    model.save_results_to_yaml(result, 'foundation_train')
     # model.fit_assess(params, '4chain_fit_test')
     # model.fit_from_results(dataset, 'gpu_train_dist')
     # model.train_assess(params, 'gpu_train_dist')
