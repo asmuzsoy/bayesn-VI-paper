@@ -676,11 +676,8 @@ class Model(object):
     def train_assess(self, params, yaml_dir):
         with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
             result = yaml.load(file, yaml.Loader)
-        print(repr(np.reshape(np.mean(result['W0'], axis=0), (6, 6), order='F')))
-        print(repr(np.reshape(np.mean(result['W1'], axis=0), (6, 6), order='F')))
-        print(np.matmul(np.diag(np.mean(result['sigmaepsilon'], axis=0)), np.mean(result['L_Omega'], axis=0)).shape)
-        print(repr(np.matmul(np.diag(np.mean(result['sigmaepsilon'], axis=0)), np.mean(result['L_Omega'], axis=0))))
-        return
+        print(result['theta'].shape)
+        raise ValueError('Nope')
         # Add dist mods
         params['distmod'] = self.cosmo.distmod(params.redshift.values).value
         # Theta
@@ -899,9 +896,9 @@ if __name__ == '__main__':
 
     model = Model(bands, device='cuda')
     # result = model.fit(dataset)
-    result = model.train(dataset)
+    # result = model.train(dataset)
     # result.print_summary()
-    model.save_results_to_yaml(result, 'daily_cadence_train')
+    # model.save_results_to_yaml(result, 'daily_cadence_train')
     # model.fit_assess(params, '4chain_fit_test')
     # model.fit_from_results(dataset, 'gpu_train_dist')
-    # model.train_assess(params, 'gpu_train_dist')
+    model.train_assess(params, '4chain_train_test')
