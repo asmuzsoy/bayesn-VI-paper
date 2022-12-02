@@ -30,7 +30,7 @@ plt.rcParams.update({'font.size': 22})
 
 # jax.config.update('jax_platform_name', 'cpu')
 # numpyro.set_host_device_count(4)
-os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = "0.6"
+os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = "0.4"
 
 print(jax.devices())
 
