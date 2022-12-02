@@ -533,6 +533,7 @@ class Model(object):
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_to_median())
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains)
         mcmc.run(rng, self.data)
+        mcmc.print_summary()
         with open(os.path.join('results', f'{output}.pkl'), 'wb') as file:
             pickle.dump(mcmc, file)
 
