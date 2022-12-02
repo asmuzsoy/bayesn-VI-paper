@@ -294,8 +294,6 @@ class Model(object):
         KD_x = spline_utils.invKD_irr(self.xk)
         self.M_fitz_block = device_put(spline_utils.spline_coeffs_irr(1e4 / self.model_wave, self.xk, KD_x))
 
-        self.process_dataset()
-
     def load_hsiao_template(self):
         with h5py.File(os.path.join('data', 'hsiao.h5'), 'r') as file:
             data = file['default']
@@ -431,7 +429,7 @@ class Model(object):
 
         return result
 
-    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, redshifts, band_indices, flag):
+    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, redshifts, band_indices, flag):
         num_batch = theta.shape[0]
         W0 = jnp.reshape(W0, (-1, *self.W0.shape))
         W0 = jnp.repeat(W0, num_batch, axis=0)
@@ -638,11 +636,11 @@ class Model(object):
         L_Omega = numpyro.sample('L_Omega', dist.LKJCholesky(N_knots_sig))
         L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon), L_Omega)
         sigma0 = numpyro.sample('sigma0', dist.HalfCauchy(0.1))
+        Rv = numpyro.sample('Rv', dist.Uniform(1, 5))
 
         # for sn_index in pyro.plate('SNe', sample_size):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
-            # Rv = numpyro.sample(f'RV', dist.Normal(2.610, 0.001))
             Av = numpyro.sample(f'AV', dist.Exponential(1 / 0.194))
             eps_mu = jnp.zeros(N_knots_sig)
             eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=L_Sigma))
@@ -656,10 +654,11 @@ class Model(object):
             muhat_err = 5 / (redshift * jnp.log(10)) * self.sigma_pec
             Ds_err = jnp.sqrt(muhat_err * muhat_err + sigma0 * sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
-            flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, redshift, band_indices, flag)
+            flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, redshift, band_indices, flag)
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)  # _{sn_index}
 
     def train(self):
+        self.process_dataset(mode='training')
         rng = PRNGKey(123)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.9, init_strategy=init_to_median())
@@ -756,7 +755,7 @@ class Model(object):
         plt.subplots_adjust(hspace=0, wspace=0)
         plt.show()
 
-    def process_dataset(self):
+    def process_dataset(self, mode='training'):
         sn_list = pd.read_csv('data/LCs/Foundation/Foundation_DR1/Foundation_DR1.LIST', header=0, names=['file'])
         sn_list['sn'] = sn_list.file.apply(lambda x: x[x.rfind('_') + 1: x.rfind('.')])
         meta_file = pd.read_csv('data/LCs/meta/T21_training_set_meta.txt', delim_whitespace=True)
@@ -765,6 +764,7 @@ class Model(object):
         n_obs = []
 
         all_lcs = []
+        t_ranges = []
         for i, row in sn_list.iterrows():
             data = pd.read_csv(os.path.join('data', 'LCs', 'Foundation', 'Foundation_DR1', row.file),
                                skiprows=19, delim_whitespace=True, skipfooter=1, engine='python')
@@ -780,6 +780,7 @@ class Model(object):
             lc = data[['t', 'flux', 'flux_err', 'band_indices', 'redshift', 'dist_mod', 'flag']]
             lc = lc[(lc['t'] > -10) & (lc['t'] < 40)]
             lc = lc.dropna(subset=['flux', 'flux_err'])
+            t_ranges.append((lc['t'].min(), lc['t'].max()))
             n_obs.append(lc.shape[0])
             all_lcs.append(lc)
         N_sn = sn_list.shape[0]
@@ -788,19 +789,30 @@ class Model(object):
         all_data = np.zeros((N_sn, N_obs, N_col))
         all_J_t = np.zeros((N_sn, self.tau_knots.shape[0], N_obs))
         all_J_t_hsiao = np.zeros((N_sn, self.hsiao_t.shape[0], N_obs))
+        if mode == 'fitting':
+            all_J_t = np.zeros((N_sn, self.tau_knots.shape[0], 200))
+            all_J_t_hsiao = np.zeros((N_sn, self.hsiao_t.shape[0], 200))
+            ts = np.linspace(-10, 40, 50)
+            ts = np.repeat(ts, len(self.band_dict.keys()))
+            self.ts = ts
+            J_t = spline_utils.spline_coeffs_irr(ts, self.tau_knots, self.KD_t).T
+            J_t_hsiao = spline_utils.spline_coeffs_irr(ts, self.hsiao_t, self.KD_t_hsiao).T
         for i, lc in enumerate(all_lcs):
             all_data[i, :lc.shape[0], :] = lc.values
             all_data[i, lc.shape[0]:, 2] = 1e-8
-            all_J_t[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.tau_knots, self.KD_t).T
-            all_J_t_hsiao[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.hsiao_t, self.KD_t_hsiao).T
+            if mode == 'training':
+                all_J_t[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.tau_knots, self.KD_t).T
+                all_J_t_hsiao[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.hsiao_t, self.KD_t_hsiao).T
+            else:
+                all_J_t[i, ...] = J_t
+                all_J_t_hsiao[i, ...] = J_t_hsiao
         self.data = device_put(all_data.T)
         self.J_t = device_put(all_J_t)
         self.J_t_hsiao = device_put(all_J_t_hsiao)
 
-    def fit_from_results(self, dataset, input_file):
-        self.process_dataset(dataset)
-        with open(os.path.join('results', f'{input_file}.yaml'), 'r') as file:
-            result = yaml.load(file, yaml.Loader)
+    def fit_from_results(self, input_file):
+        with open(os.path.join('results', f'{input_file}.pkl'), 'rb') as file:
+            result = pickle.load(file)
         N = result['theta'].shape[1]
         W0 = np.reshape(np.mean(result['W0'], axis=0), (6, 6), order='F')
         W1 = np.reshape(np.mean(result['W1'], axis=0), (6, 6), order='F')
@@ -809,15 +821,21 @@ class Model(object):
         theta, Av, Ds = np.mean(result['theta'], axis=0), np.mean(result['AV'], axis=0), np.mean(result['Ds'], axis=0)
         new_eps[:, 1:-1, :] = eps
         eps = new_eps
-        band_indices = self.data[-3, :, :].astype(int)
-        redshift = self.data[-2, 0, :]
-        model_flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, redshift, band_indices)
+        N_fit = self.J_t.shape[-1]
+        band_indices = self.data[-4, :, :].astype(int)
+        fit_band_indices = np.tile(np.arange(4), (band_indices.shape[-1], int(N_fit / len(self.band_dict.keys())))).T
+        redshift = self.data[-3, 0, :]
+        flag = self.data[-1, ...]
+        fit_flag = np.ones_like(fit_band_indices)
+        model_flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, redshift, fit_band_indices, fit_flag)
+        ts = np.linspace(-10, 40, 50)
         for _ in range(10):
             plt.figure()
             for i in range(4):
-                inds = band_indices[:, 0] == i
-                plt.errorbar(self.t[inds], self.data[1, inds, _], yerr=self.data[2, inds, _], fmt='x')
-                plt.scatter(self.t[inds], model_flux[inds, _])
+                inds = (band_indices[:, _] == i) & (flag[:, _] == 1)
+                fit_inds = (fit_band_indices[:, _] == i) & (fit_flag[:, _] == 1)
+                plt.errorbar(self.data[0, inds, _], self.data[1, inds, _], yerr=self.data[2, inds, _], fmt='x')
+                plt.plot(ts, model_flux[fit_inds, _], ls='--')
         plt.show()
 
     def test_params(self, dataset, params):
@@ -898,7 +916,7 @@ if __name__ == '__main__':
     # result = model.fit(dataset)
     result = model.train()
     # result.print_summary()
-    model.save_results_to_yaml(result, 'foundation_train')
+    # model.save_results_to_yaml(result, 'foundation_train')
     # model.fit_assess(params, '4chain_fit_test')
-    # model.fit_from_results(dataset, 'gpu_train_dist')
+    # model.fit_from_results('foundation_train')
     # model.train_assess(params, 'gpu_train_dist')
