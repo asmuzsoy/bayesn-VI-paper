@@ -771,6 +771,23 @@ class Model(object):
         plt.show()
 
     def process_dataset(self, mode='training'):
+        if os.path.exists(os.path.join('data', 'LCs', 'pickles', 'foundation', 'dataset.pkl')):
+            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'dataset.pkl'), 'rb') as file:
+                all_data = pickle.load(file)
+            if mode == 'training':
+                with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t.pkl'), 'rb') as file:
+                    all_J_t = pickle.load(file)
+                with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t_hsiao.pkl'), 'rb') as file:
+                    all_J_t_hsiao = pickle.load(file)
+            else:
+                with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'fitting.pkl'), 'rb') as file:
+                    self.J_t = pickle.load(file)
+                with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'fitting_J_t_hsiao.pkl'), 'rb') as file:
+                    self.J_t_hsiao = pickle.load(file)
+            self.data = device_put(all_data.T)
+            self.J_t = device_put(all_J_t)
+            self.J_t_hsiao = device_put(all_J_t_hsiao)
+            return
         sn_list = pd.read_csv('data/LCs/Foundation/Foundation_DR1/Foundation_DR1.LIST', header=0, names=['file'])
         sn_list['sn'] = sn_list.file.apply(lambda x: x[x.rfind('_') + 1: x.rfind('.')])
         meta_file = pd.read_csv('data/LCs/meta/T21_training_set_meta.txt', delim_whitespace=True)
@@ -821,6 +838,18 @@ class Model(object):
             else:
                 all_J_t[i, ...] = J_t
                 all_J_t_hsiao[i, ...] = J_t_hsiao
+        with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'dataset.pkl'), 'wb') as file:
+            pickle.dump(all_data, file)
+        if mode == 'training':
+            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t.pkl'), 'wb') as file:
+                pickle.dump(all_J_t, file)
+            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t_hsiao.pkl'), 'wb') as file:
+                pickle.dump(all_J_t_hsiao, file)
+        else:
+            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'fitting_J_t.pkl'), 'wb') as file:
+                pickle.dump(all_J_t, file)
+            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'fitting_J_t_hsiao.pkl'), 'wb') as file:
+                pickle.dump(all_J_t_hsiao, file)
         self.data = device_put(all_data.T)
         self.J_t = device_put(all_J_t)
         self.J_t_hsiao = device_put(all_J_t_hsiao)
