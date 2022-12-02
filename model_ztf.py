@@ -804,23 +804,23 @@ class Model(object):
         plt.show()
 
     def process_dataset(self, mode='training'):
-        #if os.path.exists(os.path.join('data', 'LCs', 'pickles', 'foundation', 'dataset.pkl')):
-        """with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'dataset.pkl'), 'rb') as file:
+        if os.path.exists(os.path.join('data', 'LCs', 'pickles', 'ztf', 'dataset.pkl')):
+            with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'dataset.pkl'), 'rb') as file:
                 all_data = pickle.load(file)
             if mode == 'training':
-                with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t.pkl'), 'rb') as file:
+                with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'training_J_t.pkl'), 'rb') as file:
                     all_J_t = pickle.load(file)
-                with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t_hsiao.pkl'), 'rb') as file:
+                with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'training_J_t_hsiao.pkl'), 'rb') as file:
                     all_J_t_hsiao = pickle.load(file)
             else:
-                with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'fitting.pkl'), 'rb') as file:
+                with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'fitting.pkl'), 'rb') as file:
                     self.J_t = pickle.load(file)
-                with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'fitting_J_t_hsiao.pkl'), 'rb') as file:
+                with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'fitting_J_t_hsiao.pkl'), 'rb') as file:
                     self.J_t_hsiao = pickle.load(file)
             self.data = device_put(all_data.T)
             self.J_t = device_put(all_J_t)
             self.J_t_hsiao = device_put(all_J_t_hsiao)
-            return"""
+            return
         sn_list = pd.DataFrame(os.listdir('data/LCs/ZTF'), columns=['file'])
         sn_list['sn'] = sn_list.file.apply(lambda x: x[:x.find('.')])
         meta_file = pd.read_csv('data/LCs/meta/ztf_dr1_training.txt', delim_whitespace=True)
@@ -872,19 +872,17 @@ class Model(object):
             else:
                 all_J_t[i, ...] = J_t
                 all_J_t_hsiao[i, ...] = J_t_hsiao
-        print(all_data.shape)
-        raise ValueError('Nope')
         with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'dataset.pkl'), 'wb') as file:
             pickle.dump(all_data, file)
         if mode == 'training':
-            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t.pkl'), 'wb') as file:
+            with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'training_J_t.pkl'), 'wb') as file:
                 pickle.dump(all_J_t, file)
-            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t_hsiao.pkl'), 'wb') as file:
+            with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'training_J_t_hsiao.pkl'), 'wb') as file:
                 pickle.dump(all_J_t_hsiao, file)
         else:
-            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'fitting_J_t.pkl'), 'wb') as file:
+            with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'fitting_J_t.pkl'), 'wb') as file:
                 pickle.dump(all_J_t, file)
-            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'fitting_J_t_hsiao.pkl'), 'wb') as file:
+            with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'fitting_J_t_hsiao.pkl'), 'wb') as file:
                 pickle.dump(all_J_t_hsiao, file)
         self.data = device_put(all_data.T)
         self.J_t = device_put(all_J_t)
@@ -994,7 +992,7 @@ def get_band_effective_wavelength(band):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'foundation_train_4chain', chain_method='sequential')
+    model.train(250, 250, 1, 'ztf_train_4chain', chain_method='vectorized')
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
     # model.fit_assess(params, '4chain_fit_test')
