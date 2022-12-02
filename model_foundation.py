@@ -496,7 +496,6 @@ class Model(object):
     def fit_model(self, obs):
         sample_size = self.data.shape[-1]
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
-        sigma0 = 0.103
 
         # for sn_index in numpyro.plate('SNe', sample_size):
         with numpyro.plate('SNe', sample_size) as sn_index:
@@ -508,17 +507,32 @@ class Model(object):
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
-            band_indices = obs[-3, :, sn_index].astype(int).T
-            redshift = obs[-2, 0, sn_index]
-            muhat = obs[-1, 0, sn_index]
+            band_indices = obs[-4, :, sn_index].astype(int).T
+            redshift = obs[-3, 0, sn_index]
+            muhat = obs[-2, 0, sn_index]
+            flag = obs[-1, :, sn_index].T
             muhat_err = 5 / (redshift * jnp.log(10)) * self.sigma_pec
-            Ds_err = jnp.sqrt(muhat_err * muhat_err + sigma0 * sigma0)
+            Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
-            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, redshift, band_indices)
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, redshift, band_indices, flag)
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)
 
-    def fit(self, dataset):
-        self.process_dataset(dataset)
+    def fit(self, result_path):
+        # Sub-select data
+        self.process_dataset(mode='training')
+        N = 156
+        self.data = self.data[..., :N]
+        self.J_t = self.J_t[:N, ...]
+        self.J_t_hsiao = self.J_t_hsiao[:N, ...]
+        with open(os.path.join('results', f'{result_path}.pkl'), 'rb') as file:
+            result = pickle.load(file)
+        self.W0 = device_put(np.reshape(np.mean(result['W0'], axis=0), (6, 6), order='F'))
+        self.W1 = device_put(np.reshape(np.mean(result['W1'], axis=0), (6, 6), order='F'))
+        sigmaepsilon = np.mean(result['sigmaepsilon'], axis=0)
+        L_Omega = np.mean(result['L_Omega'], axis=0)
+        self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
+        self.Rv = device_put(np.mean(result['Rv'], axis=0))
+        self.sigma0 = device_put(np.mean(result['sigma0'], axis=0))
         rng = PRNGKey(123)
         # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_to_median())
@@ -656,14 +670,15 @@ class Model(object):
             flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, redshift, band_indices, flag)
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)  # _{sn_index}
 
-    def train(self):
+    def train(self, num_samples, num_warmup, num_chains, output):
         self.process_dataset(mode='training')
         rng = PRNGKey(123)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.9, init_strategy=init_to_median())
-        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
+        mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains)
         mcmc.run(rng, self.data)
-        return mcmc
+        with open(os.path.join('results', f'{output}.pkl'), 'wb') as file:
+            pickle.dump(mcmc, file)
 
     def train_assess(self, params, yaml_dir):
         with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
@@ -912,10 +927,10 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     model = Model()
-    # result = model.fit(dataset)
-    result = model.train()
+    # result = model.fit('foundation_train_Rv')
+    model.train(250, 250, 4, 'foundation_train_4chain')
     # result.print_summary()
-    model.save_results_to_yaml(result, 'foundation_train_Rv')
+    # model.save_results_to_yaml(result, 'foundation_train_4chain')
     # model.fit_assess(params, '4chain_fit_test')
     # model.fit_from_results('foundation_train')
     # model.train_assess(params, 'gpu_train_dist')
