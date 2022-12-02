@@ -30,6 +30,7 @@ plt.rcParams.update({'font.size': 22})
 
 # jax.config.update('jax_platform_name', 'cpu')
 # numpyro.set_host_device_count(4)
+os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = "0.6"
 
 print(jax.devices())
 
@@ -674,7 +675,7 @@ class Model(object):
         self.process_dataset(mode='training')
         rng = PRNGKey(123)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
-        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.9, init_strategy=init_to_median())
+        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_to_median())
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains)
         mcmc.run(rng, self.data)
         with open(os.path.join('results', f'{output}.pkl'), 'wb') as file:
