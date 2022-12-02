@@ -30,8 +30,6 @@ plt.rcParams.update({'font.size': 22})
 
 # jax.config.update('jax_platform_name', 'cpu')
 # numpyro.set_host_device_count(4)
-os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = "0.4"
-os.environ['TF_CPP_MIN_VLOG_LEVEL'] = "1"
 
 print(jax.devices())
 
@@ -519,7 +517,7 @@ class Model(object):
             flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, redshift, band_indices, flag)
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)
 
-    def fit(self, result_path):
+    def fit(self, num_samples, num_warmup, num_chains, output, result_path):
         # Sub-select data
         self.process_dataset(mode='training')
         N = 156
@@ -538,9 +536,9 @@ class Model(object):
         rng = PRNGKey(123)
         # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_to_median())
-        mcmc = MCMC(nuts_kernel, num_samples=250, num_warmup=250, num_chains=1)
-        mcmc.run(rng, self.data)  # self.rng,
-        return mcmc
+        mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains)
+        with open(os.path.join('results', f'{output}.pkl'), 'wb') as file:
+            pickle.dump(mcmc, file)
 
     def fit_assess(self, params, yaml_dir):
         with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
@@ -958,8 +956,8 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     model = Model()
-    # result = model.fit('foundation_train_Rv')
-    model.train(250, 250, 4, 'foundation_train_4chain')
+    model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
+    # model.train(250, 250, 4, 'foundation_train_4chain')
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
     # model.fit_assess(params, '4chain_fit_test')

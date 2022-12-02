@@ -677,6 +677,7 @@ class Model(object):
         with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
             result = yaml.load(file, yaml.Loader)
         print(result['theta'].shape)
+        print(result.keys())
         raise ValueError('Nope')
         # Add dist mods
         params['distmod'] = self.cosmo.distmod(params.redshift.values).value
