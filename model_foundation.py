@@ -520,10 +520,6 @@ class Model(object):
     def fit(self, num_samples, num_warmup, num_chains, output, result_path):
         # Sub-select data
         self.process_dataset(mode='training')
-        N = 156
-        self.data = self.data[..., :N]
-        self.J_t = self.J_t[:N, ...]
-        self.J_t_hsiao = self.J_t_hsiao[:N, ...]
         with open(os.path.join('results', f'{result_path}.pkl'), 'rb') as file:
             result = pickle.load(file)
         self.W0 = device_put(np.reshape(np.mean(result['W0'], axis=0), (6, 6), order='F'))
@@ -677,6 +673,7 @@ class Model(object):
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_to_median())
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains)
         mcmc.run(rng, self.data)
+        mcmc.print_summary()
         with open(os.path.join('results', f'{output}.pkl'), 'wb') as file:
             pickle.dump(mcmc, file)
 
@@ -956,7 +953,7 @@ def get_band_effective_wavelength(band):
 
 if __name__ == '__main__':
     model = Model()
-    model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
+    model.fit(250, 250, 1, 'foundation_fit_4chain', 'foundation_train_Rv')
     # model.train(250, 250, 4, 'foundation_train_4chain')
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
