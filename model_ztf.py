@@ -38,8 +38,8 @@ print(jax.devices())
 class Model(object):
     def __init__(self, ignore_unknown_settings=False, settings={}, device='cuda',
                  fiducial_cosmology={"H0": 73.24, "Om0": 0.28}):
-        bands = ['ps1::g', 'ps1::r', 'ps1::i', 'ps1::z']
-        self.band_dict = {band[-1]: i for i, band in enumerate(bands)}
+        bands = ['p48g', 'p48r', 'p48i']
+        self.band_dict = {band: i for i, band in enumerate(bands)}
         self.cosmo = FlatLambdaCDM(**fiducial_cosmology)
         self.data = None
         self.device = device
@@ -348,20 +348,19 @@ class Model(object):
         band_weights = []
 
         for band_name in self.settings['bands']:
-            band = sncosmo.get_bandpass(band_name)
-
-            band_transmission = band(10 ** (band_pad_log_wave))
+            R = np.loadtxt(f'data/filters/{band_name}.txt')
+            band_transmission = np.interp(10 ** band_pad_log_wave, R[:, 0], R[:, 1])
 
             # Convolve the bands to match the sampling of the spectrum.
             band_conv_transmission = jnp.interp(band_wave, 10 ** band_pad_log_wave, band_transmission)
 
-            band_weight = (
+            """band_weight = (
                     band_wave
                     * band_conv_transmission
                     / sncosmo.constants.HC_ERG_AA
                     / ref.zpbandflux(band)
                     * 10 ** (0.4 * -20.)
-            )
+            )"""
 
             dlamba = jnp.diff(band_wave)
             dlamba = jnp.r_[dlamba, dlamba[-1]]
@@ -805,8 +804,8 @@ class Model(object):
         plt.show()
 
     def process_dataset(self, mode='training'):
-        if os.path.exists(os.path.join('data', 'LCs', 'pickles', 'foundation', 'dataset.pkl')):
-            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'dataset.pkl'), 'rb') as file:
+        #if os.path.exists(os.path.join('data', 'LCs', 'pickles', 'foundation', 'dataset.pkl')):
+        """with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'dataset.pkl'), 'rb') as file:
                 all_data = pickle.load(file)
             if mode == 'training':
                 with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t.pkl'), 'rb') as file:
@@ -821,19 +820,20 @@ class Model(object):
             self.data = device_put(all_data.T)
             self.J_t = device_put(all_J_t)
             self.J_t_hsiao = device_put(all_J_t_hsiao)
-            return
-        sn_list = pd.read_csv('data/LCs/Foundation/Foundation_DR1/Foundation_DR1.LIST', header=0, names=['file'])
-        sn_list['sn'] = sn_list.file.apply(lambda x: x[x.rfind('_') + 1: x.rfind('.')])
-        meta_file = pd.read_csv('data/LCs/meta/T21_training_set_meta.txt', delim_whitespace=True)
+            return"""
+        sn_list = pd.DataFrame(os.listdir('data/LCs/ZTF'), columns=['file'])
+        sn_list['sn'] = sn_list.file.apply(lambda x: x[:x.find('.')])
+        meta_file = pd.read_csv('data/LCs/meta/ztf_dr1_training.txt', delim_whitespace=True)
         sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')
-        zp_dict = {'g': 4.62937e-9, 'r': 2.83071e-9, 'i': 1.91728e-9, 'z': 1.44673e-9}
+        zp_dict = {'p48g': 4.88043e-9, 'p48r': 2.70846e-9, 'p48i': 1.75033e-9}
         n_obs = []
 
         all_lcs = []
         t_ranges = []
         for i, row in sn_list.iterrows():
-            data = pd.read_csv(os.path.join('data', 'LCs', 'Foundation', 'Foundation_DR1', row.file),
-                               skiprows=19, delim_whitespace=True, skipfooter=1, engine='python')
+            data = pd.read_csv(os.path.join('data', 'LCs', 'ZTF', row.file),
+                               skiprows=20, delim_whitespace=True, skipfooter=1, engine='python')
+
             data['t'] = (data.MJD - row.SEARCH_PEAKMJD) / (1 + row.REDSHIFT_CMB)
             data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[x])
             data['zp'] = data.FLT.apply(lambda x: zp_dict[x])
@@ -872,7 +872,9 @@ class Model(object):
             else:
                 all_J_t[i, ...] = J_t
                 all_J_t_hsiao[i, ...] = J_t_hsiao
-        with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'dataset.pkl'), 'wb') as file:
+        print(all_data.shape)
+        raise ValueError('Nope')
+        with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'dataset.pkl'), 'wb') as file:
             pickle.dump(all_data, file)
         if mode == 'training':
             with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t.pkl'), 'wb') as file:
@@ -992,8 +994,7 @@ def get_band_effective_wavelength(band):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    # model.train(250, 250, 4, 'foundation_train_4chain', chain_method='sequential')
-    model.train_postprocess()
+    model.train(250, 250, 4, 'foundation_train_4chain', chain_method='sequential')
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
     # model.fit_assess(params, '4chain_fit_test')
