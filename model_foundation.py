@@ -916,7 +916,7 @@ if __name__ == '__main__':
     # result = model.fit(dataset)
     result = model.train()
     # result.print_summary()
-    # model.save_results_to_yaml(result, 'foundation_train')
+    model.save_results_to_yaml(result, 'foundation_train_Rv')
     # model.fit_assess(params, '4chain_fit_test')
     # model.fit_from_results('foundation_train')
     # model.train_assess(params, 'gpu_train_dist')
