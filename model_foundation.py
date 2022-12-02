@@ -518,7 +518,6 @@ class Model(object):
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)
 
     def fit(self, num_samples, num_warmup, num_chains, output, result_path):
-        # Sub-select data
         self.process_dataset(mode='training')
         with open(os.path.join('results', f'{result_path}.pkl'), 'rb') as file:
             result = pickle.load(file)
@@ -533,6 +532,7 @@ class Model(object):
         # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_to_median())
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains)
+        mcmc.run(rng, self.data)
         with open(os.path.join('results', f'{output}.pkl'), 'wb') as file:
             pickle.dump(mcmc, file)
 
