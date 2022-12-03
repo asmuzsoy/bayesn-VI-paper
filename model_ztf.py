@@ -50,7 +50,7 @@ class Model(object):
         self.device_scale = device_put(jnp.array(self.scale))
         self.sigma_pec = device_put(jnp.array(150 / 3e5))
 
-        self.l_knots = np.genfromtxt('model_files/T21_model/l_knots.txt')
+        self.l_knots = np.array([4150, 4760, 6390, 7930, 9000])
         self.tau_knots = np.genfromtxt('model_files/T21_model/tau_knots.txt')
         self.W0 = np.genfromtxt('model_files/T21_model/W0.txt')
         self.W1 = np.genfromtxt('model_files/T21_model/W1.txt')
@@ -431,9 +431,9 @@ class Model(object):
 
     def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, redshifts, band_indices, flag):
         num_batch = theta.shape[0]
-        W0 = jnp.reshape(W0, (-1, *self.W0.shape))
+        W0 = jnp.reshape(W0, (-1, *W0.shape))
         W0 = jnp.repeat(W0, num_batch, axis=0)
-        W1 = jnp.reshape(W1, (-1, *self.W1.shape))
+        W1 = jnp.reshape(W1, (-1, *W1.shape))
         W1 = jnp.repeat(W1, num_batch, axis=0)
 
         W = W0 + theta[..., None, None] * W1 + eps
