@@ -680,38 +680,42 @@ class Model(object):
             pickle.dump(mcmc, file)
 
     def train_postprocess(self):
-        with open(os.path.join('results', f'foundation_train_4chain.pkl'), 'rb') as file:
+        with open(os.path.join('results', f'ztf_train_4chain.pkl'), 'rb') as file:
             mcmc = pickle.load(file)
-        samples = mcmc.get_samples()
+        samples = mcmc.get_samples(group_by_chain=True)
         # Sign flipping-----------------
         J_R = spline_utils.spline_coeffs_irr([6200.0], self.l_knots, spline_utils.invKD_irr(self.l_knots))
         J_10 = spline_utils.spline_coeffs_irr([10.0], self.tau_knots, spline_utils.invKD_irr(self.tau_knots))
         J_0 = spline_utils.spline_coeffs_irr([0.0], self.tau_knots, spline_utils.invKD_irr(self.tau_knots))
-        #WJt = jnp.matmul(W, self.J_t)
-        #W_grid = jnp.matmul(self.J_l_T, WJt)
-        W1 = np.reshape(samples['W1'], (samples['W1'].shape[0], 6, 6))
-        sign = np.sign(np.squeeze(np.matmul(J_R, np.matmul(W1, J_10.T))) - np.squeeze(np.matmul(J_R, np.matmul(W1, J_0.T))))
+        W1 = np.reshape(samples['W1'], (samples['W1'].shape[0], samples['W1'].shape[1], self.l_knots.shape[0],
+                                        self.tau_knots.shape[0]), order='F')
+        N_chains = W1.shape[0]
+        sign = np.zeros(N_chains)
+        for chain in range(N_chains):
+            chain_W1 = np.mean(W1[chain, ...], axis=0)
+            #chain_sign = np.sign(
+            #    np.squeeze(np.matmul(J_R, np.matmul(chain_W1, J_10.T))) - np.squeeze(
+            #        np.matmul(J_R, np.matmul(chain_W1, J_0.T))))
+            if chain == 0:
+                ref = chain_W1
+            chain_sign = np.sign(np.mean(np.sign(chain_W1 / ref)))
+            sign[chain] = chain_sign
+        sign = np.array([1, 1, -1, 1])
+        plt.hist(samples['theta'][0, :, 25], histtype='step')
+        plt.hist(samples['theta'][1, :, 25], histtype='step')
+        plt.hist(samples['theta'][2, :, 25], histtype='step')
+        plt.hist(samples['theta'][3, :, 25], histtype='step')
+        plt.show()
         samples["W1"] = samples["W1"] * sign[:, None, None]
-        print(sign[-20:])
-        test1 = samples['theta']
-        print(test1[-20:, 0])
-        #plt.hist(test1[:100, 0], histtype='step')
-        new_samples = {}
-        new_samples["theta"] = samples["theta"] * sign[:, None]
-        test2 = new_samples['theta']
-        print(test2[-20:, 0])
-        plt.scatter(test1[:, 0], sign)
+        samples["theta"] = samples["theta"] * sign[:, None, None]
+        print(arviz.summary(samples, var_names=['Rv']))
+        plt.hist(samples['theta'][0, :, 25], histtype='step')
+        plt.hist(samples['theta'][1, :, 25], histtype='step')
+        plt.hist(samples['theta'][2, :, 25], histtype='step')
+        plt.hist(samples['theta'][3, :, 25], histtype='step')
         plt.show()
-        return
-        # ------
-        W1 = samples['W1']
-        theta = samples['theta']
-        plt.hist(theta[:, 0], bins=20)
-        plt.show()
-        W1 = mcmc.get_samples()['W1']
-        plt.hist(W1[:, 0], bins=20)
-        plt.hist(W1[:, 1], bins=20)
-        plt.hist(W1[:, 2], bins=20)
+        print(samples['Rv'].shape)
+        plt.hist(samples['Rv'][:, :].flatten())
         plt.show()
 
     def train_assess(self, params, yaml_dir):
@@ -987,29 +991,12 @@ class Model(object):
 
 # -------------------------------------------------
 
-def get_band_effective_wavelength(band):
-    """Calculate the effective wavelength of a band
-
-    The results of this calculation are cached, and the effective wavelength will only
-    be calculated once for each band.
-
-    Parameters
-    ----------
-    band : str
-        Name of a band in the `sncosmo` band registry
-
-    Returns
-    -------
-    float
-        Effective wavelength of the band.
-    """
-    return sncosmo.get_bandpass(band).wave_eff
-
 
 if __name__ == '__main__':
     model = Model()
-    # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'ztf_train_4chain', chain_method='vectorized')
+    model.fit(250, 250, 4, 'ztf_fit_4chain', 'ztf_train_4chain')
+    # model.train(250, 250, 4, 'ztf_train_4chain', chain_method='vectorized')
+    # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
     # model.fit_assess(params, '4chain_fit_test')
