@@ -15,6 +15,7 @@ import pickle
 import pandas as pd
 import jax
 from jax import device_put
+from jax.tree_util import tree_map
 import jax.numpy as jnp
 from jax.random import PRNGKey
 import extinction
@@ -683,36 +684,26 @@ class Model(object):
     def train_postprocess(self):
         with open(os.path.join('results', f'foundation_train_4chain.pkl'), 'rb') as file:
             mcmc = pickle.load(file)
-        samples = mcmc.get_samples()
+        samples = mcmc.get_samples(group_by_chain=True)
         # Sign flipping-----------------
         J_R = spline_utils.spline_coeffs_irr([6200.0], self.l_knots, spline_utils.invKD_irr(self.l_knots))
         J_10 = spline_utils.spline_coeffs_irr([10.0], self.tau_knots, spline_utils.invKD_irr(self.tau_knots))
         J_0 = spline_utils.spline_coeffs_irr([0.0], self.tau_knots, spline_utils.invKD_irr(self.tau_knots))
-        #WJt = jnp.matmul(W, self.J_t)
-        #W_grid = jnp.matmul(self.J_l_T, WJt)
-        W1 = np.reshape(samples['W1'], (samples['W1'].shape[0], 6, 6))
-        sign = np.sign(np.squeeze(np.matmul(J_R, np.matmul(W1, J_10.T))) - np.squeeze(np.matmul(J_R, np.matmul(W1, J_0.T))))
+        W1 = np.reshape(samples['W1'], (samples['W1'].shape[0], samples['W1'].shape[1], 6, 6), order='F')
+        N_chains = W1.shape[0]
+        sign = np.zeros(N_chains)
+        for chain in range(N_chains):
+            chain_W1 = np.mean(W1[chain, ...], axis=0)
+            chain_sign = np.sign(
+                np.squeeze(np.matmul(J_R, np.matmul(chain_W1, J_10.T))) - np.squeeze(np.matmul(J_R, np.matmul(chain_W1, J_0.T))))
+            #if chain == 0:
+            #    ref = chain_W1
+            #chain_sign = np.sign(np.mean(np.sign(chain_W1 / ref)))
+            sign[chain] = chain_sign
+        plt.hist(samples['W1'][1, :, 0].flatten(), histtype='step')
         samples["W1"] = samples["W1"] * sign[:, None, None]
-        print(sign[-20:])
-        test1 = samples['theta']
-        print(test1[-20:, 0])
-        #plt.hist(test1[:100, 0], histtype='step')
-        new_samples = {}
-        new_samples["theta"] = samples["theta"] * sign[:, None]
-        test2 = new_samples['theta']
-        print(test2[-20:, 0])
-        plt.scatter(test1[:, 0], sign)
-        plt.show()
-        return
-        # ------
-        W1 = samples['W1']
-        theta = samples['theta']
-        plt.hist(theta[:, 0], bins=20)
-        plt.show()
-        W1 = mcmc.get_samples()['W1']
-        plt.hist(W1[:, 0], bins=20)
-        plt.hist(W1[:, 1], bins=20)
-        plt.hist(W1[:, 2], bins=20)
+        samples["theta"] = samples["theta"] * sign[:, None, None]
+        plt.hist(samples['W1'][1, :, 0].flatten(), histtype='step')
         plt.show()
 
     def train_assess(self, params, yaml_dir):

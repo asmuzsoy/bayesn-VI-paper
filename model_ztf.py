@@ -27,7 +27,7 @@ import arviz
 rc('font', **{'family': 'serif', 'serif': ['cmr10']})
 mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
-plt.rcParams.update({'font.size': 22})
+plt.rcParams.update({'font.size': 26})
 
 # jax.config.update('jax_platform_name', 'cpu')
 # numpyro.set_host_device_count(4)
@@ -804,25 +804,30 @@ class Model(object):
         plt.show()
 
     def process_dataset(self, mode='training'):
+        sn_list = pd.DataFrame(os.listdir('data/LCs/ZTF'), columns=['file'])
+        sn_list['sn'] = sn_list.file.apply(lambda x: x[:x.find('.')])
+        self.sn_list = sn_list.sn.values
         if os.path.exists(os.path.join('data', 'LCs', 'pickles', 'ztf', 'dataset.pkl')):
             with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'dataset.pkl'), 'rb') as file:
                 all_data = pickle.load(file)
-            if mode == 'training':
-                with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'training_J_t.pkl'), 'rb') as file:
-                    all_J_t = pickle.load(file)
-                with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'training_J_t_hsiao.pkl'), 'rb') as file:
-                    all_J_t_hsiao = pickle.load(file)
-            else:
-                with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'fitting.pkl'), 'rb') as file:
-                    self.J_t = pickle.load(file)
-                with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'fitting_J_t_hsiao.pkl'), 'rb') as file:
-                    self.J_t_hsiao = pickle.load(file)
+        if os.path.exists(os.path.join('data', 'LCs', 'pickles', 'ztf', 'training_J_t.pkl')) and mode == 'training':
+            with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'training_J_t.pkl'), 'rb') as file:
+                all_J_t = pickle.load(file)
+            with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'training_J_t_hsiao.pkl'), 'rb') as file:
+                all_J_t_hsiao = pickle.load(file)
             self.data = device_put(all_data.T)
             self.J_t = device_put(all_J_t)
             self.J_t_hsiao = device_put(all_J_t_hsiao)
             return
-        sn_list = pd.DataFrame(os.listdir('data/LCs/ZTF'), columns=['file'])
-        sn_list['sn'] = sn_list.file.apply(lambda x: x[:x.find('.')])
+        if os.path.exists(os.path.join('data', 'LCs', 'pickles', 'ztf', 'fitting_J_t.pkl')) and mode == 'fitting':
+            with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'fitting_J_t.pkl'), 'rb') as file:
+                all_J_t = pickle.load(file)
+            with open(os.path.join('data', 'LCs', 'pickles', 'ztf', 'fitting_J_t_hsiao.pkl'), 'rb') as file:
+                all_J_t_hsiao = pickle.load(file)
+            self.data = device_put(all_data.T)
+            self.J_t = device_put(all_J_t)
+            self.J_t_hsiao = device_put(all_J_t_hsiao)
+            return
         meta_file = pd.read_csv('data/LCs/meta/ztf_dr1_training.txt', delim_whitespace=True)
         sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')
         zp_dict = {'p48g': 4.88043e-9, 'p48r': 2.70846e-9, 'p48i': 1.75033e-9}
@@ -856,8 +861,8 @@ class Model(object):
         all_J_t = np.zeros((N_sn, self.tau_knots.shape[0], N_obs))
         all_J_t_hsiao = np.zeros((N_sn, self.hsiao_t.shape[0], N_obs))
         if mode == 'fitting':
-            all_J_t = np.zeros((N_sn, self.tau_knots.shape[0], 200))
-            all_J_t_hsiao = np.zeros((N_sn, self.hsiao_t.shape[0], 200))
+            all_J_t = np.zeros((N_sn, self.tau_knots.shape[0], 50 * len(self.band_dict.keys())))
+            all_J_t_hsiao = np.zeros((N_sn, self.hsiao_t.shape[0], 50 * len(self.band_dict.keys())))
             ts = np.linspace(-10, 40, 50)
             ts = np.repeat(ts, len(self.band_dict.keys()))
             self.ts = ts
@@ -889,31 +894,43 @@ class Model(object):
         self.J_t_hsiao = device_put(all_J_t_hsiao)
 
     def fit_from_results(self, input_file):
+        self.process_dataset(mode='fitting')
         with open(os.path.join('results', f'{input_file}.pkl'), 'rb') as file:
             result = pickle.load(file)
+        result = result.get_samples()
         N = result['theta'].shape[1]
-        W0 = np.reshape(np.mean(result['W0'], axis=0), (6, 6), order='F')
-        W1 = np.reshape(np.mean(result['W1'], axis=0), (6, 6), order='F')
-        eps = np.reshape(np.mean(result['eps'], axis=0), (N, 4, 6), order='F')
+        W0 = np.reshape(np.mean(result['W0'], axis=0), (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
+        W1 = np.reshape(np.mean(result['W1'], axis=0), (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
+        eps = np.reshape(np.mean(result['eps'], axis=0), (N, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
         new_eps = np.zeros((eps.shape[0], eps.shape[1] + 2, eps.shape[2]))
-        theta, Av, Ds = np.mean(result['theta'], axis=0), np.mean(result['AV'], axis=0), np.mean(result['Ds'], axis=0)
+        theta, Av, Rv, Ds = np.mean(result['theta'], axis=0), np.mean(result['AV'], axis=0), \
+                            np.mean(result['Rv'], axis=0), np.mean(result['Ds'], axis=0)
         new_eps[:, 1:-1, :] = eps
         eps = new_eps
         N_fit = self.J_t.shape[-1]
         band_indices = self.data[-4, :, :].astype(int)
-        fit_band_indices = np.tile(np.arange(4), (band_indices.shape[-1], int(N_fit / len(self.band_dict.keys())))).T
+        fit_band_indices = np.tile(np.arange(len(self.band_dict.keys())), (band_indices.shape[-1], int(N_fit / len(self.band_dict.keys())))).T
         redshift = self.data[-3, 0, :]
         flag = self.data[-1, ...]
         fit_flag = np.ones_like(fit_band_indices)
-        model_flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, redshift, fit_band_indices, fit_flag)
+        model_flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, redshift, fit_band_indices, fit_flag)
         ts = np.linspace(-10, 40, 50)
+        bands = ['p48g', 'p48r', 'p48i']
+        colours = ['g', 'r', 'c']
         for _ in range(10):
-            plt.figure()
-            for i in range(4):
+            plt.figure(figsize=(12, 8))
+            for i in range(len(self.band_dict.keys())):
                 inds = (band_indices[:, _] == i) & (flag[:, _] == 1)
+                if np.sum(inds) == 0:
+                    continue
                 fit_inds = (fit_band_indices[:, _] == i) & (fit_flag[:, _] == 1)
-                plt.errorbar(self.data[0, inds, _], self.data[1, inds, _], yerr=self.data[2, inds, _], fmt='x')
-                plt.plot(ts, model_flux[fit_inds, _], ls='--')
+                plt.errorbar(self.data[0, inds, _], self.data[1, inds, _] / self.scale,
+                             yerr=self.data[2, inds, _] / self.scale, fmt=f'{colours[i]}x', label=bands[i])
+                plt.plot(ts, model_flux[fit_inds, _] / self.scale, ls='--', c=colours[i])
+            plt.legend()
+            plt.xlabel('Rest-frame phase / days')
+            plt.ylabel(r'f$_\lambda$ / erg s$^{-1}$ cm$^{-2}$ $\AA^{-1}$')
+            plt.title(self.sn_list[_])
         plt.show()
 
     def test_params(self, dataset, params):
@@ -992,9 +1009,9 @@ def get_band_effective_wavelength(band):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 1, 'ztf_train_4chain', chain_method='vectorized')
+    model.train(250, 250, 4, 'ztf_train_4chain', chain_method='vectorized')
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
     # model.fit_assess(params, '4chain_fit_test')
-    # model.fit_from_results('foundation_train')
+    # model.fit_from_results('ztf_train_4chain')
     # model.train_assess(params, 'gpu_train_dist')
