@@ -455,7 +455,7 @@ class Model(object):
 
     def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel'):
         self.process_dataset(mode='training')
-        rng = PRNGKey(123)
+        rng = PRNGKey(1)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_to_median())
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
@@ -762,8 +762,8 @@ def get_band_effective_wavelength(band):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    # model.train(250, 250, 4, 'foundation_train_4chain', chain_method='vectorized')
-    model.train_postprocess()
+    model.train(250, 250, 4, 'foundation_train_4chain', chain_method='vectorized')
+    # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
     # model.fit_assess(params, '4chain_fit_test')
