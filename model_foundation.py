@@ -24,13 +24,14 @@ from astropy.cosmology import FlatLambdaCDM
 import matplotlib as mpl
 from matplotlib import rc
 import arviz
+import extinction
 
 rc('font', **{'family': 'serif', 'serif': ['cmr10']})
 mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 
-# jax.config.update('jax_platform_name', 'cpu')
+jax.config.update('jax_platform_name', 'cpu')
 # numpyro.set_host_device_count(4)
 
 print(jax.devices())
@@ -47,6 +48,8 @@ class Model(object):
         self.settings = parse_settings(bands, settings,
                                        ignore_unknown_settings=ignore_unknown_settings)
         self.M0 = device_put(jnp.array(-19.5))
+        self.RV_MW = device_put(jnp.array(3.1))
+
         self.scale = 1e18
         self.device_scale = device_put(jnp.array(self.scale))
         self.sigma_pec = device_put(jnp.array(150 / 3e5))
@@ -171,7 +174,7 @@ class Model(object):
         self.band_interpolate_weights = jnp.array(band_weights)
         self.model_wave = 10 ** (model_log_wave)
 
-    def _calculate_band_weights(self, redshifts):
+    def _calculate_band_weights(self, redshifts, ebv):
         """Calculate the band weights for a given set of redshifts
 
         We have precomputed the weights for each bandpass, so we simply interpolate
@@ -209,13 +212,22 @@ class Model(object):
         # We need an extra term of 1 + z from the filter contraction.
         result /= (1 + redshifts)[:, None, None]
 
+        # Apply MW extinction
+        abv = self.RV_MW * ebv
+        mw_array = jnp.zeros((result.shape[0], result.shape[1]))
+        for i, val in enumerate(abv):
+            mw = jnp.power(10, -0.4 * extinction.fitzpatrick99(self.model_wave, val, self.RV_MW))
+            mw_array = mw_array.at[i, :].set(mw)
+
+        result = result * mw_array[..., None]
+
         # Hack fix maybe
         sum = jnp.sum(result, axis=1)
         result /= sum[:, None, :]
 
         return result
 
-    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, redshifts, band_indices, flag):
+    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, redshifts, ebv, band_indices, flag):
         num_batch = theta.shape[0]
         W0 = jnp.reshape(W0, (-1, *self.W0.shape))
         W0 = jnp.repeat(W0, num_batch, axis=0)
@@ -234,14 +246,14 @@ class Model(object):
 
         num_observations = band_indices.shape[0]
 
-        band_weights = self._calculate_band_weights(redshifts)
+        #band_weights = self._calculate_band_weights(redshifts, ebv)
         batch_indices = (
             jnp.arange(num_batch)
             .repeat(num_observations)
         ).astype(int)
 
         obs_band_weights = (
-            band_weights[batch_indices, :, band_indices.T.flatten()]
+            self.band_weights[batch_indices, :, band_indices.T.flatten()]
             .reshape((num_batch, num_observations, -1))
             .transpose(0, 2, 1)
         )
@@ -444,18 +456,20 @@ class Model(object):
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
-            band_indices = obs[-4, :, sn_index].astype(int).T
-            redshift = obs[-3, 0, sn_index]
-            muhat = obs[-2, 0, sn_index]
+            band_indices = obs[-5, :, sn_index].astype(int).T
+            redshift = obs[-4, 0, sn_index]
+            muhat = obs[-3, 0, sn_index]
+            ebv = obs[-2, 0, sn_index]
             flag = obs[-1, :, sn_index].T
             muhat_err = 5 / (redshift * jnp.log(10)) * self.sigma_pec
             Ds_err = jnp.sqrt(muhat_err * muhat_err + sigma0 * sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
-            flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, redshift, band_indices, flag)
+            flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, redshift, ebv, band_indices, flag)
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)  # _{sn_index}
 
     def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel'):
         self.process_dataset(mode='training')
+        self.band_weights = self._calculate_band_weights(self.data[-4, 0, :], self.data[-2, 0, :])
         rng = PRNGKey(1)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_to_median())
@@ -635,8 +649,8 @@ class Model(object):
         all_lcs = []
         t_ranges = []
         for i, row in sn_list.iterrows():
-            data = pd.read_csv(os.path.join('data', 'LCs', 'Foundation', 'Foundation_DR1', row.file),
-                               skiprows=19, delim_whitespace=True, skipfooter=1, engine='python')
+            meta, lcdata = sncosmo.read_snana_ascii(os.path.join('data', 'LCs', 'Foundation', 'Foundation_DR1', row.file), default_tablename='OBS')
+            data = lcdata['OBS'].to_pandas()
             data['t'] = (data.MJD - row.SEARCH_PEAKMJD) / (1 + row.REDSHIFT_CMB)
             data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[x])
             data['zp'] = data.FLT.apply(lambda x: zp_dict[x])
@@ -644,9 +658,10 @@ class Model(object):
             data['flux_err'] = (np.log(10) / 2.5) * data['flux'] * data['MAGERR']
             data['redshift'] = row.REDSHIFT_CMB
             data['redshift_error'] = row.REDSHIFT_CMB_ERR
+            data['MWEBV'] = meta['MWEBV']
             data['dist_mod'] = self.cosmo.distmod(row.REDSHIFT_CMB)
             data['flag'] = 1
-            lc = data[['t', 'flux', 'flux_err', 'band_indices', 'redshift', 'dist_mod', 'flag']]
+            lc = data[['t', 'flux', 'flux_err', 'band_indices', 'redshift', 'dist_mod', 'MWEBV', 'flag']]
             lc = lc[(lc['t'] > -10) & (lc['t'] < 40)]
             lc = lc.dropna(subset=['flux', 'flux_err'])
             t_ranges.append((lc['t'].min(), lc['t'].max()))
@@ -690,6 +705,7 @@ class Model(object):
         self.data = device_put(all_data.T)
         self.J_t = device_put(all_J_t)
         self.J_t_hsiao = device_put(all_J_t_hsiao)
+
 
     def fit_from_results(self, input_file):
         with open(os.path.join('results', f'{input_file}.pkl'), 'rb') as file:
