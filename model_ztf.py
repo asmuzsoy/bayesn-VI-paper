@@ -31,6 +31,7 @@ plt.rcParams.update({'font.size': 26})
 
 # jax.config.update('jax_platform_name', 'cpu')
 # numpyro.set_host_device_count(4)
+os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = "0.75"
 
 print(jax.devices())
 
@@ -611,6 +612,9 @@ class Model(object):
             self.data = device_put(all_data.T)
             self.J_t = device_put(all_J_t)
             self.J_t_hsiao = device_put(all_J_t_hsiao)
+            N = 2
+            #print(self.data.shape)
+            #print(self.J_t.shape)
             return
         meta_file = pd.read_csv('data/LCs/meta/ztf_dr1_training.txt', delim_whitespace=True)
         sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')
