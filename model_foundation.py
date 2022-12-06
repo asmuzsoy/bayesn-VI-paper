@@ -526,7 +526,6 @@ class Model(object):
             'sigma0': np.mean(samples['sigma0'])
         }"""
 
-
     def train_assess(self, params, yaml_dir):
         with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
             result = yaml.load(file, yaml.Loader)

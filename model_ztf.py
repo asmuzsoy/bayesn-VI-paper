@@ -31,7 +31,7 @@ plt.rcParams.update({'font.size': 26})
 
 # jax.config.update('jax_platform_name', 'cpu')
 # numpyro.set_host_device_count(4)
-os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = "0.75"
+# os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = "0.75"
 
 print(jax.devices())
 
@@ -487,6 +487,10 @@ class Model(object):
             sign[chain] = chain_sign
         samples["W1"] = samples["W1"] * sign[:, None, None]
         samples["theta"] = samples["theta"] * sign[:, None, None]
+        # Modify W1 and theta----------------
+        theta_std = np.std(samples["theta"], axis=2)
+        samples['theta'] = samples['theta'] / theta_std[..., None]
+        samples['W1'] = samples['W1'] * theta_std[..., None]
         # Save convergence data for each parameter to csv file
         summary = arviz.summary(samples)
         summary.to_csv(os.path.join('results', output, 'fit_summary.csv'))
