@@ -465,10 +465,7 @@ class Model(object):
         samples = mcmc.get_samples(group_by_chain=True)
         self.train_postprocess(samples, output)
 
-    def train_postprocess(self):#, samples, output):
-        output = 'foundation_train_4chain'
-        with open(f'results/{output}.pkl', 'rb') as file:
-            samples = pickle.load(file)
+    def train_postprocess(self, samples, output):
         if not os.path.exists(os.path.join('results', output)):
             os.mkdir(os.path.join('results', output))
         with open(os.path.join('results', output, 'initial_chains.pkl'), 'wb') as file:
