@@ -465,7 +465,10 @@ class Model(object):
         samples = mcmc.get_samples(group_by_chain=True)
         self.train_postprocess(samples, output)
 
-    def train_postprocess(self, samples, output):
+    def train_postprocess(self):#, samples, output):
+        output = 'foundation_train_4chain'
+        with open(f'results/{output}.pkl', 'rb') as file:
+            samples = pickle.load(file)
         if not os.path.exists(os.path.join('results', output)):
             os.mkdir(os.path.join('results', output))
         with open(os.path.join('results', output, 'initial_chains.pkl'), 'wb') as file:
@@ -484,6 +487,10 @@ class Model(object):
             sign[chain] = chain_sign
         samples["W1"] = samples["W1"] * sign[:, None, None]
         samples["theta"] = samples["theta"] * sign[:, None, None]
+        # Modify W1 and theta----------------
+        theta_std = np.std(samples["theta"], axis=2)
+        samples['theta'] = samples['theta'] / theta_std[..., None]
+        samples['W1'] = samples['W1'] * theta_std[..., None]
         # Save convergence data for each parameter to csv file
         summary = arviz.summary(samples)
         summary.to_csv(os.path.join('results', output, 'fit_summary.csv'))
@@ -792,8 +799,8 @@ def get_band_effective_wavelength(band):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'foundation_train_4chain', chain_method='vectorized')
-    # model.train_postprocess()
+    # model.train(250, 250, 4, 'foundation_train_4chain', chain_method='vectorized')
+    model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
     # model.fit_assess(params, '4chain_fit_test')
