@@ -30,7 +30,7 @@ mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 
-jax.config.update('jax_platform_name', 'cpu')
+# jax.config.update('jax_platform_name', 'cpu')
 # numpyro.set_host_device_count(4)
 
 print(jax.devices())
@@ -792,7 +792,7 @@ def get_band_effective_wavelength(band):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(1, 1, 2, 'foundation_train_test', chain_method='vectorized')
+    model.train(250, 250, 4, 'foundation_train_4chain', chain_method='vectorized')
     # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
