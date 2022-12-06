@@ -773,25 +773,6 @@ class Model(object):
 
 # -------------------------------------------------
 
-def get_band_effective_wavelength(band):
-    """Calculate the effective wavelength of a band
-
-    The results of this calculation are cached, and the effective wavelength will only
-    be calculated once for each band.
-
-    Parameters
-    ----------
-    band : str
-        Name of a band in the `sncosmo` band registry
-
-    Returns
-    -------
-    float
-        Effective wavelength of the band.
-    """
-    return sncosmo.get_bandpass(band).wave_eff
-
-
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
