@@ -486,7 +486,7 @@ class Model(object):
         samples["theta"] = samples["theta"] * sign[:, None, None]
         # Save convergence data for each parameter to csv file
         summary = arviz.summary(samples)
-        summary.to_csv(os.path.join('fit_summaries', f'{output}.csv'))
+        summary.to_csv(os.path.join('results', output, 'fit_summary.csv'))
         with open(os.path.join('results', output, 'chains.pkl'), 'wb') as file:
             pickle.dump(samples, file)
         # Save best fit global params to files for easy inspection and reading in------
