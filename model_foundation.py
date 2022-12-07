@@ -470,7 +470,7 @@ class Model(object):
     def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel'):
         self.process_dataset(mode='training')
         self.band_weights = self._calculate_band_weights(self.data[-4, 0, :], self.data[-2, 0, :])
-        rng = PRNGKey(1)
+        rng = PRNGKey(10)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_to_median())
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
