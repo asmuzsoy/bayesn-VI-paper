@@ -469,6 +469,8 @@ class Model(object):
 
     def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel'):
         self.process_dataset(mode='training')
+        print(self.data.shape)
+        return
         self.band_weights = self._calculate_band_weights(self.data[-4, 0, :], self.data[-2, 0, :])
         rng = PRNGKey(10)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
