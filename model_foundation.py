@@ -639,9 +639,10 @@ class Model(object):
             self.J_t = device_put(all_J_t)
             self.J_t_hsiao = device_put(all_J_t_hsiao)
             return
-        sn_list = pd.read_csv('data/LCs/Foundation/Foundation_DR1/Foundation_DR1.LIST', header=0, names=['file'])
+        sn_list = pd.read_csv('data/LCs/Foundation/Foundation_DR1/Foundation_DR1.LIST', names=['file'])
         sn_list['sn'] = sn_list.file.apply(lambda x: x[x.rfind('_') + 1: x.rfind('.')])
         meta_file = pd.read_csv('data/LCs/meta/T21_training_set_meta.txt', delim_whitespace=True)
+
         sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')
         zp_dict = {'g': 4.62937e-9, 'r': 2.83071e-9, 'i': 1.91728e-9, 'z': 1.44673e-9}
         n_obs = []
