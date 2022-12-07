@@ -31,7 +31,7 @@ mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 
-# jax.config.update('jax_platform_name', 'cpu')
+jax.config.update('jax_platform_name', 'cpu')
 # numpyro.set_host_device_count(4)
 
 print(jax.devices())
@@ -456,23 +456,24 @@ class Model(object):
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
-            band_indices = obs[-5, :, sn_index].astype(int).T
-            redshift = obs[-4, 0, sn_index]
+            band_indices = obs[-6, :, sn_index].astype(int).T
+            redshift = obs[-5, 0, sn_index]
+            redshift_error = obs[-4, 0, sn_index]
             muhat = obs[-3, 0, sn_index]
             ebv = obs[-2, 0, sn_index]
             flag = obs[-1, :, sn_index].T
-            muhat_err = 5 / (redshift * jnp.log(10)) * self.sigma_pec
+            muhat_err = 5 / (redshift * jnp.log(10)) * jnp.sqrt(jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))
             Ds_err = jnp.sqrt(muhat_err * muhat_err + sigma0 * sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
             flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, redshift, ebv, band_indices, flag)
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)  # _{sn_index}
 
-    def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel'):
+    def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy=init_to_median()):
         self.process_dataset(mode='training')
         self.band_weights = self._calculate_band_weights(self.data[-4, 0, :], self.data[-2, 0, :])
         rng = PRNGKey(10)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
-        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_to_median())
+        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
         mcmc.run(rng, self.data)
@@ -662,7 +663,7 @@ class Model(object):
             data['MWEBV'] = meta['MWEBV']
             data['dist_mod'] = self.cosmo.distmod(row.REDSHIFT_CMB)
             data['flag'] = 1
-            lc = data[['t', 'flux', 'flux_err', 'band_indices', 'redshift', 'dist_mod', 'MWEBV', 'flag']]
+            lc = data[['t', 'flux', 'flux_err', 'band_indices', 'redshift', 'redshift_error', 'dist_mod', 'MWEBV', 'flag']]
             lc = lc[(lc['t'] > -10) & (lc['t'] < 40)]
             lc = lc.dropna(subset=['flux', 'flux_err'])
             t_ranges.append((lc['t'].min(), lc['t'].max()))
@@ -793,7 +794,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'foundation_train_4chain_sequential', chain_method='sequential')
+    model.train(250, 250, 4, 'foundation_train_4chain_initsample', chain_method='vectorized', init_strategy=init_to_sample())
     # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
