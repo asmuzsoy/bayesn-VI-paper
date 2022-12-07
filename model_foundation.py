@@ -793,7 +793,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'foundation_train_4chain', chain_method='vectorized')
+    model.train(500, 500, 4, 'foundation_train_4chain_500', chain_method='vectorized')
     # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
