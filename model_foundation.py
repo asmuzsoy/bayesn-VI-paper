@@ -508,7 +508,7 @@ class Model(object):
         sigma0_ = sigma0_init + np.random.normal(0, 0.01)
         param_init['W0'] = W0_init + np.random.normal(0, 0.01, W0_init.shape[0])
         param_init['W1'] = W1_init + np.random.normal(0, 0.01, W1_init.shape[0])
-        param_init['Rv'] = RV_init + np.random.uniform(1.0 - RV_init, 5.0 - RV_init)
+        param_init['Rv'] = RV_init # + np.random.uniform(1.0 - RV_init, 5.0 - RV_init)
         param_init['tauA'] = tauA_
         param_init['sigma0'] = sigma0_
         param_init['sigmaepsilon'] = sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape)
