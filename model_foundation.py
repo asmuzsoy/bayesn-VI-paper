@@ -531,8 +531,8 @@ class Model(object):
         else:
             raise ValueError('Invalid init strategy, must be one of value, median and sample')
         self.band_weights = self._calculate_band_weights(self.data[-4, 0, :], self.data[-2, 0, :])
-        # rng = jnp.array([PRNGKey(1), PRNGKey(2), PRNGKey(3), PRNGKey(4)])
-        rng = PRNGKey(101)
+        rng = jnp.array([PRNGKey(111), PRNGKey(222), PRNGKey(333), PRNGKey(444)])
+        #rng = PRNGKey(101)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
@@ -855,7 +855,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'foundation_train_4chain_value', chain_method='vectorized', init_strategy='value')
+    model.train(250, 250, 4, 'foundation_train_4chain', chain_method='vectorized', init_strategy='median')
     # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
