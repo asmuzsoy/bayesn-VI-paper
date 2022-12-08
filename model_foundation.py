@@ -31,7 +31,7 @@ mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 
-# jax.config.update('jax_platform_name', 'cpu')
+jax.config.update('jax_platform_name', 'cpu')
 # numpyro.set_host_device_count(4)
 
 print(jax.devices())
@@ -468,12 +468,73 @@ class Model(object):
             flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, redshift, ebv, band_indices, flag)
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)  # _{sn_index}
 
-    def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy=init_to_median()):
+    def initial_guess(self, n_chains=1, reference_model="M20", RV_init=3.0, tauA_init=0.3):
+        # Set hyperparameter initialisations
+        # Set initialisations (these will be jittered chain by chain)
+        param_root = 'model_files/T21_model'
+        W0_init = np.loadtxt(f'{param_root}/W0.txt')
+        n_lknots, n_tauknots = W0_init.shape
+        W0_init = W0_init.flatten(order='F')
+        W1_init = np.loadtxt(f'{param_root}/W1.txt').flatten(order='F')
+        RV_init, tauA_init = np.loadtxt(f'{param_root}/M0_sigma0_RV_tauA.txt')[[2, 3]]
+
+        # I should remove all of this hardcoding
+        n_eps = (n_lknots - 2) * n_tauknots
+        sigma0_init = 0.1
+        sigmaepsilon_init = 0.1 * np.ones(n_eps)
+        L_Omega_init = np.eye(n_eps)
+
+        n_sne = self.data.shape[-1]
+
+        # Prepare initial guesses
+        # I should make the jittering more free for the user to control
+        param_init = {
+            'W0': np.zeros((n_chains, *W0_init.shape)),
+            'W1': np.zeros((n_chains, *W1_init.shape)),
+            'Rv': np.zeros(n_chains),
+            'tauA': np.zeros(n_chains),
+            'sigma0': np.zeros(n_chains),
+            'sigmaepsilon': np.zeros((n_chains, *sigmaepsilon_init.shape)),
+            'L_Omega': np.zeros((n_chains, *L_Omega_init.shape)),
+            'Av': np.zeros((n_chains, n_sne)),
+            'theta': np.zeros((n_chains, n_sne)),
+            'epsilon': np.zeros((n_chains, n_sne, n_eps)),
+            'Ds': np.zeros((n_chains, n_sne))
+        }
+        param_init = {}
+        tauA_ = tauA_init + np.random.normal(0, 0.01)
+        while tauA_ < 0:
+            tauA_ = tauA_init + np.random.normal(0, 0.01)
+        sigma0_ = sigma0_init + np.random.normal(0, 0.01)
+        param_init['W0'] = W0_init + np.random.normal(0, 0.01, W0_init.shape[0])
+        param_init['W1'] = W1_init + np.random.normal(0, 0.01, W1_init.shape[0])
+        param_init['Rv'] = RV_init + np.random.uniform(1.0 - RV_init, 5.0 - RV_init)
+        param_init['tauA'] = tauA_
+        param_init['sigma0'] = sigma0_
+        param_init['sigmaepsilon'] = sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape)
+        param_init['L_Omega'] = L_Omega_init
+        param_init['theta'] = np.random.normal(0, 1, n_sne)
+        param_init['Av'] = np.random.exponential(tauA_, n_sne)
+        param_init['epsilon'] = np.random.normal(0, 1, (n_sne, n_eps))
+        param_init['Ds'] = np.random.normal(self.data[-3, 0, :], sigma0_)
+
+        return param_init
+
+    def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median'):
         self.process_dataset(mode='training')
+        if init_strategy == 'value':
+            init_strategy = init_to_value(values=self.initial_guess())
+        elif init_strategy == 'median':
+            init_strategy = init_to_median()
+        elif init_strategy == 'sample':
+            init_strategy = init_to_sample()
+        else:
+            raise ValueError('Invalid init strategy, must be one of value, median and sample')
         self.band_weights = self._calculate_band_weights(self.data[-4, 0, :], self.data[-2, 0, :])
-        rng = PRNGKey(24)
+        rng = jnp.array([PRNGKey(1), PRNGKey(2), PRNGKey(3), PRNGKey(4)])
+        # rng = PRNGKey([1, 2 , 3, 4])
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
-        nuts_kernel = HMC(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy)
+        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
         mcmc.run(rng, self.data)
@@ -709,7 +770,6 @@ class Model(object):
         self.J_t = device_put(all_J_t)
         self.J_t_hsiao = device_put(all_J_t_hsiao)
 
-
     def fit_from_results(self, input_file):
         with open(os.path.join('results', f'{input_file}.pkl'), 'rb') as file:
             result = pickle.load(file)
@@ -795,7 +855,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'foundation_train_4chain_hmc', chain_method='vectorized', init_strategy=init_to_median())
+    model.train(250, 250, 4, 'foundation_train_4chain_value', chain_method='vectorized', init_strategy='value')
     # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
