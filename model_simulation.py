@@ -453,6 +453,16 @@ class Model(object):
             Ds_err = jnp.sqrt(muhat_err * muhat_err + sigma0 * sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
             flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, redshift, ebv, band_indices, flag)
+            """for i in range(4):
+                inds = band_indices[:, 0] == i
+                plt.scatter(self.t[inds], flux[inds, 0])
+                plt.errorbar(self.t[inds], obs[1, inds, 0], yerr=obs[2, inds, 0], fmt='x')
+            plt.show()
+            for i in range(4):
+                inds = band_indices[:, 1] == i
+                plt.scatter(self.t[inds], flux[inds, 1])
+                plt.errorbar(self.t[inds], obs[1, inds, 1], yerr=obs[2, inds, 1], fmt='x')
+            plt.show()"""
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)  # _{sn_index}
 
     def initial_guess(self, n_chains=1, reference_model="M20", RV_init=3.0, tauA_init=0.3):
@@ -518,8 +528,8 @@ class Model(object):
         else:
             raise ValueError('Invalid init strategy, must be one of value, median and sample')
         self.band_weights = self._calculate_band_weights(self.data[-4, 0, :], self.data[-2, 0, :])
-        # rng = jnp.array([PRNGKey(1), PRNGKey(2), PRNGKey(3), PRNGKey(4)])
-        rng = PRNGKey(101)
+        rng = jnp.array([PRNGKey(12), PRNGKey(34), PRNGKey(56), PRNGKey(78)])
+        # rng = PRNGKey(10)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
@@ -679,9 +689,9 @@ class Model(object):
         plt.show()
 
     def process_dataset(self, mode='training'):
-        dataset_path = 'data/bayesn_sim_team_z0.1_daily_25000.h5'
+        dataset_path = 'data/bayesn_sim_team_z0.1_25000.h5'
         dataset = lcdata.read_hdf5(dataset_path)[:157]
-        param_path = 'data/bayesn_sim_team_z0.1_daily_25000_params.csv'
+        param_path = 'data/bayesn_sim_team_z0.1_25000_params.csv'
         params = pd.read_csv(param_path)
         pd_dataset = dataset.meta.to_pandas()
         pd_dataset = pd_dataset.astype({'object_id': int})
@@ -814,7 +824,7 @@ def get_band_effective_wavelength(band):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'simulation_train', chain_method='vectorized', init_strategy='median')
+    model.train(2500, 2500, 4, 'simulation_train_2500', chain_method='vectorized', init_strategy='median')
     # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')

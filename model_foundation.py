@@ -466,6 +466,16 @@ class Model(object):
             Ds_err = jnp.sqrt(muhat_err * muhat_err + sigma0 * sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
             flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, redshift, ebv, band_indices, flag)
+            """for i in range(4):
+                inds = (band_indices[:, 0] == i) & (flag[:, 0] > 0)
+                plt.scatter(obs[0, inds, 0], flux[inds, 0])
+                plt.errorbar(obs[0, inds, 0], obs[1, inds, 0], yerr=obs[2, inds, 0], fmt='x')
+            plt.show()
+            for i in range(4):
+                inds = (band_indices[:, 1] == i) & (flag[:, 1] > 0)
+                plt.scatter(obs[0, inds, 1], flux[inds, 1])
+                plt.errorbar(obs[0, inds, 1], obs[1, inds, 1], yerr=obs[2, inds, 1], fmt='x')
+            plt.show()"""
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)  # _{sn_index}
 
     def initial_guess(self, n_chains=1, reference_model="M20", RV_init=3.0, tauA_init=0.3):
@@ -855,7 +865,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'foundation_train_4chain', chain_method='vectorized', init_strategy='median')
+    model.train(2500, 2500, 4, 'foundation_train_2500', chain_method='vectorized', init_strategy='median')
     # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
