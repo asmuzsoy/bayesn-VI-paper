@@ -471,12 +471,13 @@ class Model(object):
     def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy=init_to_median()):
         self.process_dataset(mode='training')
         self.band_weights = self._calculate_band_weights(self.data[-4, 0, :], self.data[-2, 0, :])
-        rng = PRNGKey(121)
+        rng = PRNGKey(24)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
-        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy)
+        nuts_kernel = HMC(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
         mcmc.run(rng, self.data)
+        mcmc.print_summary()
         samples = mcmc.get_samples(group_by_chain=True)
         self.train_postprocess(samples, output)
 
@@ -794,7 +795,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'foundation_train_4chain', chain_method='vectorized', init_strategy=init_to_median())
+    model.train(250, 250, 4, 'foundation_train_4chain_hmc', chain_method='vectorized', init_strategy=init_to_median())
     # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
