@@ -227,6 +227,44 @@ class Model(object):
 
         return result
 
+    def get_spectra(self, theta, Av, eps, Rv, t):
+        num_batch = theta.shape[0]
+        W0 = jnp.reshape(self.W0, (-1, *self.W0.shape))
+        W0 = jnp.repeat(W0, num_batch, axis=0)
+        W1 = jnp.reshape(self.W1, (-1, *self.W1.shape))
+        W1 = jnp.repeat(W1, num_batch, axis=0)
+
+        W = W0 + theta[..., None, None] * W1 + eps
+
+        J_t = spline_utils.spline_coeffs_irr(t, self.tau_knots, self.KD_t).T
+        J_t_hsiao = spline_utils.spline_coeffs_irr(t, self.hsiao_t, self.KD_t_hsiao).T
+        J_t = jnp.reshape(J_t, (-1, *J_t.shape))
+        J_t = jnp.repeat(J_t, num_batch, axis=0)
+        J_t_hsiao = jnp.reshape(J_t_hsiao, (-1, *J_t_hsiao.shape))
+        J_t_hsiao = jnp.repeat(J_t_hsiao, num_batch, axis=0)
+
+        WJt = jnp.matmul(W, J_t)
+        W_grid = jnp.matmul(self.J_l_T, WJt)
+
+        HJt = jnp.matmul(self.hsiao_flux, J_t_hsiao)
+        H_grid = jnp.matmul(self.J_l_T_hsiao, HJt)
+
+        model_spectra = H_grid * 10 ** (-0.4 * W_grid)
+
+        return model_spectra
+
+    def simulate_spectrum(self):
+        t = jnp.array([0])
+
+        theta = jnp.array([0])
+        Av = jnp.zeros((1, 1))
+        eps = jnp.zeros((1, 6, 6))
+        Rv = jnp.array([[2.61]])
+        spectra = self.get_spectra(theta, Av, eps, Rv, t)
+        plt.plot(self.model_wave, spectra[0, :, :])
+        plt.show()
+
+
     def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, redshifts, ebv, band_indices, flag):
         num_batch = theta.shape[0]
         W0 = jnp.reshape(W0, (-1, *self.W0.shape))
@@ -728,8 +766,9 @@ class Model(object):
             data['t'] = (data.MJD - row.SEARCH_PEAKMJD) / (1 + row.REDSHIFT_CMB)
             data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[x])
             data['zp'] = data.FLT.apply(lambda x: zp_dict[x])
-            data['flux'] = data['zp'] * np.power(10, -0.4 * data['MAG']) * self.scale
+            data['flux'] = data['zp'] * np.power(10, -0.4 * data['MAG']) # * self.scale
             data['flux_err'] = (np.log(10) / 2.5) * data['flux'] * data['MAGERR']
+            data['ratio'] = data.FLUXCAL / data.flux
             data['redshift'] = row.REDSHIFT_CMB
             data['redshift_error'] = row.REDSHIFT_CMB_ERR
             data['MWEBV'] = meta['MWEBV']
@@ -865,7 +904,8 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(2500, 2500, 4, 'foundation_train_2500', chain_method='vectorized', init_strategy='median')
+    # model.train(2500, 2500, 4, 'foundation_train_2500', chain_method='vectorized', init_strategy='median')
+    model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
