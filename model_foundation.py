@@ -32,7 +32,7 @@ mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 
 # jax.config.update('jax_platform_name', 'cpu')
-# numpyro.set_host_device_count(4)
+numpyro.set_host_device_count(4)
 
 print(jax.devices())
 
@@ -263,7 +263,6 @@ class Model(object):
         spectra = self.get_spectra(theta, Av, eps, Rv, t)
         plt.plot(self.model_wave, spectra[0, :, :])
         plt.show()
-
 
     def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, redshifts, ebv, band_indices, flag):
         num_batch = theta.shape[0]
@@ -579,18 +578,20 @@ class Model(object):
         else:
             raise ValueError('Invalid init strategy, must be one of value, median and sample')
         self.band_weights = self._calculate_band_weights(self.data[-4, 0, :], self.data[-2, 0, :])
-        rng = jnp.array([PRNGKey(111), PRNGKey(222), PRNGKey(333), PRNGKey(444)])
+        rng = PRNGKey(123)
+        # rng = jnp.array([PRNGKey(111), PRNGKey(222), PRNGKey(333), PRNGKey(444)])
         #rng = PRNGKey(101)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
-        mcmc.run(rng, self.data)
+        mcmc.run(rng, self.data, extra_fields=('potential_energy',))
         mcmc.print_summary()
         samples = mcmc.get_samples(group_by_chain=True)
-        self.train_postprocess(samples, output)
+        extras = mcmc.get_extra_fields(group_by_chain=True)
+        self.train_postprocess(samples, extras, output)
 
-    def train_postprocess(self, samples, output):
+    def train_postprocess(self, samples, extras, output):
         if not os.path.exists(os.path.join('results', output)):
             os.mkdir(os.path.join('results', output))
         with open(os.path.join('results', output, 'initial_chains.pkl'), 'wb') as file:
@@ -637,6 +638,10 @@ class Model(object):
         np.savetxt(os.path.join('results', output, 'M0_sigma0_RV_tauA.txt'), M0_sigma0_RV_tauA, delimiter="\t", fmt="%.3f")
         np.savetxt(os.path.join('results', output, 'l_knots.txt'), self.l_knots, delimiter="\t", fmt="%.3f")
         np.savetxt(os.path.join('results', output, 'tau_knots.txt'), self.tau_knots, delimiter="\t", fmt="%.3f")
+
+        # Save extra fields
+        potentials = extras['potential_energy']
+        np.savetxt(os.path.join('results', output, 'potentials.txt'), potentials)
 
         """global_param_dict = {
             'W0': repr(np.round(np.mean(samples['W0'], axis=[0, 1]).reshape((self.l_knots.shape[0], self.tau_knots.shape[0]), order='F'), 3).tolist()),
@@ -904,8 +909,8 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    # model.train(2500, 2500, 4, 'foundation_train_2500', chain_method='vectorized', init_strategy='median')
-    model.simulate_spectrum()
+    model.train(500, 500, 4, 'foundation_train_500', chain_method='vectorized', init_strategy='median')
+    # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
