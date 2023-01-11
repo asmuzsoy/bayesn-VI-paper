@@ -771,7 +771,7 @@ class Model(object):
             data['t'] = (data.MJD - row.SEARCH_PEAKMJD) / (1 + row.REDSHIFT_CMB)
             data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[x])
             data['zp'] = data.FLT.apply(lambda x: zp_dict[x])
-            data['flux'] = data['zp'] * np.power(10, -0.4 * data['MAG']) # * self.scale
+            data['flux'] = data['zp'] * np.power(10, -0.4 * data['MAG']) * self.scale
             data['flux_err'] = (np.log(10) / 2.5) * data['flux'] * data['MAGERR']
             data['ratio'] = data.FLUXCAL / data.flux
             data['redshift'] = row.REDSHIFT_CMB
@@ -801,7 +801,7 @@ class Model(object):
             J_t_hsiao = spline_utils.spline_coeffs_irr(ts, self.hsiao_t, self.KD_t_hsiao).T
         for i, lc in enumerate(all_lcs):
             all_data[i, :lc.shape[0], :] = lc.values
-            all_data[i, lc.shape[0]:, 2] = 1e-8
+            all_data[i, lc.shape[0]:, 2] = 1 / jnp.sqrt(2 * np.pi)
             if mode == 'training':
                 all_J_t[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.tau_knots, self.KD_t).T
                 all_J_t_hsiao[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.hsiao_t, self.KD_t_hsiao).T
@@ -909,7 +909,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(500, 500, 4, 'foundation_train_500', chain_method='vectorized', init_strategy='median')
+    model.train(500, 500, 4, 'foundation_train_500_pi', chain_method='vectorized', init_strategy='median')
     # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
