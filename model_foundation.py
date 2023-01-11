@@ -500,11 +500,11 @@ class Model(object):
             redshift_error = obs[-4, 0, sn_index]
             muhat = obs[-3, 0, sn_index]
             ebv = obs[-2, 0, sn_index]
-            flag = obs[-1, :, sn_index].T
+            mask = obs[-1, :, sn_index].T.astype(bool)
             muhat_err = 5 / (redshift * jnp.log(10)) * jnp.sqrt(jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))
             Ds_err = jnp.sqrt(muhat_err * muhat_err + sigma0 * sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
-            flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, redshift, ebv, band_indices, flag)
+            flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, redshift, ebv, band_indices, mask)
             """for i in range(4):
                 inds = (band_indices[:, 0] == i) & (flag[:, 0] > 0)
                 plt.scatter(obs[0, inds, 0], flux[inds, 0])
@@ -515,7 +515,8 @@ class Model(object):
                 plt.scatter(obs[0, inds, 1], flux[inds, 1])
                 plt.errorbar(obs[0, inds, 1], obs[1, inds, 1], yerr=obs[2, inds, 1], fmt='x')
             plt.show()"""
-            numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)  # _{sn_index}
+            with numpyro.handlers.mask(mask=mask):
+                numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)  # _{sn_index}
 
     def initial_guess(self, n_chains=1, reference_model="M20", RV_init=3.0, tauA_init=0.3):
         # Set hyperparameter initialisations
@@ -911,7 +912,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(500, 500, 4, 'foundation_train_500_epstform', chain_method='vectorised', init_strategy='median')
+    model.train(500, 500, 4, 'foundation_train_500_epstform_mask', chain_method='vectorized', init_strategy='median')
     # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
