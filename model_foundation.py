@@ -585,7 +585,8 @@ class Model(object):
         # rng = jnp.array([PRNGKey(111), PRNGKey(222), PRNGKey(333), PRNGKey(444)])
         #rng = PRNGKey(101)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
-        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy)
+        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy,
+                           dense_mass=True)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
         mcmc.run(rng, self.data, extra_fields=('potential_energy',))
@@ -912,7 +913,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(500, 500, 4, 'foundation_train_500_mask', chain_method='vectorized', init_strategy='median')
+    model.train(500, 500, 4, 'foundation_train_500_dense', chain_method='vectorized', init_strategy='median')
     # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
