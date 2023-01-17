@@ -442,19 +442,25 @@ class Model(object):
         W1 = numpyro.sample('W1', dist.MultivariateNormal(W_mu, jnp.eye(N_knots)))
         W0 = jnp.reshape(W0, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
         W1 = jnp.reshape(W1, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
-        sigmaepsilon = numpyro.sample('sigmaepsilon', dist.HalfNormal(1 * jnp.ones(N_knots_sig)))
+        sigmaepsilon = numpyro.sample('sigmaepsilon', dist.HalfNormal(0.25 * jnp.ones(N_knots_sig)))
         L_Omega = numpyro.sample('L_Omega', dist.LKJCholesky(N_knots_sig))
         L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon), L_Omega)
-        sigma0 = numpyro.sample('sigma0', dist.HalfCauchy(0.1))
+        # sigma0 = numpyro.sample('sigma0', dist.HalfCauchy(0.1))
+        sigma0_tform = numpyro.sample('sigma0_tform', dist.Uniform(0, jnp.pi / 2))
+        sigma0 = numpyro.deterministic('sigma0', 1.0 * jnp.tan(sigma0_tform))
         Rv = numpyro.sample('Rv', dist.Uniform(1, 5))
-        tauA = numpyro.sample('tauA', dist.HalfCauchy())
+        # tauA = numpyro.sample('tauA', dist.HalfCauchy())
+        tauA_tform = numpyro.sample('tauA_tform', dist.Uniform(0, jnp.pi / 2))
+        tauA = numpyro.deterministic('tauA', jnp.tan(tauA_tform))
 
         # for sn_index in pyro.plate('SNe', sample_size):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             Av = numpyro.sample(f'AV', dist.Exponential(1 / tauA))
             eps_mu = jnp.zeros(N_knots_sig)
-            eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=L_Sigma))
+            eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
+            eps = numpyro.deterministic('eps', jnp.matmul(eps_tform, L_Sigma))
+            # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=L_Sigma))
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
@@ -546,6 +552,7 @@ class Model(object):
         self.band_weights = self._calculate_band_weights(self.data[-4, 0, :], self.data[-2, 0, :])
         # rng = jnp.array([PRNGKey(12), PRNGKey(34), PRNGKey(56), PRNGKey(78)])
         rng = PRNGKey(10)
+        # rng, rng_ = PRNGKey(10)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
