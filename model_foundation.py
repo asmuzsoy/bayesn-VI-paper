@@ -602,7 +602,7 @@ class Model(object):
         #rng = PRNGKey(101)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy,
-                           dense_mass=True)
+                           dense_mass=False)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
         mcmc.run(rng, self.data, extra_fields=('potential_energy',))
