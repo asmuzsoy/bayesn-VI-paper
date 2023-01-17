@@ -206,7 +206,7 @@ class Model(object):
         flat_result = remainders * end + (1 - remainders) * start
         result = flat_result.reshape((-1,) + locs.shape).transpose(1, 2, 0)
 
-        # We need an extra term of 1 + z from the filter contraction.
+        """# We need an extra term of 1 + z from the filter contraction.
         result /= (1 + redshifts)[:, None, None]
 
         # Apply MW extinction
@@ -220,7 +220,23 @@ class Model(object):
 
         # Hack fix maybe
         sum = jnp.sum(result, axis=1)
+        result /= sum[:, None, :]"""
+
+        # Apply MW extinction
+        abv = self.RV_MW * ebv
+        mw_array = jnp.zeros((result.shape[0], result.shape[1]))
+        for i, val in enumerate(abv):
+            mw = jnp.power(10, -0.4 * extinction.fitzpatrick99(self.model_wave, val, self.RV_MW))
+            mw_array = mw_array.at[i, :].set(mw)
+
+        result = result * mw_array[..., None]
+
+        # Hack fix maybe
+        sum = jnp.sum(result, axis=1)
         result /= sum[:, None, :]
+
+        # We need an extra term of 1 + z from the filter contraction.
+        result /= (1 + redshifts)[:, None, None]
 
         return result
 
@@ -528,8 +544,8 @@ class Model(object):
         else:
             raise ValueError('Invalid init strategy, must be one of value, median and sample')
         self.band_weights = self._calculate_band_weights(self.data[-4, 0, :], self.data[-2, 0, :])
-        rng = jnp.array([PRNGKey(12), PRNGKey(34), PRNGKey(56), PRNGKey(78)])
-        # rng = PRNGKey(10)
+        # rng = jnp.array([PRNGKey(12), PRNGKey(34), PRNGKey(56), PRNGKey(78)])
+        rng = PRNGKey(10)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
@@ -824,7 +840,7 @@ def get_band_effective_wavelength(band):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(2500, 2500, 4, 'simulation_train_2500', chain_method='vectorized', init_strategy='median')
+    model.train(250, 250, 4, 'simulation_train_250', chain_method='vectorized', init_strategy='median')
     # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')

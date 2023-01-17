@@ -209,7 +209,7 @@ class Model(object):
         flat_result = remainders * end + (1 - remainders) * start
         result = flat_result.reshape((-1,) + locs.shape).transpose(1, 2, 0)
 
-        # We need an extra term of 1 + z from the filter contraction.
+        """# We need an extra term of 1 + z from the filter contraction.
         result /= (1 + redshifts)[:, None, None]
 
         # Apply MW extinction
@@ -223,7 +223,23 @@ class Model(object):
 
         # Hack fix maybe
         sum = jnp.sum(result, axis=1)
+        result /= sum[:, None, :]"""
+
+        # Apply MW extinction
+        abv = self.RV_MW * ebv
+        mw_array = jnp.zeros((result.shape[0], result.shape[1]))
+        for i, val in enumerate(abv):
+            mw = jnp.power(10, -0.4 * extinction.fitzpatrick99(self.model_wave, val, self.RV_MW))
+            mw_array = mw_array.at[i, :].set(mw)
+
+        result = result * mw_array[..., None]
+
+        # Hack fix maybe
+        sum = jnp.sum(result, axis=1)
         result /= sum[:, None, :]
+
+        # We need an extra term of 1 + z from the filter contraction.
+        result /= (1 + redshifts)[:, None, None]
 
         return result
 
