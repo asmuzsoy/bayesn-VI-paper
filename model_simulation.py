@@ -172,6 +172,9 @@ class Model(object):
         self.model_wave = 10 ** (model_log_wave)
 
     def _calculate_band_weights(self, redshifts, ebv):
+        print(redshifts)
+        print(ebv)
+        raise ValueError('Nope')
         """Calculate the band weights for a given set of redshifts
 
         We have precomputed the weights for each bandpass, so we simply interpolate
@@ -847,7 +850,7 @@ def get_band_effective_wavelength(band):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'simulation_train_250', chain_method='vectorized', init_strategy='median')
+    model.train(5, 5, 4, 'simulation_train_5', chain_method='sequential', init_strategy='median')
     # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
