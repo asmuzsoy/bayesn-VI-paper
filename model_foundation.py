@@ -937,7 +937,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'foundation_train_250_eps', chain_method='parallel', init_strategy='median')
+    model.train(500, 500, 4, 'foundation_train_500', chain_method='vectorized', init_strategy='median')
     # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
