@@ -605,7 +605,7 @@ class Model(object):
         else:
             raise ValueError('Invalid init strategy, must be one of value, median and sample')
         self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
-        rng = PRNGKey(1)
+        rng = PRNGKey(321)
         # rng = jnp.array([PRNGKey(111), PRNGKey(222), PRNGKey(333), PRNGKey(444)])
         #rng = PRNGKey(101)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
@@ -937,7 +937,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(500, 500, 4, 'foundation_train_500', chain_method='vectorized', init_strategy='median')
+    model.train(500, 500, 4, 'foundation_train_500', chain_method='vectorized', init_strategy='sample')
     # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
