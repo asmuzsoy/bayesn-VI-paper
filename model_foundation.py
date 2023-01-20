@@ -31,8 +31,8 @@ mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 
-# jax.config.update('jax_platform_name', 'cpu')
-# numpyro.set_host_device_count(4)
+#jax.config.update('jax_platform_name', 'cpu')
+#numpyro.set_host_device_count(4)
 
 print(jax.devices())
 
@@ -493,18 +493,18 @@ class Model(object):
         W1 = numpyro.sample('W1', dist.MultivariateNormal(W_mu, jnp.eye(N_knots)))
         W0 = jnp.reshape(W0, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
         W1 = jnp.reshape(W1, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
-        # sigmaepsilon = numpyro.sample('sigmaepsilon', dist.HalfNormal(1 * jnp.ones(N_knots_sig)))
-        sigmaepsilon_tform = numpyro.sample('sigmaepsilon_tform', dist.Uniform(0, (jnp.pi / 2) * jnp.ones(N_knots_sig)))
-        sigmaepsilon = numpyro.deterministic('sigmaepsilon', 1. * jnp.tan(sigmaepsilon_tform))
+        sigmaepsilon = numpyro.sample('sigmaepsilon', dist.HalfNormal(1 * jnp.ones(N_knots_sig)))
+        # sigmaepsilon_tform = numpyro.sample('sigmaepsilon_tform', dist.Uniform(0, (jnp.pi / 2.) * jnp.ones(N_knots_sig)))
+        # sigmaepsilon = numpyro.deterministic('sigmaepsilon', 1. * jnp.tan(sigmaepsilon_tform))
         L_Omega = numpyro.sample('L_Omega', dist.LKJCholesky(N_knots_sig))
         L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon), L_Omega)
-        # sigma0 = numpyro.sample('sigma0', dist.HalfCauchy(0.1))
-        sigma0_tform = numpyro.sample('sigma0_tform', dist.Uniform(0, jnp.pi / 2))
-        sigma0 = numpyro.deterministic('sigma0', 0.1 * jnp.tan(sigma0_tform))
+        sigma0 = numpyro.sample('sigma0', dist.HalfCauchy(0.1))
+        # sigma0_tform = numpyro.sample('sigma0_tform', dist.Uniform(0, jnp.pi / 2.))
+        # sigma0 = numpyro.deterministic('sigma0', 0.1 * jnp.tan(sigma0_tform))
         Rv = numpyro.sample('Rv', dist.Uniform(1, 5))
-        # tauA = numpyro.sample('tauA', dist.HalfCauchy())
-        tauA_tform = numpyro.sample('tauA_tform', dist.Uniform(0, jnp.pi / 2))
-        tauA = numpyro.deterministic('tauA', jnp.tan(tauA_tform))
+        tauA = numpyro.sample('tauA', dist.HalfCauchy())
+        # tauA_tform = numpyro.sample('tauA_tform', dist.Uniform(0, jnp.pi / 2.))
+        # tauA = numpyro.deterministic('tauA', jnp.tan(tauA_tform))
 
         # for sn_index in pyro.plate('SNe', sample_size):
         with numpyro.plate('SNe', sample_size) as sn_index:
@@ -937,7 +937,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'foundation_train_250_sequential', chain_method='sequential', init_strategy='median')
+    model.train(250, 250, 4, 'foundation_train_250_eps', chain_method='parallel', init_strategy='median')
     # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
