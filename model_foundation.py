@@ -583,13 +583,17 @@ class Model(object):
         param_init['W0'] = W0_init + np.random.normal(0, 0.01, W0_init.shape[0])
         param_init['W1'] = W1_init + np.random.normal(0, 0.01, W1_init.shape[0])
         param_init['Rv'] = RV_init # + np.random.uniform(1.0 - RV_init, 5.0 - RV_init)
-        param_init['tauA'] = tauA_
+        param_init['tauA_tform'] = np.arctan(tauA_ / 1.)
+        # param_init['tauA'] = tauA_
+        param_init['sigma0_tform'] = np.arctan(sigma0_ / 0.1)
         param_init['sigma0'] = sigma0_
-        param_init['sigmaepsilon'] = sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape)
+        param_init['sigmaepsilon_tform'] = np.arctan(sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape) / 1.)
+        # param_init['sigmaepsilon'] = sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape)
         param_init['L_Omega'] = L_Omega_init
         param_init['theta'] = np.random.normal(0, 1, n_sne)
         param_init['Av'] = np.random.exponential(tauA_, n_sne)
-        param_init['epsilon'] = np.random.normal(0, 1, (n_sne, n_eps))
+        param_init['epsilon_tform'] = np.matmul(np.linalg.inv(L_Sigma[i, ...]), np.random.normal(0, 1, (n_sne, n_eps)))
+        # param_init['epsilon'] = np.random.normal(0, 1, (n_sne, n_eps))
         param_init['Ds'] = np.random.normal(self.data[-3, 0, :], sigma0_)
 
         return param_init
