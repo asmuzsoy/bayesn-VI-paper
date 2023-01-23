@@ -31,8 +31,8 @@ mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 
-jax.config.update('jax_platform_name', 'cpu')
-numpyro.set_host_device_count(4)
+# jax.config.update('jax_platform_name', 'cpu')
+# numpyro.set_host_device_count(4)
 
 print(jax.devices())
 
@@ -942,7 +942,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'foundation_train_250_initval', chain_method='parallel', init_strategy='value')
+    model.train(250, 250, 4, 'foundation_train_250_initval', chain_method='vectorized', init_strategy='value')
     # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
