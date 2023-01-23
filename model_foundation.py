@@ -31,8 +31,8 @@ mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 
-#jax.config.update('jax_platform_name', 'cpu')
-#numpyro.set_host_device_count(4)
+jax.config.update('jax_platform_name', 'cpu')
+numpyro.set_host_device_count(4)
 
 print(jax.devices())
 
@@ -580,21 +580,22 @@ class Model(object):
         while tauA_ < 0:
             tauA_ = tauA_init + np.random.normal(0, 0.01)
         sigma0_ = sigma0_init + np.random.normal(0, 0.01)
-        param_init['W0'] = W0_init + np.random.normal(0, 0.01, W0_init.shape[0])
-        param_init['W1'] = W1_init + np.random.normal(0, 0.01, W1_init.shape[0])
-        param_init['Rv'] = RV_init # + np.random.uniform(1.0 - RV_init, 5.0 - RV_init)
-        param_init['tauA_tform'] = np.arctan(tauA_ / 1.)
+        param_init['W0'] = jnp.array(W0_init + np.random.normal(0, 0.01, W0_init.shape[0]))
+        param_init['W1'] = jnp.array(W1_init + np.random.normal(0, 0.01, W1_init.shape[0]))
+        param_init['Rv'] = jnp.array(RV_init + np.random.uniform(1.0 - RV_init, 5.0 - RV_init))
+        param_init['tauA_tform'] = jnp.arctan(tauA_ / 1.)
         # param_init['tauA'] = tauA_
-        param_init['sigma0_tform'] = np.arctan(sigma0_ / 0.1)
-        param_init['sigma0'] = sigma0_
-        param_init['sigmaepsilon_tform'] = np.arctan(sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape) / 1.)
+        param_init['sigma0_tform'] = jnp.arctan(sigma0_ / 0.1)
+        param_init['sigma0'] = jnp.array(sigma0_)
+        param_init['sigmaepsilon_tform'] = jnp.arctan(sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape) / 1.)
         # param_init['sigmaepsilon'] = sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape)
-        param_init['L_Omega'] = L_Omega_init
-        param_init['theta'] = np.random.normal(0, 1, n_sne)
-        param_init['Av'] = np.random.exponential(tauA_, n_sne)
-        param_init['epsilon_tform'] = np.matmul(np.linalg.inv(L_Sigma[i, ...]), np.random.normal(0, 1, (n_sne, n_eps)))
+        param_init['L_Omega'] = jnp.array(L_Omega_init)
+        param_init['theta'] = jnp.array(np.random.normal(0, 1, n_sne))
+        param_init['Av'] = jnp.array(np.random.exponential(tauA_, n_sne))
+        L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon_init), L_Omega_init)
+        param_init['epsilon_tform'] = jnp.matmul(np.linalg.inv(L_Sigma), np.random.normal(0, 1, (n_eps, n_sne)))
         # param_init['epsilon'] = np.random.normal(0, 1, (n_sne, n_eps))
-        param_init['Ds'] = np.random.normal(self.data[-3, 0, :], sigma0_)
+        param_init['Ds'] = jnp.array(np.random.normal(self.data[-3, 0, :], sigma0_))
 
         return param_init
 
@@ -941,7 +942,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'foundation_train_250_initval', chain_method='vectorized', init_strategy='value')
+    model.train(250, 250, 4, 'foundation_train_250_initval', chain_method='parallel', init_strategy='value')
     # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
