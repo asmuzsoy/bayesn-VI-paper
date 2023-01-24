@@ -172,9 +172,6 @@ class Model(object):
         self.model_wave = 10 ** (model_log_wave)
 
     def _calculate_band_weights(self, redshifts, ebv):
-        print(redshifts)
-        print(ebv)
-        raise ValueError('Nope')
         """Calculate the band weights for a given set of redshifts
 
         We have precomputed the weights for each bandpass, so we simply interpolate
@@ -560,7 +557,7 @@ class Model(object):
             raise ValueError('Invalid init strategy, must be one of value, median and sample')
         self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
         # rng = jnp.array([PRNGKey(12), PRNGKey(34), PRNGKey(56), PRNGKey(78)])
-        rng = PRNGKey(10)
+        rng = PRNGKey(123)
         # rng, rng_ = PRNGKey(10)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy)
@@ -722,8 +719,7 @@ class Model(object):
 
     def process_dataset(self, mode='training'):
         dataset_path = 'data/bayesn_sim_team_z0.1_1000.h5'
-        dataset = lcdata.read_hdf5(dataset_path)[:157]
-        print(dataset.light_curves[0])
+        dataset = lcdata.read_hdf5(dataset_path)
         param_path = 'data/bayesn_sim_team_z0.1_1000_params.csv'
         params = pd.read_csv(param_path)
         pd_dataset = dataset.meta.to_pandas()
@@ -738,11 +734,11 @@ class Model(object):
             lc[['flux', 'flux_err']] = lc[['flux', 'fluxerr']]  * self.scale
             lc['band'] = lc['band'].apply(lambda band: band[band.find("'") + 1: band.rfind("'")])
             lc['band'] = lc['band'].apply(lambda band: self.band_dict[band])
-            lc['redshift'] = dataset.meta[lc_ind][-1]
-            lc['dist_mod'] = self.cosmo.distmod(dataset.meta[lc_ind][-1])
+            lc['redshift'] = dataset.meta[lc_ind][-2]
+            lc['dist_mod'] = self.cosmo.distmod(dataset.meta[lc_ind][-2])
             lc['band_indices'] = lc.band
             lc['redshift_error'] = 1e-5
-            lc['MWEBV'] = 0
+            lc['MWEBV'] = dataset.meta[lc_ind][-1]
             lc['flag'] = 1
             lc = lc[['t', 'flux', 'flux_err', 'band_indices', 'redshift', 'redshift_error', 'dist_mod', 'MWEBV', 'flag']]
             lc = lc.sort_values('t')
@@ -857,7 +853,7 @@ def get_band_effective_wavelength(band):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(5, 5, 4, 'simulation_train_5', chain_method='sequential', init_strategy='median')
+    model.train(500, 500, 4, 'simulation_train_5', chain_method='vectorized', init_strategy='value')
     # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
