@@ -29,8 +29,8 @@ mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 
-# jax.config.update('jax_platform_name', 'cpu')
-# numpyro.set_host_device_count(4)
+jax.config.update('jax_platform_name', 'cpu')
+numpyro.set_host_device_count(4)
 
 print(jax.devices())
 
@@ -719,7 +719,7 @@ class Model(object):
 
     def process_dataset(self, mode='training'):
         dataset_path = 'data/bayesn_sim_team_z0.1_1000.h5'
-        dataset = lcdata.read_hdf5(dataset_path)
+        dataset = lcdata.read_hdf5(dataset_path)[:100]
         param_path = 'data/bayesn_sim_team_z0.1_1000_params.csv'
         params = pd.read_csv(param_path)
         pd_dataset = dataset.meta.to_pandas()
@@ -853,7 +853,7 @@ def get_band_effective_wavelength(band):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(500, 500, 4, 'simulation_train_500_1000', chain_method='vectorized', init_strategy='value')
+    model.train(250, 250, 4, 'simulation_train_100_median', chain_method='vectorized', init_strategy='median')
     # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
