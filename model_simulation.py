@@ -225,6 +225,10 @@ class Model(object):
         sum = jnp.sum(result, axis=1)
         result /= sum[:, None, :]"""
 
+        # Hack fix maybe
+        sum = jnp.sum(result, axis=1)
+        result /= sum[:, None, :]
+
         # Apply MW extinction
         abv = self.RV_MW * ebv
         mw_array = jnp.zeros((result.shape[0], result.shape[1]))
@@ -233,10 +237,6 @@ class Model(object):
             mw_array = mw_array.at[i, :].set(mw)
 
         result = result * mw_array[..., None]
-
-        # Hack fix maybe
-        sum = jnp.sum(result, axis=1)
-        result /= sum[:, None, :]
 
         # We need an extra term of 1 + z from the filter contraction.
         result /= (1 + redshifts)[:, None, None]
@@ -528,17 +528,23 @@ class Model(object):
         while tauA_ < 0:
             tauA_ = tauA_init + np.random.normal(0, 0.01)
         sigma0_ = sigma0_init + np.random.normal(0, 0.01)
-        param_init['W0'] = W0_init + np.random.normal(0, 0.01, W0_init.shape[0])
-        param_init['W1'] = W1_init + np.random.normal(0, 0.01, W1_init.shape[0])
-        param_init['Rv'] = RV_init  # + np.random.uniform(1.0 - RV_init, 5.0 - RV_init)
-        param_init['tauA'] = tauA_
-        param_init['sigma0'] = sigma0_
-        param_init['sigmaepsilon'] = sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape)
-        param_init['L_Omega'] = L_Omega_init
-        param_init['theta'] = np.random.normal(0, 1, n_sne)
-        param_init['Av'] = np.random.exponential(tauA_, n_sne)
-        param_init['epsilon'] = np.random.normal(0, 1, (n_sne, n_eps))
-        param_init['Ds'] = np.random.normal(self.data[-3, 0, :], sigma0_)
+        param_init['W0'] = jnp.array(W0_init + np.random.normal(0, 0.01, W0_init.shape[0]))
+        param_init['W1'] = jnp.array(W1_init + np.random.normal(0, 0.01, W1_init.shape[0]))
+        param_init['Rv'] = jnp.array(RV_init + np.random.uniform(1.0 - RV_init, 5.0 - RV_init))
+        param_init['tauA_tform'] = jnp.arctan(tauA_ / 1.)
+        # param_init['tauA'] = tauA_
+        param_init['sigma0_tform'] = jnp.arctan(sigma0_ / 0.1)
+        param_init['sigma0'] = jnp.array(sigma0_)
+        param_init['sigmaepsilon_tform'] = jnp.arctan(
+            sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape) / 1.)
+        # param_init['sigmaepsilon'] = sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape)
+        param_init['L_Omega'] = jnp.array(L_Omega_init)
+        param_init['theta'] = jnp.array(np.random.normal(0, 1, n_sne))
+        param_init['Av'] = jnp.array(np.random.exponential(tauA_, n_sne))
+        L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon_init), L_Omega_init)
+        param_init['epsilon_tform'] = jnp.matmul(np.linalg.inv(L_Sigma), np.random.normal(0, 1, (n_eps, n_sne)))
+        # param_init['epsilon'] = np.random.normal(0, 1, (n_sne, n_eps))
+        param_init['Ds'] = jnp.array(np.random.normal(self.data[-3, 0, :], sigma0_))
 
         return param_init
 
@@ -552,7 +558,7 @@ class Model(object):
             init_strategy = init_to_sample()
         else:
             raise ValueError('Invalid init strategy, must be one of value, median and sample')
-        self.band_weights = self._calculate_band_weights(self.data[-4, 0, :], self.data[-2, 0, :])
+        self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
         # rng = jnp.array([PRNGKey(12), PRNGKey(34), PRNGKey(56), PRNGKey(78)])
         rng = PRNGKey(10)
         # rng, rng_ = PRNGKey(10)
@@ -715,9 +721,10 @@ class Model(object):
         plt.show()
 
     def process_dataset(self, mode='training'):
-        dataset_path = 'data/bayesn_sim_team_z0.1_25000.h5'
+        dataset_path = 'data/bayesn_sim_team_z0.1_1000.h5'
         dataset = lcdata.read_hdf5(dataset_path)[:157]
-        param_path = 'data/bayesn_sim_team_z0.1_25000_params.csv'
+        print(dataset.light_curves[0])
+        param_path = 'data/bayesn_sim_team_z0.1_1000_params.csv'
         params = pd.read_csv(param_path)
         pd_dataset = dataset.meta.to_pandas()
         pd_dataset = pd_dataset.astype({'object_id': int})
