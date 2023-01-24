@@ -29,8 +29,8 @@ mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 
-jax.config.update('jax_platform_name', 'cpu')
-numpyro.set_host_device_count(4)
+# jax.config.update('jax_platform_name', 'cpu')
+# numpyro.set_host_device_count(4)
 
 print(jax.devices())
 
@@ -719,7 +719,7 @@ class Model(object):
 
     def process_dataset(self, mode='training'):
         dataset_path = 'data/bayesn_sim_team_z0.1_1000.h5'
-        dataset = lcdata.read_hdf5(dataset_path)[:100]
+        dataset = lcdata.read_hdf5(dataset_path)
         param_path = 'data/bayesn_sim_team_z0.1_1000_params.csv'
         params = pd.read_csv(param_path)
         pd_dataset = dataset.meta.to_pandas()
