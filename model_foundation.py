@@ -30,6 +30,7 @@ rc('font', **{'family': 'serif', 'serif': ['cmr10']})
 mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
+mpl.use('macosx')
 
 # jax.config.update('jax_platform_name', 'cpu')
 # numpyro.set_host_device_count(4)
@@ -137,8 +138,14 @@ class Model(object):
 
         for band_name in self.settings['bands']:
             band = sncosmo.get_bandpass(band_name)
-
-            band_transmission = band(10 ** (band_pad_log_wave))
+            filt = band_name[-1]
+            # band_transmission = band(10 ** (band_pad_log_wave))
+            if filt == 'g':
+                filt_file = 'g_filt_revised.txt'
+            else:
+                filt_file = f'{filt}_filt_tonry.txt'
+            R = np.loadtxt(f'data/filters/PS1/{filt_file}')
+            band_transmission = np.interp(10 ** band_pad_log_wave, R[:, 0], R[:, 1])
 
             # Convolve the bands to match the sampling of the spectrum.
             band_conv_transmission = jnp.interp(band_wave, 10 ** band_pad_log_wave, band_transmission)
@@ -793,7 +800,7 @@ class Model(object):
         meta_file = pd.read_csv('data/LCs/meta/T21_training_set_meta.txt', delim_whitespace=True)
 
         sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')
-        zp_dict = {'g': 4.62937e-9, 'r': 2.83071e-9, 'i': 1.91728e-9, 'z': 1.44673e-9}
+        zp_dict = {'g': 4.608419288004386e-09, 'r': 2.8305383925373084e-09, 'i': 1.917161265703195e-09, 'z': 1.446643295845274e-09}
         n_obs = []
 
         all_lcs = []
