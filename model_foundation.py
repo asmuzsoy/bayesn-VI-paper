@@ -358,34 +358,57 @@ class Model(object):
         # for sn_index in numpyro.plate('SNe', sample_size):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
-            # Rv = numpyro.sample(f'RV', dist.Normal(2.610, 0.001))
-            Av = numpyro.sample(f'AV', dist.Exponential(1 / 0.194))
+            Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
             eps_mu = jnp.zeros(N_knots_sig)
-            eps = numpyro.sample(f'eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
+            # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
+            eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
+            eps_tform = eps_tform.T
+            eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
+            eps = eps.T
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
-            band_indices = obs[-4, :, sn_index].astype(int).T
-            redshift = obs[-3, 0, sn_index]
-            muhat = obs[-2, 0, sn_index]
-            flag = obs[-1, :, sn_index].T
-            muhat_err = 5 / (redshift * jnp.log(10)) * self.sigma_pec
+            band_indices = obs[-6, :, sn_index].astype(int).T
+            redshift = obs[-5, 0, sn_index]
+            redshift_error = obs[-4, 0, sn_index]
+            muhat = obs[-3, 0, sn_index]
+            ebv = obs[-2, 0, sn_index]
+            mask = obs[-1, :, sn_index].T.astype(bool)
+            muhat_err = 5 / (redshift * jnp.log(10)) * jnp.sqrt(
+                jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
-            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, redshift, band_indices, flag)
-            numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, redshift, ebv, band_indices, mask)
+            with numpyro.handlers.mask(mask=mask):
+                numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
+                               obs=obs[1, :, sn_index].T)  # _{sn_index}
 
-    def fit(self, num_samples, num_warmup, num_chains, output, result_path):
+    def fit(self, num_samples, num_warmup, num_chains, output, result_path, chain_method='parallel', init_strategy='median'):
         self.process_dataset(mode='training')
-        with open(os.path.join('results', f'{result_path}.pkl'), 'rb') as file:
+        self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
+        if init_strategy == 'value':
+            init_strategy = init_to_value(values=self.initial_guess())
+        elif init_strategy == 'median':
+            init_strategy = init_to_median()
+        elif init_strategy == 'sample':
+            init_strategy = init_to_sample()
+        else:
+            raise ValueError('Invalid init strategy, must be one of value, median and sample')
+        with open(os.path.join('results', result_path, 'chains.pkl'), 'rb') as file:
             result = pickle.load(file)
-        self.W0 = device_put(np.reshape(np.mean(result['W0'], axis=0), (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F'))
-        self.W1 = device_put(np.reshape(np.mean(result['W1'], axis=0), (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F'))
-        sigmaepsilon = np.mean(result['sigmaepsilon'], axis=0)
-        L_Omega = np.mean(result['L_Omega'], axis=0)
+
+        #self.data = self.data[..., 100:101]
+        #self.J_t = self.J_t[100:101, ...]
+        #self.J_t_hsiao = self.J_t_hsiao[100:101, ...]
+
+        self.W0 = device_put(np.reshape(np.mean(result['W0'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F'))
+        self.W1 = device_put(np.reshape(np.mean(result['W1'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F'))
+        sigmaepsilon = np.mean(result['sigmaepsilon'], axis=(0, 1))
+        L_Omega = np.mean(result['L_Omega'], axis=(0, 1))
         self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
-        self.Rv = device_put(np.mean(result['Rv'], axis=0))
-        self.sigma0 = device_put(np.mean(result['sigma0'], axis=0))
+        self.Rv = device_put(np.mean(result['Rv'], axis=(0, 1)))
+        self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
+        self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
         rng = PRNGKey(123)
         # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_to_median())
@@ -948,8 +971,8 @@ class Model(object):
 
 if __name__ == '__main__':
     model = Model()
-    # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(500, 500, 4, 'foundation_train_500_initval', chain_method='vectorized', init_strategy='value')
+    model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_500_initval')
+    # model.train(500, 500, 4, 'foundation_train_500_initval', chain_method='vectorized', init_strategy='value')
     # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
