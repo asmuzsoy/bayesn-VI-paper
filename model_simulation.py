@@ -853,7 +853,7 @@ def get_band_effective_wavelength(band):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_Rv')
-    model.train(250, 250, 4, 'simulation_train_100_median', chain_method='vectorized', init_strategy='median')
+    model.train(500, 500, 4, 'simulation_train_100_val', chain_method='sequential', init_strategy='value')
     # model.train_postprocess()
     # result.print_summary()
     # model.save_results_to_yaml(result, 'foundation_train_4chain')
