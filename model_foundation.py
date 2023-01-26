@@ -972,8 +972,8 @@ class Model(object):
 
 if __name__ == '__main__':
     model = Model()
-    model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_500_initval', chain_method='vectorized')
-    # model.train(500, 500, 4, 'foundation_train_500_initval', chain_method='vectorized', init_strategy='value')
+    # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_500_initval', chain_method='vectorized')
+    model.train(500, 500, 4, 'foundation_train_500_initval', chain_method='vectorized', init_strategy='value')
     # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
