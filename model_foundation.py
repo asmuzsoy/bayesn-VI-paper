@@ -30,7 +30,7 @@ rc('font', **{'family': 'serif', 'serif': ['cmr10']})
 mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
-mpl.use('macosx')
+# mpl.use('macosx')
 
 # jax.config.update('jax_platform_name', 'cpu')
 # numpyro.set_host_device_count(4)
