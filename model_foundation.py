@@ -346,10 +346,14 @@ class Model(object):
 
         model_flux = jnp.sum(model_spectra * obs_band_weights, axis=1).T
         model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
-        model_flux *= self.device_scale
-        model_flux *= flag
+        # model_flux *= self.device_scale
+        # model_flux *= flag
 
-        return model_flux
+        zps = self.zp[band_indices]
+        model_mag = -2.5 * jnp.log10(model_flux / zps)
+        model_mag *= flag
+
+        return model_mag
 
     def fit_model(self, obs):
         sample_size = self.data.shape[-1]
@@ -630,8 +634,8 @@ class Model(object):
 
         return param_init
 
-    def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median'):
-        self.process_dataset(mode='training')
+    def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median', mode='mag'):
+        self.process_dataset(mode='training', data_mode=mode)
         if init_strategy == 'value':
             init_strategy = init_to_value(values=self.initial_guess())
         elif init_strategy == 'median':
@@ -641,6 +645,7 @@ class Model(object):
         else:
             raise ValueError('Invalid init strategy, must be one of value, median and sample')
         self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
+        self.zp = jnp.array([4.608419288004386e-09, 2.8305383925373084e-09, 1.917161265703195e-09, 1.446643295845274e-09])
         rng = PRNGKey(321)
         # rng = jnp.array([PRNGKey(11), PRNGKey(22), PRNGKey(33), PRNGKey(44)])
         #rng = PRNGKey(101)
@@ -801,9 +806,9 @@ class Model(object):
         plt.subplots_adjust(hspace=0, wspace=0)
         plt.show()
 
-    def process_dataset(self, mode='training'):
-        if os.path.exists(os.path.join('data', 'LCs', 'pickles', 'foundation', 'dataset.pkl')):
-            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'dataset.pkl'), 'rb') as file:
+    def process_dataset(self, mode='training', data_mode='flux'):
+        if os.path.exists(os.path.join('data', 'LCs', 'pickles', 'foundation', f'dataset_{data_mode}.pkl')):
+            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', f'dataset_{data_mode}.pkl'), 'rb') as file:
                 all_data = pickle.load(file)
             if mode == 'training':
                 with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t.pkl'), 'rb') as file:
@@ -843,9 +848,14 @@ class Model(object):
             data['MWEBV'] = meta['MWEBV']
             data['dist_mod'] = self.cosmo.distmod(row.REDSHIFT_CMB)
             data['flag'] = 1
-            lc = data[['t', 'flux', 'flux_err', 'band_indices', 'redshift', 'redshift_error', 'dist_mod', 'MWEBV', 'flag']]
+            if data_mode == 'flux':
+                lc = data[['t', 'flux', 'flux_err', 'band_indices', 'redshift', 'redshift_error', 'dist_mod', 'MWEBV', 'flag']]
+                lc = lc.dropna(subset=['flux', 'flux_err'])
+            else:
+                lc = data[['t', 'MAG', 'MAGERR', 'band_indices', 'redshift', 'redshift_error', 'dist_mod', 'MWEBV',
+                           'flag']]
+                lc = lc.dropna(subset=['MAG', 'MAGERR'])
             lc = lc[(lc['t'] > -10) & (lc['t'] < 40)]
-            lc = lc.dropna(subset=['flux', 'flux_err'])
             t_ranges.append((lc['t'].min(), lc['t'].max()))
             n_obs.append(lc.shape[0])
             all_lcs.append(lc)
@@ -872,7 +882,7 @@ class Model(object):
             else:
                 all_J_t[i, ...] = J_t
                 all_J_t_hsiao[i, ...] = J_t_hsiao
-        with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'dataset.pkl'), 'wb') as file:
+        with open(os.path.join('data', 'LCs', 'pickles', 'foundation', f'dataset_{data_mode}.pkl'), 'wb') as file:
             pickle.dump(all_data, file)
         if mode == 'training':
             with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t.pkl'), 'wb') as file:
@@ -969,17 +979,109 @@ class Model(object):
 
 
     def compare_params(self):
+        sn_list = pd.read_csv('data/LCs/Foundation/Foundation_DR1/Foundation_DR1.LIST', names=['file'])
+        sn_list['sn'] = sn_list.file.apply(lambda x: x[x.rfind('_') + 1: x.rfind('.')])
+        meta_file = pd.read_csv('data/LCs/meta/T21_training_set_meta.txt', delim_whitespace=True)
+        sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')
+        T21_order = pd.read_csv(
+            'model_files/T21_model/sn_training_list_realn157F_alpha_4x500+500_nou_av-exp_W1_210204_180221.txt',
+            header=None, names=['sn'])
+        T21_order['inds'] = np.arange(157)
+        sn_list = sn_list.merge(T21_order, on='sn')
+        ord = sn_list['inds'].values
+
         T21_summary = pd.read_csv('model_files/T21_model/summary_realn157F_alpha_4x500+500_nou_av-exp_W1_210204_180221.txt', delim_whitespace=True)
-        np_summary = pd.read_csv('results/foundation_train_500_initval/fit_summary.csv')
+        # Reorder T21 params and prepare comparisons
+        T21_summary = T21_summary.dropna()
+        params = []
+        for param in T21_summary.param.values:
+            if 'epsilons' in param:
+                num1, num2 = param[param.find('[') + 1:param.find(',')], param[param.find(',') + 1:-1]
+                param = f'epsilons[{num2},{num1}]'
+            params.append(param)
+        T21_summary['param'] = params
+
+        all_eps_df = None
+        for i in ord + 1:
+            eps_df = T21_summary[T21_summary.param.str.contains(f'epsilons\[{i},')]
+            if eps_df is None:
+                all_eps_df = eps_df
+            else:
+                all_eps_df = pd.concat([all_eps_df, eps_df])
+
+        sn_param_dfs = []
+        for param in ['theta', 'AV', 'Ds']:
+            param_df = T21_summary[T21_summary.param.str.contains(param)]
+            print(param, param_df.shape)
+            param_df = param_df.iloc[ord, :]
+            sn_param_dfs.append(param_df)
+
+        glob_params_dfs = []
+        for param in ['W0', 'W1', 'sigmaepsilon', 'sigma0', 'RV']:
+            param_df = T21_summary[T21_summary.param.str.contains(param)]
+            print(param, param_df.shape)
+            glob_params_dfs.append(param_df)
+
+        T21_comparison = pd.concat([all_eps_df, *sn_param_dfs, *glob_params_dfs]).reset_index(drop=True)
+
+        # Prepare numpyro comparisons
+        np_summary = pd.read_csv('results/foundation_train_1000_val/fit_summary.csv')
         np_summary.columns = ['param'] + list(np_summary.columns[1:])
+        np_eps_df = np_summary[np_summary.param.str.contains('eps\[')]
+
+        sn_param_dfs = []
+        for param in ['theta', 'AV', 'Ds']:
+            param_df = np_summary[np_summary.param.str.contains(param)]
+            sn_param_dfs.append(param_df)
+
+        glob_params_dfs = []
+        for param in ['W0', 'W1', 'sigmaepsilon', 'sigma0', 'Rv']:
+            param_df = np_summary[(np_summary.param.str.contains(param)) & (~np_summary.param.str.contains('tform'))]
+            glob_params_dfs.append(param_df)
+
+        np_comparison = pd.concat([np_eps_df, *sn_param_dfs, *glob_params_dfs]).reset_index(drop=True)
+
+        T21_comparison.columns = 'stan_' + T21_comparison.columns
+        np_comparison.columns = 'np_' + np_comparison.columns
+        comparison_df = T21_comparison.merge(np_comparison, left_index=True, right_index=True)
+
+        theta_df = comparison_df[comparison_df.stan_param.str.contains('theta', case=True)]
+        print(theta_df.np_mean.std())
+        theta_err = np.sqrt(np.power(theta_df.stan_sd / np.sqrt(157), 2) + np.power(theta_df.np_sd / np.sqrt(157), 2))
+        theta_sig = np.abs(theta_df.stan_mean - theta_df.np_mean) / theta_err
+        theta_df['err'] = theta_err
+        theta_df['sig'] = theta_sig
+        print(theta_df.sig.describe(percentiles=(0.5, 0.68, 0.95)))
+        # print(theta_df[['stan_mean', 'stan_sd', 'np_mean', 'np_sd']])
+        plt.figure(figsize=(12, 8))
+        plt.errorbar(theta_df['stan_mean'], theta_df['np_mean'], xerr=theta_df.stan_sd / np.sqrt(theta_df.stan_n_eff),
+                     yerr=theta_df.np_sd / np.sqrt(theta_df.np_ess_bulk), fmt='x')
+        #plt.plot([-5, 5], [-5, 5], ls='--')
+        #plt.xlim(-0.5, 2)
+        #plt.ylim(-0.5, 2)
+        plt.xlabel(r'$W0$ (stan)')
+        plt.ylabel(r'$W0$ (numpyro)')
+        plt.show()
+        plt.figure(figsize=(12, 8))
+        plt.errorbar(theta_df['stan_mean'], theta_df['np_mean'] - theta_df['stan_mean'],
+                     yerr=theta_df['err'], fmt='x')
+        plt.xlabel('stan Ds')
+        plt.ylabel('Residual')
+        plt.show()
+        return
+
+        comparison_df['sig'] = np.abs(comparison_df.stan_mean - comparison_df.np_mean) / np.sqrt(np.power(comparison_df.stan_sd / np.sqrt(comparison_df.stan_n_eff), 2) + np.power(comparison_df.np_sd / np.sqrt(comparison_df.np_ess_bulk), 2))
+        print(comparison_df[comparison_df.np_param.str.contains('theta')][['np_param', 'sig']])
+        return
         Rv1, Rv2 = T21_summary[T21_summary.param == 'RV'], np_summary[np_summary.param == 'Rv']
         Rv1_mcerr = Rv1.sd.values[0] / np.sqrt(Rv1.n_eff.values[0])
         Rv2_mcerr = Rv2.sd.values[0] / np.sqrt(Rv2.ess_bulk.values[0])
         Rv_diff = np.abs(Rv1['mean'].values[0] - Rv2['mean'].values[0])
         Rv_mcerr = np.sqrt(np.power(Rv1_mcerr, 2) + np.power(Rv2_mcerr, 2))
         Rv_sig = Rv_diff / Rv_mcerr
-        Av1, Av2 = T21_summary[T21_summary.param.str.contains('Av', case=False)], np_summary[np_summary.param.str.contains('Av', case=False)]
-        plt.scatter(Av1['mean'], Av2['mean'])
+        print(Rv_sig)
+        Av1, Av2 = T21_summary[T21_summary.param.str.contains('theta', case=False)], np_summary[np_summary.param.str.contains('theta', case=False)]
+        plt.scatter(Av1['mean'].values[ord], Av2['mean'])
         plt.show()
 
 
@@ -988,8 +1090,8 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_500_initval', chain_method='vectorized')
-    # model.train(1000, 1000, 4, 'foundation_train_1000_val', chain_method='vectorized', init_strategy='value')
-    model.compare_params()
+    model.train(1000, 1000, 4, 'foundation_train_1000_val', chain_method='vectorized', init_strategy='value')
+    # model.compare_params()
     # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
