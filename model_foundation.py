@@ -971,11 +971,16 @@ class Model(object):
     def compare_params(self):
         T21_summary = pd.read_csv('model_files/T21_model/summary_realn157F_alpha_4x500+500_nou_av-exp_W1_210204_180221.txt', delim_whitespace=True)
         np_summary = pd.read_csv('results/foundation_train_500_initval/fit_summary.csv')
-        print(np_summary.columns)
-        print(['param'] + np_summary.columns[1:])
-        np_summary.columns = ['param'] + np_summary.columns[1:]
-        print(np_summary.columns)
-        Rv1, Rv2 = T21_summary[T21_summary.param == 'Rv'], np_summary[np_summary.param == 'Rv']
+        np_summary.columns = ['param'] + list(np_summary.columns[1:])
+        Rv1, Rv2 = T21_summary[T21_summary.param == 'RV'], np_summary[np_summary.param == 'Rv']
+        Rv1_mcerr = Rv1.sd.values[0] / np.sqrt(Rv1.n_eff.values[0])
+        Rv2_mcerr = Rv2.sd.values[0] / np.sqrt(Rv2.ess_bulk.values[0])
+        Rv_diff = np.abs(Rv1['mean'].values[0] - Rv2['mean'].values[0])
+        Rv_mcerr = np.sqrt(np.power(Rv1_mcerr, 2) + np.power(Rv2_mcerr, 2))
+        Rv_sig = Rv_diff / Rv_mcerr
+        Av1, Av2 = T21_summary[T21_summary.param.str.contains('Av', case=False)], np_summary[np_summary.param.str.contains('Av', case=False)]
+        plt.scatter(Av1['mean'], Av2['mean'])
+        plt.show()
 
 
 # -------------------------------------------------
@@ -983,8 +988,8 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_500_initval', chain_method='vectorized')
-    model.train(1000, 1000, 4, 'foundation_train_1000_val', chain_method='vectorized', init_strategy='value')
-    # model.compare_params()
+    # model.train(1000, 1000, 4, 'foundation_train_1000_val', chain_method='vectorized', init_strategy='value')
+    model.compare_params()
     # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
