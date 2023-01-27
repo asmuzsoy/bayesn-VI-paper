@@ -32,8 +32,8 @@ mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 # mpl.use('macosx')
 
-# jax.config.update('jax_platform_name', 'cpu')
-# numpyro.set_host_device_count(4)
+jax.config.update('jax_platform_name', 'cpu')
+numpyro.set_host_device_count(4)
 
 print(jax.devices())
 
@@ -345,12 +345,11 @@ class Model(object):
         model_spectra = model_spectra * f_A[..., None]
 
         model_flux = jnp.sum(model_spectra * obs_band_weights, axis=1).T
-        model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
+        zps = self.zp[band_indices]
+        model_mag = self.M0 + Ds - 2.5 * jnp.log10(model_flux / zps)
+        # model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
         # model_flux *= self.device_scale
         # model_flux *= flag
-
-        zps = self.zp[band_indices]
-        model_mag = -2.5 * jnp.log10(model_flux / zps)
         model_mag *= flag
 
         return model_mag
@@ -977,7 +976,6 @@ class Model(object):
         with open(os.path.join('results', f'{output_path}.pkl'), 'wb') as file:
             pickle.dump(result, file)
 
-
     def compare_params(self):
         sn_list = pd.read_csv('data/LCs/Foundation/Foundation_DR1/Foundation_DR1.LIST', names=['file'])
         sn_list['sn'] = sn_list.file.apply(lambda x: x[x.rfind('_') + 1: x.rfind('.')])
@@ -1090,7 +1088,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_500_initval', chain_method='vectorized')
-    model.train(1000, 1000, 4, 'foundation_train_1000_mag', chain_method='vectorized', init_strategy='value')
+    model.train(30, 30, 4, 'foundation_train_test', chain_method='sequential', init_strategy='value')
     # model.compare_params()
     # model.simulate_spectrum()
     # model.train_postprocess()
