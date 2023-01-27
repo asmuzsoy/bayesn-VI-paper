@@ -968,12 +968,23 @@ class Model(object):
             pickle.dump(result, file)
 
 
+    def compare_params(self):
+        T21_summary = pd.read_csv('model_files/T21_model/summary_realn157F_alpha_4x500+500_nou_av-exp_W1_210204_180221.txt', delim_whitespace=True)
+        np_summary = pd.read_csv('results/foundation_train_500_initval/fit_summary.csv')
+        print(np_summary.columns)
+        print(['param'] + np_summary.columns[1:])
+        np_summary.columns = ['param'] + np_summary.columns[1:]
+        print(np_summary.columns)
+        Rv1, Rv2 = T21_summary[T21_summary.param == 'Rv'], np_summary[np_summary.param == 'Rv']
+
+
 # -------------------------------------------------
 
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_500_initval', chain_method='vectorized')
-    model.train(1000, 1000, 4, 'foundation_train_1000_val', chain_method='sequential', init_strategy='value')
+    model.train(1000, 1000, 4, 'foundation_train_1000_val', chain_method='vectorized', init_strategy='value')
+    # model.compare_params()
     # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
