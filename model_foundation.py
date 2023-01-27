@@ -32,8 +32,8 @@ mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 # mpl.use('macosx')
 
-jax.config.update('jax_platform_name', 'cpu')
-numpyro.set_host_device_count(4)
+#jax.config.update('jax_platform_name', 'cpu')
+#numpyro.set_host_device_count(4)
 
 print(jax.devices())
 
@@ -1088,7 +1088,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_500_initval', chain_method='vectorized')
-    model.train(30, 30, 4, 'foundation_train_test', chain_method='sequential', init_strategy='value')
+    model.train(1000, 1000, 4, 'foundation_train_test', chain_method='vectorized', init_strategy='value')
     # model.compare_params()
     # model.simulate_spectrum()
     # model.train_postprocess()
