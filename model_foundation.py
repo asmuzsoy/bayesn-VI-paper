@@ -1023,7 +1023,7 @@ class Model(object):
         T21_comparison = pd.concat([all_eps_df, *sn_param_dfs, *glob_params_dfs]).reset_index(drop=True)
 
         # Prepare numpyro comparisons
-        np_summary = pd.read_csv('results/foundation_train_1000_val/fit_summary.csv')
+        np_summary = pd.read_csv('results/foundation_train_1000_mag/fit_summary.csv')
         np_summary.columns = ['param'] + list(np_summary.columns[1:])
         np_eps_df = np_summary[np_summary.param.str.contains('eps\[')]
 
@@ -1043,7 +1043,7 @@ class Model(object):
         np_comparison.columns = 'np_' + np_comparison.columns
         comparison_df = T21_comparison.merge(np_comparison, left_index=True, right_index=True)
 
-        theta_df = comparison_df[comparison_df.stan_param.str.contains('theta', case=True)]
+        theta_df = comparison_df[comparison_df.stan_param.str.contains('Ds', case=True)]
         print(theta_df.np_mean.std())
         theta_err = np.sqrt(np.power(theta_df.stan_sd / np.sqrt(157), 2) + np.power(theta_df.np_sd / np.sqrt(157), 2))
         theta_sig = np.abs(theta_df.stan_mean - theta_df.np_mean) / theta_err
@@ -1088,8 +1088,8 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_500_initval', chain_method='vectorized')
-    model.train(1000, 1000, 4, 'foundation_train_test', chain_method='vectorized', init_strategy='value')
-    # model.compare_params()
+    # model.train(1000, 1000, 4, 'foundation_train_test', chain_method='vectorized', init_strategy='value')
+    model.compare_params()
     # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()
