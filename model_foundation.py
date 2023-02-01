@@ -362,6 +362,11 @@ class Model(object):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
+            tmax = numpyro.sample('tmax', dist.Normal())
+            print(obs[0, :, 0])
+            obs[0, :, sn_index] -= tmax[:, None]
+            print(obs[0, :, 0])
+            raise ValueError('Nope')
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
             eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
@@ -1008,19 +1013,17 @@ class Model(object):
                 all_eps_df = pd.concat([all_eps_df, eps_df])
 
         sn_param_dfs = []
-        for param in ['theta', 'AV', 'Ds']:
+        for param in ['AV', 'Ds']:
             param_df = T21_summary[T21_summary.param.str.contains(param)]
-            print(param, param_df.shape)
             param_df = param_df.iloc[ord, :]
             sn_param_dfs.append(param_df)
 
         glob_params_dfs = []
-        for param in ['W0', 'W1', 'sigmaepsilon', 'sigma0', 'RV']:
+        for param in ['W1', 'sigmaepsilon', 'sigma0', 'RV']:
             param_df = T21_summary[T21_summary.param.str.contains(param)]
-            print(param, param_df.shape)
             glob_params_dfs.append(param_df)
 
-        T21_comparison = pd.concat([all_eps_df, *sn_param_dfs, *glob_params_dfs]).reset_index(drop=True)
+        T21_comparison = pd.concat([*sn_param_dfs, *glob_params_dfs]).reset_index(drop=True)
 
         # Prepare numpyro comparisons
         np_summary = pd.read_csv('results/foundation_train_1000_mag/fit_summary.csv')
@@ -1028,22 +1031,22 @@ class Model(object):
         np_eps_df = np_summary[np_summary.param.str.contains('eps\[')]
 
         sn_param_dfs = []
-        for param in ['theta', 'AV', 'Ds']:
+        for param in ['AV', 'Ds']:
             param_df = np_summary[np_summary.param.str.contains(param)]
             sn_param_dfs.append(param_df)
 
         glob_params_dfs = []
-        for param in ['W0', 'W1', 'sigmaepsilon', 'sigma0', 'Rv']:
+        for param in ['W1', 'sigmaepsilon', 'sigma0', 'Rv']:
             param_df = np_summary[(np_summary.param.str.contains(param)) & (~np_summary.param.str.contains('tform'))]
             glob_params_dfs.append(param_df)
 
-        np_comparison = pd.concat([np_eps_df, *sn_param_dfs, *glob_params_dfs]).reset_index(drop=True)
+        np_comparison = pd.concat([*sn_param_dfs, *glob_params_dfs]).reset_index(drop=True)
 
         T21_comparison.columns = 'stan_' + T21_comparison.columns
         np_comparison.columns = 'np_' + np_comparison.columns
         comparison_df = T21_comparison.merge(np_comparison, left_index=True, right_index=True)
 
-        theta_df = comparison_df[comparison_df.stan_param.str.contains('Ds', case=True)]
+        """theta_df = comparison_df[comparison_df.stan_param.str.contains('Ds', case=True)]
         print(theta_df.np_mean.std())
         theta_err = np.sqrt(np.power(theta_df.stan_sd / np.sqrt(157), 2) + np.power(theta_df.np_sd / np.sqrt(157), 2))
         theta_sig = np.abs(theta_df.stan_mean - theta_df.np_mean) / theta_err
@@ -1066,11 +1069,20 @@ class Model(object):
         plt.xlabel('stan Ds')
         plt.ylabel('Residual')
         plt.show()
-        return
+        return"""
 
         comparison_df['sig'] = np.abs(comparison_df.stan_mean - comparison_df.np_mean) / np.sqrt(np.power(comparison_df.stan_sd / np.sqrt(comparison_df.stan_n_eff), 2) + np.power(comparison_df.np_sd / np.sqrt(comparison_df.np_ess_bulk), 2))
-        print(comparison_df[comparison_df.np_param.str.contains('theta')][['np_param', 'sig']])
+        comparison_df = comparison_df[comparison_df.stan_param.str.contains('AV')]
+        print(comparison_df.sort_values(by='sig', ascending=False))
+        plt.figure(figsize=(12, 8))
+        plt.hist(comparison_df.sig, bins=30)
+        plt.xlabel('Significance of difference')
+        plt.ylabel('Frequency')
+        plt.show()
+
         return
+        print(comparison_df.sig.describe())
+        print(comparison_df.sort_values(by='sig', ascending=False).head(20))
         Rv1, Rv2 = T21_summary[T21_summary.param == 'RV'], np_summary[np_summary.param == 'Rv']
         Rv1_mcerr = Rv1.sd.values[0] / np.sqrt(Rv1.n_eff.values[0])
         Rv2_mcerr = Rv2.sd.values[0] / np.sqrt(Rv2.ess_bulk.values[0])
@@ -1087,9 +1099,9 @@ class Model(object):
 
 if __name__ == '__main__':
     model = Model()
-    # model.fit(250, 250, 4, 'foundation_fit_4chain', 'foundation_train_500_initval', chain_method='vectorized')
+    model.fit(5, 5, 4, 'foundation_fit_test', 'foundation_train_500_initval', chain_method='sequential')
     # model.train(1000, 1000, 4, 'foundation_train_test', chain_method='vectorized', init_strategy='value')
-    model.compare_params()
+    # model.compare_params()
     # model.simulate_spectrum()
     # model.train_postprocess()
     # result.print_summary()

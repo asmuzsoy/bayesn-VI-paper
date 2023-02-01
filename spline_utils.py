@@ -5,6 +5,7 @@ BayeSN Spline Utilities. Defines a set of functions which carry out the
 """
 
 import numpy as np
+import jax.numpy as jnp
 
 def invKD_irr(x):
 	"""
@@ -133,5 +134,73 @@ def spline_coeffs_irr(x_int, x, invkd, allow_extrap=True):
 			X[i,q] = a
 			X[i,q+1] = b
 			X[i,:] = X[i,:] + c*invkd[q,:] + d*invkd[q+1,:]
+
+	return X
+
+
+def spline_coeffs_irr_jax(x_int, x, invkd):
+	"""
+	Compute a matrix of spline coefficients.
+
+	Given a set of knots at x, with values y, compute a matrix, J, which
+	can be multiplied into y to evaluate the cubic spline at points
+	x_int.
+
+	Parameters
+	----------
+	x_int : :py:class:`numpy.array`
+		Numpy array containing the locations which the output matrix will
+		interpolate the spline to.
+	x : :py:class:`numpy.array`
+		Numpy array containing the locations of the spline knots.
+	invkd : :py:class:`numpy.array`
+		Precomputed matrix for generating second derivatives. Can be obtained
+		from the output of ``invKD_irr``.
+	allow_extrap : bool
+		Flag permitting extrapolation. If True, the returned matrix will be
+		configured to extrapolate linearly beyond the outer knots. If False,
+		values which fall out of bounds will raise ValueError.
+
+	Returns
+	-------
+	J : :py:class:`numpy.array`
+		y independednt matrix whose product can be taken with y to evaluate
+		the spline at x_int.
+	"""
+	n_x_int = len(x_int)
+	n_x = len(x)
+	X = jnp.zeros((n_x_int, n_x))
+
+	for i in range(n_x_int):
+		x_now = x_int[i]
+		if x_now > jnp.max(x):
+			h = x[-1] - x[-2]
+			a = (x[-1] - x_now) / h
+			b = 1 - a
+			f = (x_now - x[-1]) * h / 6.0
+
+			X = X.at[i, -2].set(a)
+			X = X.at[i, -1].set(b)
+			X = X.at[i, :].set(X[i, :] + f * invkd[-2, :])
+		elif x_now < jnp.min(x):
+			h = x[1] - x[0]
+			b = (x_now - x[0]) / h
+			a = 1 - b
+			f = (x_now - x[0]) * h / 6.0
+
+			X = X.at[i, 0].set(a)
+			X = X.at[i, 1].set(b)
+			X = X.at[i, :].set(X[i, :] - f * invkd[1, :])
+		else:
+			q = jnp.where(x[0:-1] <= x_now)[0][-1]
+			h = x[q + 1] - x[q]
+			a = (x[q + 1] - x_now) / h
+			b = 1 - a
+			c = ((a ** 3 - a) / 6) * h ** 2
+			d = ((b ** 3 - b) / 6) * h ** 2
+
+			X = X.at[i, q].set(a)
+			X = X.at[i, q + 1].set(b)
+			X = X.at[i, :].set(X[i, :] + c * invkd[q, :] + d * invkd[q + 1, :])
 
 	return X
