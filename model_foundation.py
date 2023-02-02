@@ -93,7 +93,7 @@ class Model(object):
             hsiao_flux = data['flux'][()].astype('float64')
 
         KD_l_hsiao = spline_utils.invKD_irr(hsiao_wave)
-        self.KD_t_hsiao = spline_utils.invKD_irr(hsiao_phase)
+        self.KD_t_hsiao = device_put(spline_utils.invKD_irr(hsiao_phase))
         self.J_l_T_hsiao = device_put(spline_utils.spline_coeffs_irr(self.model_wave,
                                                                      hsiao_wave, KD_l_hsiao))
 
@@ -287,7 +287,7 @@ class Model(object):
         plt.plot(self.model_wave, spectra[0, :, :])
         plt.show()
 
-    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, redshifts, ebv, band_indices, flag):
+    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, redshifts, ebv, band_indices, flag, J_t, J_t_hsiao):
         num_batch = theta.shape[0]
         W0 = jnp.reshape(W0, (-1, *self.W0.shape))
         W0 = jnp.repeat(W0, num_batch, axis=0)
@@ -296,10 +296,10 @@ class Model(object):
 
         W = W0 + theta[..., None, None] * W1 + eps
 
-        WJt = jnp.matmul(W, self.J_t)
+        WJt = jnp.matmul(W, J_t)
         W_grid = jnp.matmul(self.J_l_T, WJt)
 
-        HJt = jnp.matmul(self.hsiao_flux, self.J_t_hsiao)
+        HJt = jnp.matmul(self.hsiao_flux, J_t_hsiao)
         H_grid = jnp.matmul(self.J_l_T_hsiao, HJt)
 
         model_spectra = H_grid * 10 ** (-0.4 * W_grid)
@@ -345,6 +345,11 @@ class Model(object):
         model_spectra = model_spectra * f_A[..., None]
 
         model_flux = jnp.sum(model_spectra * obs_band_weights, axis=1).T
+        model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
+        model_flux *= self.device_scale
+        model_flux *= flag
+        return model_flux
+
         zps = self.zp[band_indices]
         model_mag = self.M0 + Ds - 2.5 * jnp.log10(model_flux / zps)
         # model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
@@ -354,6 +359,45 @@ class Model(object):
 
         return model_mag
 
+    def spline_coeffs_irr_step(self, x_now, x, invkd):
+        #x = self.tau_knots
+        #invkd = self.KD_t
+        X = jnp.zeros_like(x)
+        up_extrap = x_now > x[-1]
+        down_extrap = x_now < x[0]
+        interp = 1 - up_extrap - down_extrap
+
+        h = x[-1] - x[-2]
+        a = (x[-1] - x_now) / h
+        b = 1 - a
+        f = (x_now - x[-1]) * h / 6.0
+
+        X = X.at[-2].set(X[-2] + a * up_extrap)
+        X = X.at[-1].set(X[-1] + b * up_extrap)
+        X = X.at[:].set(X[:] + f * invkd[-2, :] * up_extrap)
+
+        h = x[1] - x[0]
+        b = (x_now - x[0]) / h
+        a = 1 - b
+        f = (x_now - x[0]) * h / 6.0
+
+        X = X.at[0].set(X[0] + a * down_extrap)
+        X = X.at[1].set(X[1] + b * down_extrap)
+        X = X.at[:].set(X[:] - f * invkd[1, :] * down_extrap)
+
+        q = jnp.argmax(x_now < x) - 1
+        h = x[q + 1] - x[q]
+        a = (x[q + 1] - x_now) / h
+        b = 1 - a
+        c = ((a ** 3 - a) / 6) * h ** 2
+        d = ((b ** 3 - b) / 6) * h ** 2
+
+        X = X.at[q].set(X[q] + a * interp)
+        X = X.at[q + 1].set(X[q + 1] + b * interp)
+        X = X.at[:].set(X[:] + c * invkd[q, :] * interp + d * invkd[q + 1, :] * interp)
+
+        return X
+
     def fit_model(self, obs):
         sample_size = self.data.shape[-1]
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
@@ -362,11 +406,16 @@ class Model(object):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
-            tmax = numpyro.sample('tmax', dist.Normal())
-            print(obs[0, :, 0])
-            obs[0, :, sn_index] -= tmax[:, None]
-            print(obs[0, :, 0])
-            raise ValueError('Nope')
+            tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))
+            t = obs[0, ...] - tmax
+            keep_shape = t.shape
+            t = t.flatten(order='F')
+            map = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))
+            J_t = map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1, 2, 0)
+            J_t_hsiao = map(t, self.hsiao_t, self.KD_t_hsiao).reshape((*keep_shape, self.hsiao_t.shape[0]), order='F').transpose(1, 2, 0)
+            #print(J_t_hsiao[0, 0, :])
+            #print(self.J_t_hsiao[0, 0, :])
+            #raise ValueError('Nope')
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
             eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
@@ -386,7 +435,8 @@ class Model(object):
                 jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
-            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, redshift, ebv, band_indices, mask)
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, redshift, ebv, band_indices, mask,
+                                       J_t, J_t_hsiao)
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
                                obs=obs[1, :, sn_index].T)  # _{sn_index}
@@ -405,9 +455,9 @@ class Model(object):
         with open(os.path.join('results', result_path, 'chains.pkl'), 'rb') as file:
             result = pickle.load(file)
 
-        #self.data = self.data[..., 100:101]
-        #self.J_t = self.J_t[100:101, ...]
-        #self.J_t_hsiao = self.J_t_hsiao[100:101, ...]
+        #self.data = self.data[..., 0:1]
+        #self.J_t = self.J_t[10:11, ...]
+        #self.J_t_hsiao = self.J_t_hsiao[0:1, ...]
 
         self.W0 = device_put(np.reshape(np.mean(result['W0'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F'))
         self.W1 = device_put(np.reshape(np.mean(result['W1'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F'))
@@ -1071,8 +1121,10 @@ class Model(object):
         plt.show()
         return"""
 
-        comparison_df['sig'] = np.abs(comparison_df.stan_mean - comparison_df.np_mean) / np.sqrt(np.power(comparison_df.stan_sd / np.sqrt(comparison_df.stan_n_eff), 2) + np.power(comparison_df.np_sd / np.sqrt(comparison_df.np_ess_bulk), 2))
-        comparison_df = comparison_df[comparison_df.stan_param.str.contains('AV')]
+        comparison_df['sig'] = np.abs(comparison_df.stan_mean - comparison_df.np_mean) / np.sqrt(np.power(comparison_df.stan_sd, 2) + np.power(comparison_df.np_sd, 2))
+                               #np.sqrt(np.power(comparison_df.stan_sd / np.sqrt(comparison_df.stan_n_eff), 2) + np.power(comparison_df.np_sd / np.sqrt(comparison_df.np_ess_bulk), 2))
+        # comparison_df = comparison_df[comparison_df.stan_param.str.contains('AV')]
+        print(comparison_df.sig.describe())
         print(comparison_df.sort_values(by='sig', ascending=False))
         plt.figure(figsize=(12, 8))
         plt.hist(comparison_df.sig, bins=30)
@@ -1099,7 +1151,7 @@ class Model(object):
 
 if __name__ == '__main__':
     model = Model()
-    model.fit(5, 5, 4, 'foundation_fit_test', 'foundation_train_500_initval', chain_method='sequential')
+    model.fit(250, 250, 4, 'foundation_fit_tmax', 'foundation_train_1000_val', chain_method='vectorized')
     # model.train(1000, 1000, 4, 'foundation_train_test', chain_method='vectorized', init_strategy='value')
     # model.compare_params()
     # model.simulate_spectrum()
