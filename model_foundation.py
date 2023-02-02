@@ -25,6 +25,7 @@ import matplotlib as mpl
 from matplotlib import rc
 import arviz
 import extinction
+import timeit
 
 rc('font', **{'family': 'serif', 'serif': ['cmr10']})
 mpl.rcParams['axes.unicode_minus'] = False
@@ -33,7 +34,7 @@ plt.rcParams.update({'font.size': 22})
 # mpl.use('macosx')
 
 #jax.config.update('jax_platform_name', 'cpu')
-#numpyro.set_host_device_count(4)
+numpyro.set_host_device_count(4)
 
 print(jax.devices())
 
@@ -359,9 +360,8 @@ class Model(object):
 
         return model_mag
 
-    def spline_coeffs_irr_step(self, x_now, x, invkd):
-        #x = self.tau_knots
-        #invkd = self.KD_t
+    @staticmethod
+    def spline_coeffs_irr_step(x_now, x, invkd):
         X = jnp.zeros_like(x)
         up_extrap = x_now > x[-1]
         down_extrap = x_now < x[0]
@@ -407,11 +407,21 @@ class Model(object):
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
             tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))
-            t = obs[0, ...] - tmax
+            print(obs[0, :, 0])
+            t = obs[0, ...] - tmax[None, :]
+            print(tmax[0])
+            print(t[:, 0])
+            print('----')
+            print(obs[0, :, 1])
+            print(tmax[1])
+            print(t[:, 1])
             keep_shape = t.shape
             t = t.flatten(order='F')
             map = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))
             J_t = map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1, 2, 0)
+            test1 = J_t
+            test2 = self.J_t[:10, ...]
+            raise ValueError('Nope')
             J_t_hsiao = map(t, self.hsiao_t, self.KD_t_hsiao).reshape((*keep_shape, self.hsiao_t.shape[0]), order='F').transpose(1, 2, 0)
             #print(J_t_hsiao[0, 0, :])
             #print(self.J_t_hsiao[0, 0, :])
@@ -455,7 +465,25 @@ class Model(object):
         with open(os.path.join('results', result_path, 'chains.pkl'), 'rb') as file:
             result = pickle.load(file)
 
-        #self.data = self.data[..., 0:1]
+        """t = self.data[0, ...].flatten(order='F')
+        jit_jt = jax.jit(self.spline_coeffs_irr_step)
+        jit_jt(t[0], self.tau_knots, self.KD_t).block_until_ready()
+        map = jax.vmap(jit_jt, in_axes=(0, None, None))
+        start = timeit.default_timer()
+        map(t, self.tau_knots, self.KD_t).block_until_ready()
+        print(timeit.default_timer() - start)
+        t = t * 0.99
+        start = timeit.default_timer()
+        map(t, self.tau_knots, self.KD_t).block_until_ready()
+        print(timeit.default_timer() - start)
+        t = t * 0.99
+        start = timeit.default_timer()
+        map(t, self.tau_knots, self.KD_t).block_until_ready()
+        print(timeit.default_timer() - start)
+        return"""
+
+
+        self.data = self.data[..., 0:10]
         #self.J_t = self.J_t[10:11, ...]
         #self.J_t_hsiao = self.J_t_hsiao[0:1, ...]
 
@@ -1151,7 +1179,7 @@ class Model(object):
 
 if __name__ == '__main__':
     model = Model()
-    model.fit(250, 250, 4, 'foundation_fit_tmax', 'foundation_train_1000_val', chain_method='vectorized')
+    model.fit(250, 250, 4, 'foundation_fit_test', 'foundation_train_1000_val', chain_method='sequential')
     # model.train(1000, 1000, 4, 'foundation_train_test', chain_method='vectorized', init_strategy='value')
     # model.compare_params()
     # model.simulate_spectrum()
