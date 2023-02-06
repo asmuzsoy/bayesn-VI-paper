@@ -34,8 +34,9 @@ plt.rcParams.update({'font.size': 22})
 # mpl.use('macosx')
 
 #jax.config.update('jax_platform_name', 'cpu')
-numpyro.set_host_device_count(4)
+#numpyro.set_host_device_count(4)
 
+jax.config.update('jax_enable_x64', True)
 print(jax.devices())
 
 
@@ -469,7 +470,7 @@ class Model(object):
         print(timeit.default_timer() - start)
         return"""
 
-        self.data = self.data[..., 0:1]
+        #self.data = self.data[..., 0:1]
         #self.J_t = self.J_t[10:11, ...]
         #self.J_t_hsiao = self.J_t_hsiao[0:1, ...]
 
@@ -1176,7 +1177,7 @@ class Model(object):
 
 if __name__ == '__main__':
     model = Model()
-    model.fit(250, 250, 4, 'foundation_fit_test', 'foundation_train_1000_val', chain_method='parallel')
+    model.fit(250, 250, 4, 'foundation_fit_gpu', 'foundation_train_1000_val', chain_method='vectorized')
     # model.train(1000, 1000, 4, 'foundation_train_test', chain_method='vectorized', init_strategy='value')
     # model.compare_params()
     # model.simulate_spectrum()
