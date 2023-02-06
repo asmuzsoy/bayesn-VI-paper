@@ -34,7 +34,7 @@ plt.rcParams.update({'font.size': 22})
 # mpl.use('macosx')
 
 #jax.config.update('jax_platform_name', 'cpu')
-numpyro.set_host_device_count(4)
+#numpyro.set_host_device_count(4)
 
 print(jax.devices())
 
@@ -353,9 +353,6 @@ class Model(object):
 
         zps = self.zp[band_indices]
         model_mag = self.M0 + Ds - 2.5 * jnp.log10(model_flux / zps)
-        # model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
-        # model_flux *= self.device_scale
-        # model_flux *= flag
         model_mag *= flag
 
         return model_mag
@@ -407,21 +404,11 @@ class Model(object):
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
             tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))
-            print(obs[0, :, 0])
-            t = obs[0, ...] - tmax[None, :]
-            print(tmax[0])
-            print(t[:, 0])
-            print('----')
-            print(obs[0, :, 1])
-            print(tmax[1])
-            print(t[:, 1])
+            t = obs[0, ...] - tmax[None, sn_index]
             keep_shape = t.shape
             t = t.flatten(order='F')
             map = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))
             J_t = map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1, 2, 0)
-            test1 = J_t
-            test2 = self.J_t[:10, ...]
-            raise ValueError('Nope')
             J_t_hsiao = map(t, self.hsiao_t, self.KD_t_hsiao).reshape((*keep_shape, self.hsiao_t.shape[0]), order='F').transpose(1, 2, 0)
             #print(J_t_hsiao[0, 0, :])
             #print(self.J_t_hsiao[0, 0, :])
@@ -452,7 +439,7 @@ class Model(object):
                                obs=obs[1, :, sn_index].T)  # _{sn_index}
 
     def fit(self, num_samples, num_warmup, num_chains, output, result_path, chain_method='parallel', init_strategy='median'):
-        self.process_dataset(mode='training')
+        self.process_dataset(mode='training', data_mode='flux')
         self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
         if init_strategy == 'value':
             init_strategy = init_to_value(values=self.initial_guess())
@@ -482,10 +469,12 @@ class Model(object):
         print(timeit.default_timer() - start)
         return"""
 
-
-        self.data = self.data[..., 0:10]
+        #self.data = self.data[..., 0:1]
         #self.J_t = self.J_t[10:11, ...]
         #self.J_t_hsiao = self.J_t_hsiao[0:1, ...]
+
+        self.zp = jnp.array(
+            [4.608419288004386e-09, 2.8305383925373084e-09, 1.917161265703195e-09, 1.446643295845274e-09])
 
         self.W0 = device_put(np.reshape(np.mean(result['W0'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F'))
         self.W1 = device_put(np.reshape(np.mean(result['W1'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F'))
@@ -495,15 +484,23 @@ class Model(object):
         self.Rv = device_put(np.mean(result['Rv'], axis=(0, 1)))
         self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
         self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
-        rng = PRNGKey(123)
+        rng = PRNGKey(321)
         # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
-        nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_to_median())
+        nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
         mcmc.run(rng, self.data)
         mcmc.print_summary()
-        with open(os.path.join('results', f'{output}.pkl'), 'wb') as file:
-            pickle.dump(mcmc, file)
+        self.fit_postprocess(mcmc.get_samples(group_by_chain=True), output)
+
+    def fit_postprocess(self, samples, output):
+        if not os.path.exists(os.path.join('results', output)):
+            os.mkdir(os.path.join('results', output))
+        with open(os.path.join('results', output, 'chains.pkl'), 'wb') as file:
+            pickle.dump(samples, file)
+        # Save convergence data for each parameter to csv file
+        summary = arviz.summary(samples)
+        summary.to_csv(os.path.join('results', output, 'fit_summary.csv'))
 
     def fit_assess(self, params, yaml_dir):
         with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
@@ -1179,7 +1176,7 @@ class Model(object):
 
 if __name__ == '__main__':
     model = Model()
-    model.fit(250, 250, 4, 'foundation_fit_test', 'foundation_train_1000_val', chain_method='sequential')
+    model.fit(250, 250, 4, 'foundation_fit_gpu', 'foundation_train_1000_val', chain_method='vectorized')
     # model.train(1000, 1000, 4, 'foundation_train_test', chain_method='vectorized', init_strategy='value')
     # model.compare_params()
     # model.simulate_spectrum()
