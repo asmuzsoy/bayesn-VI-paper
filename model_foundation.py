@@ -470,7 +470,7 @@ class Model(object):
         print(timeit.default_timer() - start)
         return"""
 
-        #self.data = self.data[..., 0:1]
+        self.data = self.data[..., 0:1]
         #self.J_t = self.J_t[10:11, ...]
         #self.J_t_hsiao = self.J_t_hsiao[0:1, ...]
 
@@ -1177,8 +1177,8 @@ class Model(object):
 
 if __name__ == '__main__':
     model = Model()
-    model.fit(250, 250, 4, 'foundation_fit_gpu', 'foundation_train_1000_val', chain_method='vectorized')
-    # model.train(1000, 1000, 4, 'foundation_train_test', chain_method='vectorized', init_strategy='value')
+    # model.fit(250, 250, 4, 'foundation_fit_test', 'foundation_train_1000_val', chain_method='parallel')
+    model.train(1000, 1000, 4, 'foundation_train_1000_64', chain_method='vectorized', init_strategy='median')
     # model.compare_params()
     # model.simulate_spectrum()
     # model.train_postprocess()
