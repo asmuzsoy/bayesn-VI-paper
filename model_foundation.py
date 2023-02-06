@@ -1178,7 +1178,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.fit(250, 250, 4, 'foundation_fit_test', 'foundation_train_1000_val', chain_method='parallel')
-    model.train(1000, 1000, 4, 'foundation_train_1000_64', chain_method='sequential', init_strategy='median')
+    model.train(1000, 1000, 4, 'foundation_train_1000_64', chain_method='vectorized', init_strategy='median')
     # model.compare_params()
     # model.simulate_spectrum()
     # model.train_postprocess()
