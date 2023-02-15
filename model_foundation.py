@@ -1369,7 +1369,7 @@ class Model(object):
 
 if __name__ == '__main__':
     model = Model()
-    model.train(1000, 1000, 4, 'foundation_train_noeps', chain_method='sequential', init_strategy='value')
+    model.train(1000, 1000, 4, 'foundation_train_noeps', chain_method='vectorized', init_strategy='value')
     # model.fit(250, 250, 4, 'foundation_fit_test', 'T21', chain_method='parallel')
     # model.get_flux_from_chains('foundation_fit_T21')
     # model.plot_hubble_diagram('foundation_fit_T21')
