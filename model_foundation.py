@@ -293,7 +293,7 @@ class Model(object):
         plt.plot(self.model_wave, spectra[0, :, :])
         plt.show()
 
-    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, redshifts, ebv, band_indices, flag, J_t, J_t_hsiao):
+    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, J_t_hsiao):
         num_batch = theta.shape[0]
         W0 = jnp.reshape(W0, (-1, *self.W0.shape))
         W0 = jnp.repeat(W0, num_batch, axis=0)
@@ -474,7 +474,7 @@ class Model(object):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
-            # tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))
+            tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))
             t = obs[0, ...] # - tmax[None, sn_index]
             keep_shape = t.shape
             t = t.flatten(order='F')
@@ -493,6 +493,7 @@ class Model(object):
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
+            # eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             band_indices = obs[-6, :, sn_index].astype(int).T
             redshift = obs[-5, 0, sn_index]
             redshift_error = obs[-4, 0, sn_index]
@@ -502,7 +503,7 @@ class Model(object):
             muhat_err = 10
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err)) # Ds_err
-            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, redshift, ebv, band_indices, mask,
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
                                        J_t, J_t_hsiao)
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
@@ -572,28 +573,9 @@ class Model(object):
             self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
-        """t = self.data[0, ...].flatten(order='F')
-        jit_jt = jax.jit(self.spline_coeffs_irr_step)
-        jit_jt(t[0], self.tau_knots, self.KD_t).block_until_ready()
-        map = jax.vmap(jit_jt, in_axes=(0, None, None))
-        start = timeit.default_timer()
-        map(t, self.tau_knots, self.KD_t).block_until_ready()
-        print(timeit.default_timer() - start)
-        t = t * 0.99
-        start = timeit.default_timer()
-        map(t, self.tau_knots, self.KD_t).block_until_ready()
-        print(timeit.default_timer() - start)
-        t = t * 0.99
-        start = timeit.default_timer()
-        map(t, self.tau_knots, self.KD_t).block_until_ready()
-        print(timeit.default_timer() - start)
-        return"""
-
         self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
-
-        #self.data = self.data[..., 41:42]
-        #self.J_t = self.J_t[41:42, ...]
-        #self.J_t_hsiao = self.J_t_hsiao[41:42, ...]
+        self.data = self.data[..., 41:42]
+        self.band_weights = self.band_weights[41:42, ...]
 
         self.zp = jnp.array(
             [4.608419288004386e-09, 2.8305383925373084e-09, 1.917161265703195e-09, 1.446643295845274e-09])
@@ -749,23 +731,28 @@ class Model(object):
         W1 = numpyro.sample('W1', dist.MultivariateNormal(W_mu, jnp.eye(N_knots)))
         W0 = jnp.reshape(W0, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
         W1 = jnp.reshape(W1, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
+
+        """
         # sigmaepsilon = numpyro.sample('sigmaepsilon', dist.HalfNormal(1 * jnp.ones(N_knots_sig)))
         sigmaepsilon_tform = numpyro.sample('sigmaepsilon_tform', dist.Uniform(0, (jnp.pi / 2.) * jnp.ones(N_knots_sig)))
         sigmaepsilon = numpyro.deterministic('sigmaepsilon', 1. * jnp.tan(sigmaepsilon_tform))
         L_Omega = numpyro.sample('L_Omega', dist.LKJCholesky(N_knots_sig))
         L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon), L_Omega)
+        """
         # sigma0 = numpyro.sample('sigma0', dist.HalfCauchy(0.1))
         sigma0_tform = numpyro.sample('sigma0_tform', dist.Uniform(0, jnp.pi / 2.))
         sigma0 = numpyro.deterministic('sigma0', 0.1 * jnp.tan(sigma0_tform))
+        
         Rv = numpyro.sample('Rv', dist.Uniform(1, 5))
         # tauA = numpyro.sample('tauA', dist.HalfCauchy())
         tauA_tform = numpyro.sample('tauA_tform', dist.Uniform(0, jnp.pi / 2.))
         tauA = numpyro.deterministic('tauA', jnp.tan(tauA_tform))
 
-        # for sn_index in pyro.plate('SNe', sample_size):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             Av = numpyro.sample(f'AV', dist.Exponential(1 / tauA))
+
+            """
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=L_Sigma))
             eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
@@ -775,6 +762,9 @@ class Model(object):
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
+            """
+            eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+
             band_indices = obs[-6, :, sn_index].astype(int).T
             redshift = obs[-5, 0, sn_index]
             redshift_error = obs[-4, 0, sn_index]
@@ -784,7 +774,7 @@ class Model(object):
             muhat_err = 5 / (redshift * jnp.log(10)) * jnp.sqrt(jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))
             Ds_err = jnp.sqrt(muhat_err * muhat_err + sigma0 * sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
-            flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, redshift, ebv, band_indices, mask, self.J_t, self.J_t_hsiao)
+            flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, band_indices, mask, self.J_t, self.J_t_hsiao)
             """for i in range(4):
                 inds = (band_indices[:, 0] == i) & (flag[:, 0] > 0)
                 plt.scatter(obs[0, inds, 0], flux[inds, 0])
@@ -849,8 +839,10 @@ class Model(object):
         param_init['theta'] = jnp.array(np.random.normal(0, 1, n_sne))
         param_init['Av'] = jnp.array(np.random.exponential(tauA_, n_sne))
         L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon_init), L_Omega_init)
-        param_init['epsilon_tform'] = jnp.matmul(np.linalg.inv(L_Sigma), np.random.normal(0, 1, (n_eps, n_sne)))
+
+        # param_init['epsilon_tform'] = jnp.matmul(np.linalg.inv(L_Sigma), np.random.normal(0, 1, (n_eps, n_sne)))
         # param_init['epsilon'] = np.random.normal(0, 1, (n_sne, n_eps))
+
         param_init['Ds'] = jnp.array(np.random.normal(self.data[-3, 0, :], sigma0_))
 
         return param_init
@@ -1183,20 +1175,79 @@ class Model(object):
             plt.errorbar(self.t[inds], self.data[1, inds, 0], yerr=self.data[2, inds, 0], fmt='x')
         plt.show()
 
-    def save_results_to_yaml(self, result, output_path):
-        results_dict = {}
-        result = result.get_samples()
-        fit_params = result.keys()
-        if 'W0' not in fit_params:
-            results_dict['W0'] = self.W0
-            results_dict['W1'] = self.W1
-            results_dict['L_sigma'] = self.L_Sigma
-        for k, v in result.items():
-            results_dict[k] = v
-        #with open(os.path.join('results', f'{output_path}.yaml'), 'w') as file:
-        #    yaml.dump(result, file, default_flow_style=False)
-        with open(os.path.join('results', f'{output_path}.pkl'), 'wb') as file:
-            pickle.dump(result, file)
+    def get_flux_from_chains(self, model):
+        with open(os.path.join('results', model, 'chains.pkl'), 'rb') as file:
+            chains = pickle.load(file)
+        sample_size = chains['theta'].shape[-1]
+        self.band_weights = self._calculate_band_weights(jnp.zeros(sample_size), jnp.zeros(sample_size))
+        for param, samples in chains.items():
+            chains[param] = samples.reshape((samples.shape[0] * samples.shape[1], *samples.shape[2:]), order='F')
+
+        t = np.arange(-8, 40, 4)[..., None]
+        steps_per_band = t.shape[0]
+        t = jnp.tile(t, (4, sample_size))
+        keep_shape = t.shape
+        t = t.flatten(order='F')
+        map = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))
+        J_t = map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1, 2, 0)
+        J_t_hsiao = map(t, self.hsiao_t, self.KD_t_hsiao).reshape((*keep_shape, self.hsiao_t.shape[0]),
+                                                                  order='F').transpose(1, 2, 0)
+        t = t.reshape(keep_shape, order='F')
+        band_indices = jnp.tile(np.array([[i] * 12 for i in range(4)]).flatten()[..., None], (1, sample_size))
+        flag = jnp.ones_like(band_indices)
+
+        eps = chains['eps']
+        eps = np.reshape(chains['eps'], (eps.shape[0], self.l_knots.shape[0] - 2, self.tau_knots.shape[0], sample_size),
+                         order='F')
+        eps_full = jnp.zeros((eps.shape[0], self.l_knots.shape[0], self.tau_knots.shape[0], sample_size))
+        eps = eps_full.at[:, 1:-1, :, :].set(eps).transpose(0, 3, 1, 2)
+        theta = device_put(chains['theta'])
+        Av = device_put(chains['AV'] * 0)
+        Ds = device_put(chains['Ds'])
+        Rv = jnp.array(2.61)
+
+        jit_flux_batch = jax.jit(self.get_flux_batch)
+        jit_flux_batch(theta[0, ...], Av[0, ...], self.W0, self.W1, eps[0, ...], Ds[0, ...], Rv, band_indices,
+                            flag, J_t, J_t_hsiao)
+        map = jax.vmap(jit_flux_batch, in_axes=(0, 0, None, None, 0, 0, None, None, None, None, None))
+        flux = map(theta, Av, self.W0, self.W1, eps, Ds, Rv, band_indices, flag, J_t, J_t_hsiao) / self.device_scale
+        flux_bands = np.zeros((flux.shape[0], int(flux.shape[1] / steps_per_band), steps_per_band, flux.shape[-1]))
+        for i in range(int(flux.shape[1] / steps_per_band)):
+            flux_bands[:, i, ...] = flux[:, i * steps_per_band: (i + 1) * steps_per_band, ...]
+        self.zp = np.array(
+            [4.608419288004386e-09, 2.8305383925373084e-09, 1.917161265703195e-09, 1.446643295845274e-09])
+        mag_bands = -2.5 * np.log10(flux_bands / self.zp[None, :, None, None])
+        np.save(os.path.join('results', model, 'rf_mags'), mag_bands)
+
+        eps = eps * 0
+
+        flux = map(theta, Av, self.W0, self.W1, eps, Ds, Rv, band_indices, flag, J_t, J_t_hsiao) / self.device_scale
+        flux_bands = np.zeros((flux.shape[0], int(flux.shape[1] / steps_per_band), steps_per_band, flux.shape[-1]))
+        for i in range(int(flux.shape[1] / steps_per_band)):
+            flux_bands[:, i, ...] = flux[:, i * steps_per_band: (i + 1) * steps_per_band, ...]
+        self.zp = np.array(
+            [4.608419288004386e-09, 2.8305383925373084e-09, 1.917161265703195e-09, 1.446643295845274e-09])
+        mag_bands = -2.5 * np.log10(flux_bands / self.zp[None, :, None, None])
+        np.save(os.path.join('results', model, 'rf_mags_eps0'), mag_bands)
+
+    def plot_hubble_diagram(self, model):
+        self.process_dataset()
+        with open(os.path.join('results', model, 'chains.pkl'), 'rb') as file:
+            chains = pickle.load(file)
+        redshifts = np.array(self.data[-5, 0, :])
+        mu_model = self.cosmo.distmod(redshifts).value
+        mu_obs, mu_obs_err = chains['mu'].mean(axis=(0, 1)), chains['mu'].std(axis=(0, 1))
+        theta, theta_err = chains['theta'].mean(axis=(0, 1)), chains['theta'].std(axis=(0, 1))
+        Av, Av_err = chains['AV'].mean(axis=(0, 1)), chains['AV'].std(axis=(0, 1))
+        plt.errorbar(redshifts, mu_obs, yerr=mu_obs_err, fmt='x')
+        plt.plot(np.sort(redshifts), np.sort(mu_model), ls='--')
+        plt.show()
+        hres = mu_obs - mu_model
+        hres_err = mu_obs_err
+        plt.errorbar(redshifts, hres, yerr=hres_err, fmt='x')
+        plt.show()
+        save_data = np.array([redshifts, hres, hres_err, theta, theta_err, Av, Av_err])
+        np.save(os.path.join('results', model, 'hres'), save_data)
 
     def compare_params(self):
         sn_list = pd.read_csv('data/LCs/Foundation/Foundation_DR1/Foundation_DR1.LIST', names=['file'])
@@ -1318,8 +1369,10 @@ class Model(object):
 
 if __name__ == '__main__':
     model = Model()
-    model.fit(250, 250, 4, 'foundation_fit_T21', 'T21', chain_method='parallel')
-    # model.train(1000, 1000, 4, 'foundation_train_1000_64', chain_method='vectorized', init_strategy='median')
+    model.train(1000, 1000, 4, 'foundation_train_noeps', chain_method='sequential', init_strategy='value')
+    # model.fit(250, 250, 4, 'foundation_fit_test', 'T21', chain_method='parallel')
+    # model.get_flux_from_chains('foundation_fit_T21')
+    # model.plot_hubble_diagram('foundation_fit_T21')
     # model.compare_params()
     # model.simulate_spectrum()
     # model.train_postprocess()
