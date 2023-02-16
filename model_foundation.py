@@ -36,7 +36,7 @@ plt.rcParams.update({'font.size': 22})
 #jax.config.update('jax_platform_name', 'cpu')
 numpyro.set_host_device_count(4)
 
-# jax.config.update('jax_enable_x64', True)
+jax.config.update('jax_enable_x64', True)
 print(jax.devices())
 
 
