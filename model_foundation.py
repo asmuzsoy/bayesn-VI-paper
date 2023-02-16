@@ -486,14 +486,14 @@ class Model(object):
             #raise ValueError('Nope')
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
-            eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
-            eps_tform = eps_tform.T
-            eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
-            eps = eps.T
-            eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
-            eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
-            eps = eps_full.at[:, 1:-1, :].set(eps)
-            # eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            #eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
+            #eps_tform = eps_tform.T
+            #eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
+            #eps = eps.T
+            #eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+            #eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            #eps = eps_full.at[:, 1:-1, :].set(eps)
+            eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             band_indices = obs[-6, :, sn_index].astype(int).T
             redshift = obs[-5, 0, sn_index]
             redshift_error = obs[-4, 0, sn_index]
@@ -584,7 +584,6 @@ class Model(object):
         # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy)
 
-        """
         def do_mcmc(data, weights):
             rng_key = PRNGKey(123)
             nuts_kernel = NUTS(self.fit_model_vmap, adapt_step_size=True, init_strategy=init_strategy)
@@ -596,10 +595,7 @@ class Model(object):
         start = timeit.default_timer()
         samples = map(self.data, self.band_weights)
         print(samples)
-        return 
-        end = timeit.default_timer()
-        print(start - end)
-        """
+
 
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
@@ -905,18 +901,20 @@ class Model(object):
         W0 = np.mean(samples['W0'], axis=[0, 1]).reshape((self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
         W1 = np.mean(samples['W1'], axis=[0, 1]).reshape((self.l_knots.shape[0], self.tau_knots.shape[0]),
                                                               order='F')
-        sigmaepsilon = np.mean(samples['sigmaepsilon'], axis=[0, 1])
-        L_Omega = np.mean(samples['L_Omega'], axis=[0, 1])
-        L_Sigma = np.matmul(np.diag(np.mean(samples['sigmaepsilon'], axis=[0, 1])), np.mean(samples['L_Omega'], axis=[0, 1]))
+
+        #sigmaepsilon = np.mean(samples['sigmaepsilon'], axis=[0, 1])
+        #L_Omega = np.mean(samples['L_Omega'], axis=[0, 1])
+        #L_Sigma = np.matmul(np.diag(np.mean(samples['sigmaepsilon'], axis=[0, 1])), np.mean(samples['L_Omega'], axis=[0, 1]))
         sigma0 = np.mean(samples['sigma0'])
+
         Rv = np.mean(samples['Rv'])
         tauA = np.mean(samples['tauA'])
         M0_sigma0_RV_tauA = np.array([self.M0, sigma0, Rv, tauA])
         np.savetxt(os.path.join('results', output, 'W0.txt'), W0, delimiter="\t", fmt="%.3f")
         np.savetxt(os.path.join('results', output, 'W1.txt'), W1, delimiter="\t", fmt="%.3f")
-        np.savetxt(os.path.join('results', output, 'sigmaepsilon.txt'), sigmaepsilon, delimiter="\t", fmt="%.3f")
-        np.savetxt(os.path.join('results', output, 'L_Omega.txt'), L_Omega, delimiter="\t", fmt="%.3f")
-        np.savetxt(os.path.join('results', output, 'L_Sigma.txt'), L_Sigma, delimiter="\t", fmt="%.3f")
+        #np.savetxt(os.path.join('results', output, 'sigmaepsilon.txt'), sigmaepsilon, delimiter="\t", fmt="%.3f")
+        #np.savetxt(os.path.join('results', output, 'L_Omega.txt'), L_Omega, delimiter="\t", fmt="%.3f")
+        #np.savetxt(os.path.join('results', output, 'L_Sigma.txt'), L_Sigma, delimiter="\t", fmt="%.3f")
         np.savetxt(os.path.join('results', output, 'M0_sigma0_RV_tauA.txt'), M0_sigma0_RV_tauA, delimiter="\t", fmt="%.3f")
         np.savetxt(os.path.join('results', output, 'l_knots.txt'), self.l_knots, delimiter="\t", fmt="%.3f")
         np.savetxt(os.path.join('results', output, 'tau_knots.txt'), self.tau_knots, delimiter="\t", fmt="%.3f")
