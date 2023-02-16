@@ -36,7 +36,7 @@ plt.rcParams.update({'font.size': 22})
 #jax.config.update('jax_platform_name', 'cpu')
 numpyro.set_host_device_count(4)
 
-# jax.config.update('jax_enable_x64', True)
+#jax.config.update('jax_enable_x64', True)
 print(jax.devices())
 
 
@@ -486,14 +486,14 @@ class Model(object):
             #raise ValueError('Nope')
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
-            #eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
-            #eps_tform = eps_tform.T
-            #eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
-            #eps = eps.T
-            #eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
-            #eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
-            #eps = eps_full.at[:, 1:-1, :].set(eps)
-            eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
+            eps_tform = eps_tform.T
+            eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
+            eps = eps.T
+            eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+            eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            eps = eps_full.at[:, 1:-1, :].set(eps)
+            #eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             band_indices = obs[-6, :, sn_index].astype(int).T
             redshift = obs[-5, 0, sn_index]
             redshift_error = obs[-4, 0, sn_index]
@@ -584,6 +584,7 @@ class Model(object):
         # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy)
 
+        """
         def do_mcmc(data, weights):
             rng_key = PRNGKey(123)
             nuts_kernel = NUTS(self.fit_model_vmap, adapt_step_size=True, init_strategy=init_strategy)
@@ -595,7 +596,7 @@ class Model(object):
         start = timeit.default_timer()
         samples = map(self.data, self.band_weights)
         print(samples)
-
+        """
 
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
@@ -839,18 +840,18 @@ class Model(object):
         param_init['theta'] = device_put(chains['theta'].mean(axis=(0, 1)))
         param_init['Av'] = device_put(chains['AV'].mean(axis=(0, 1)))
 
-        # param_init['epsilon_tform'] = jnp.matmul(np.linalg.inv(L_Sigma), np.random.normal(0, 1, (n_eps, n_sne)))
-        # param_init['epsilon'] = np.random.normal(0, 1, (n_sne, n_eps))
-        # param_init['sigmaepsilon_tform'] = jnp.arctan(
-        #    sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape) / 1.)
-        # param_init['sigmaepsilon'] = sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape)
-        # param_init['L_Omega'] = jnp.array(L_Omega_init)
+        param_init['epsilon_tform'] = jnp.matmul(np.linalg.inv(L_Sigma), np.random.normal(0, 1, (n_eps, n_sne)))
+        param_init['epsilon'] = np.random.normal(0, 1, (n_sne, n_eps))
+        param_init['sigmaepsilon_tform'] = jnp.arctan(
+            sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape) / 1.)
+        param_init['sigmaepsilon'] = sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape)
+        param_init['L_Omega'] = jnp.array(L_Omega_init)
 
         param_init['Ds'] = jnp.array(np.random.normal(self.data[-3, 0, :], sigma0_))
 
         return param_init
 
-    def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median', mode='mag'):
+    def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median', mode='flux'):
         self.process_dataset(mode='training', data_mode=mode)
         if init_strategy == 'value':
             init_strategy = init_to_value(values=self.initial_guess())
@@ -866,8 +867,8 @@ class Model(object):
         # rng = jnp.array([PRNGKey(11), PRNGKey(22), PRNGKey(33), PRNGKey(44)])
         #rng = PRNGKey(101)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
-        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.6, init_strategy=init_strategy,
-                           dense_mass=False, find_heuristic_step_size=True, regularize_mass_matrix=False)
+        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy,
+                           dense_mass=False, find_heuristic_step_size=False, regularize_mass_matrix=True)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
         mcmc.run(rng, self.data, extra_fields=('potential_energy',))

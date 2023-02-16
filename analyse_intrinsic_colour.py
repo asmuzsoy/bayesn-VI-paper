@@ -21,12 +21,14 @@ def line(x, m, c):
 def correlation_step_plot(df, target_param, xlabel, ylabel, split_point=None):
     param_df = df.dropna(subset=target_param)
     print(target_param, param_df.shape)
-    if target_param == 'Hres':
-        err = param_df.e_Hres
-    elif target_param == 'theta':
-        err = param_df.e_theta
+    if f'b_{target_param}' in param_df.columns:
+        err = np.mean([param_df[target_param] - param_df[f'b_{target_param}'],
+                       param_df[f'B_{target_param}'] - param_df[target_param]], axis=0)
+        floor = err[err > 0].min()
+        err = np.max([err, np.ones_like(err) * floor], axis=0)
+        err = np.nan_to_num(err, nan=floor)
     else:
-        err = np.mean([param_df[target_param] - param_df[f'b_{target_param}'], param_df[f'B_{target_param}'] - param_df[target_param]], axis=0)
+        err = param_df[f'{target_param}_err']
         floor = err[err > 0].min()
         err = np.max([err, np.ones_like(err) * floor], axis=0)
         err = np.nan_to_num(err, nan=floor)
@@ -66,25 +68,37 @@ def correlation_step_plot(df, target_param, xlabel, ylabel, split_point=None):
 
 def main():
     # Load host properties-------------------
-    hdu = fits.open('data/host/J_ApJ_867_108_localsn.dat.fits')
-    host_data = hdu[1].data
-    df = pd.DataFrame.from_records(host_data)
-    df['SN'] = df.SN.apply(lambda x: x.rstrip())
+    #hdu = fits.open('data/host/J_ApJ_867_108_localsn.dat.fits')
+    #host_data = hdu[1].data
+    #df = pd.DataFrame.from_records(host_data)
+    #df['SN'] = df.SN.apply(lambda x: x.rstrip())
 
     sn_list = pd.read_csv('data/LCs/Foundation/Foundation_DR1/Foundation_DR1.LIST', names=['file'])
     sn_list['sn'] = sn_list.file.apply(lambda x: x[x.rfind('_') + 1: x.rfind('.')])
     meta_file = pd.read_csv('data/LCs/meta/T21_training_set_meta.txt', delim_whitespace=True)
     sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')
-    df = sn_list.merge(df, how='left', left_on='sn', right_on='SN')
-    df = df.replace(-99.0, np.nan)
+    #df = sn_list.merge(df, how='left', left_on='sn', right_on='SN')
+    #df = df.replace(-99.0, np.nan)
+
+    host_data = pd.read_csv('data/host/GPC1v3_hosts.txt', delim_whitespace=True)
+    host_data = host_data.replace('-', np.nan).replace('None', np.nan)
+    for col in host_data.columns:
+        if col not in ['ID', 'ra', 'dec', 'hostra', 'hostdec']:
+            host_data[col] = host_data[col].astype(float)
+    df = sn_list.merge(host_data, how='left', left_on='sn', right_on='ID')
+    df['host_g-r'] = df.PS1gMag_local - df.PS1rMag_local
+    df['host_g-r_err'] = np.sqrt(np.power(df.PS1gMagErr_local, 2) + np.power(df.PS1rMagErr_local, 2))
+    df['host_u-r'] = df.SDSSuMag_local - df.SDSSrMag_local
+    df['host_u-r_err'] = np.sqrt(np.power(df.SDSSuMagErr_local, 2) + np.power(df.SDSSuMagErr_local, 2))
+    print(df[['sn', 'ID']])
 
     hres = np.load(os.path.join('results', 'foundation_fit_T21', 'hres.npy'))
     #df['Hres'] = hres[1, :]
     #df['e_Hres'] = hres[2, :]
     df['theta'] = hres[3, :]
-    df['e_theta'] = hres[4, :]
+    df['theta_err'] = hres[4, :]
     df['Av'] = hres[5, :]
-    df['e_Av'] = hres[6, :]
+    df['Av_err'] = hres[6, :]
 
     mags = np.load(os.path.join('results', 'foundation_fit_T21', 'rf_mags.npy'))
     colours = np.zeros((mags.shape[0], mags.shape[1] - 1, *mags.shape[2:]))
@@ -106,26 +120,15 @@ def main():
     df['g_r_at_max'] = g_r_at_max
     df['g_r_at_max_err'] = g_r_at_max_err
 
-    plt.scatter(df['Mass'], df.Av)
+    correlation_step_plot(df, 'host_g-r', r'Local PS1 g-r colour', 'Intrinsic g-r SN colour at peak')
+    plt.savefig('plots/intrinsic_g-r_vs_host_g-r.png')
     plt.show()
 
-    plt.errorbar(df.Massloc, df.theta, df.e_theta, fmt='x')
+    correlation_step_plot(df, 'host_u-r', r'Local SDSS u-r', 'Intrinsic g-r SN colour at peak')
+    plt.savefig('plots/intrinsic_g-r_vs_host_u-r.png')
     plt.show()
 
-    plt.scatter(df.theta, df.g_r_at_max)
-    plt.show()
-
-    # df = df[df.z < 0.03]
-
-    #plt.errorbar(df.z, df.g_r_at_max, yerr=df.g_r_at_max_err, fmt='x')
-    #plt.show()
-    #plt.scatter(df.z, df.Mass)
-    #plt.show()
-
-    correlation_step_plot(df, 'Mass', r'$\log_{10}$(Global mass)', 'Intrinsic g-r SN colour at peak', split_point=9.5)
-    plt.savefig('plots/intrinsic_g-r_vs_global_mass.png')
-    plt.show()
-
+    return
     correlation_step_plot(df, 'Massloc', r'$\log_{10}$(Local mass)', 'Intrinsic g-r SN colour at peak')
     plt.savefig('plots/intrinsic_g-r_vs_local_mass.png')
     plt.show()
