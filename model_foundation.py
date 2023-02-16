@@ -36,7 +36,7 @@ plt.rcParams.update({'font.size': 22})
 #jax.config.update('jax_platform_name', 'cpu')
 numpyro.set_host_device_count(4)
 
-jax.config.update('jax_enable_x64', True)
+# jax.config.update('jax_enable_x64', True)
 print(jax.devices())
 
 
@@ -829,15 +829,22 @@ class Model(object):
         # param_init['tauA'] = tauA_
         param_init['sigma0_tform'] = jnp.arctan(sigma0_ / 0.1)
         param_init['sigma0'] = jnp.array(sigma0_)
-        param_init['sigmaepsilon_tform'] = jnp.arctan(sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape) / 1.)
-        # param_init['sigmaepsilon'] = sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape)
-        param_init['L_Omega'] = jnp.array(L_Omega_init)
         param_init['theta'] = jnp.array(np.random.normal(0, 1, n_sne))
         param_init['Av'] = jnp.array(np.random.exponential(tauA_, n_sne))
         L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon_init), L_Omega_init)
 
+        with open(os.path.join('results', 'foundation_train_1000_val', 'chains.pkl'), 'rb') as file:
+            chains = pickle.load(file)
+
+        param_init['theta'] = device_put(chains['theta'].mean(axis=(0, 1)))
+        param_init['Av'] = device_put(chains['AV'].mean(axis=(0, 1)))
+
         # param_init['epsilon_tform'] = jnp.matmul(np.linalg.inv(L_Sigma), np.random.normal(0, 1, (n_eps, n_sne)))
         # param_init['epsilon'] = np.random.normal(0, 1, (n_sne, n_eps))
+        # param_init['sigmaepsilon_tform'] = jnp.arctan(
+        #    sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape) / 1.)
+        # param_init['sigmaepsilon'] = sigmaepsilon_init + np.random.normal(0, 0.01, sigmaepsilon_init.shape)
+        # param_init['L_Omega'] = jnp.array(L_Omega_init)
 
         param_init['Ds'] = jnp.array(np.random.normal(self.data[-3, 0, :], sigma0_))
 
@@ -859,8 +866,8 @@ class Model(object):
         # rng = jnp.array([PRNGKey(11), PRNGKey(22), PRNGKey(33), PRNGKey(44)])
         #rng = PRNGKey(101)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
-        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy,
-                           dense_mass=False)
+        nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.6, init_strategy=init_strategy,
+                           dense_mass=False, find_heuristic_step_size=True, regularize_mass_matrix=False)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
         mcmc.run(rng, self.data, extra_fields=('potential_energy',))
@@ -1232,6 +1239,10 @@ class Model(object):
         self.process_dataset()
         with open(os.path.join('results', model, 'chains.pkl'), 'rb') as file:
             chains = pickle.load(file)
+        for i in range(4):
+            plt.hist(chains['theta'][i, :, 0])
+            plt.show()
+        return
         redshifts = np.array(self.data[-5, 0, :])
         mu_model = self.cosmo.distmod(redshifts).value
         mu_obs, mu_obs_err = chains['mu'].mean(axis=(0, 1)), chains['mu'].std(axis=(0, 1))
@@ -1367,10 +1378,10 @@ class Model(object):
 
 if __name__ == '__main__':
     model = Model()
-    model.train(1000, 1000, 4, 'foundation_train_noeps', chain_method='vectorized', init_strategy='value')
+    model.train(500, 500, 4, 'foundation_train_noeps', chain_method='vectorized', init_strategy='value')
     # model.fit(250, 250, 4, 'foundation_fit_test', 'T21', chain_method='parallel')
     # model.get_flux_from_chains('foundation_fit_T21')
-    # model.plot_hubble_diagram('foundation_fit_T21')
+    # model.plot_hubble_diagram('foundation_train_noeps')
     # model.compare_params()
     # model.simulate_spectrum()
     # model.train_postprocess()
