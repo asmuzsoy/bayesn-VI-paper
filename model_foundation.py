@@ -34,9 +34,9 @@ plt.rcParams.update({'font.size': 22})
 # mpl.use('macosx')
 
 #jax.config.update('jax_platform_name', 'cpu')
-numpyro.set_host_device_count(4)
+numpyro.set_host_device_count(8)
 
-jax.config.update('jax_enable_x64', True)
+#jax.config.update('jax_enable_x64', True)
 print(jax.devices())
 
 
@@ -362,7 +362,7 @@ class Model(object):
 
         return model_mag
 
-    def get_flux_batch_vmap(self, theta, Av, W0, W1, eps, Ds, Rv, redshifts, ebv, band_indices, flag, J_t, J_t_hsiao, weights):
+    def get_flux_batch_vmap(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, J_t_hsiao, weights):
         num_batch = theta.shape[0]
         W0 = jnp.reshape(W0, (-1, *self.W0.shape))
         W0 = jnp.repeat(W0, num_batch, axis=0)
@@ -513,7 +513,7 @@ class Model(object):
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
         theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))[None, ...]  # _{sn_index}
         Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))[None, ...]
-        tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))[None, ...]
+        #tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))[None, ...]
         t = obs[0, ...] # - tmax
         keep_shape = t.shape
         t = t.flatten(order='F')
@@ -537,14 +537,16 @@ class Model(object):
         redshift_error = obs[-4, 0, None]
         muhat = obs[-3, 0, None]
         ebv = obs[-2, 0, None]
-        mask = obs[-1, :, None].astype(bool)
+        mask = obs[-1, :, None].astype(bool).T
         muhat_err = 10
         Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
         Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err)) # Ds_err
-        flux = self.get_flux_batch_vmap(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, redshift, ebv, band_indices, mask,
-                                   J_t, J_t_hsiao, weights)
+        flux = self.get_flux_batch_vmap(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
+                                   J_t, J_t_hsiao, weights)[..., 0]
+        #plt.scatter(obs[0, :], flux)
+        #plt.errorbar(obs[0, :], obs[1, :], yerr=obs[2, :], fmt='x')
         with numpyro.handlers.mask(mask=mask):
-            numpyro.sample(f'obs', dist.Normal(flux, obs[2, :].T),
+            test = numpyro.sample(f'obs', dist.Normal(flux, obs[2, :].T),
                            obs=obs[1, :].T)  # _{sn_index}
 
     def fit(self, num_samples, num_warmup, num_chains, output, result_path, chain_method='parallel', init_strategy='median'):
@@ -574,8 +576,8 @@ class Model(object):
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
         self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
-        self.data = self.data[..., 41:42]
-        self.band_weights = self.band_weights[41:42, ...]
+        self.data = self.data[..., 41:43]
+        self.band_weights = self.band_weights[41:43, ...]
 
         self.zp = jnp.array(
             [4.608419288004386e-09, 2.8305383925373084e-09, 1.917161265703195e-09, 1.446643295845274e-09])
@@ -584,25 +586,38 @@ class Model(object):
         # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy)
 
-        """
+
         def do_mcmc(data, weights):
             rng_key = PRNGKey(123)
             nuts_kernel = NUTS(self.fit_model_vmap, adapt_step_size=True, init_strategy=init_strategy)
             mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
-                        chain_method=chain_method, progress_bar=False)
+                        chain_method=chain_method, progress_bar=True)
             mcmc.run(rng_key, data, weights)
-            return {**mcmc.get_samples(), **mcmc.get_extra_fields()}
+            return {**mcmc.get_samples(group_by_chain=True), **mcmc.get_extra_fields(group_by_chain=True)}
+
         map = jax.vmap(do_mcmc, in_axes=(2, 0))
         start = timeit.default_timer()
-        samples = map(self.data, self.band_weights)
-        print(samples)
-        """
+        samples = map(self.data, self.band_weights)#.transpose(1, 2, 0)
+        for key, val in samples.items():
+            val = np.squeeze(val)
+            if len(val.shape) == 4:
+                samples[key] = val.transpose(1, 2, 0, 3)
+            else:
+                samples[key] = val.transpose(1, 2, 0)
+        end = timeit.default_timer()
+        print('vmap: ', end - start)
 
+        start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
         mcmc.run(rng, self.data)
         mcmc.print_summary()
-        self.fit_postprocess(mcmc.get_samples(group_by_chain=True), output)
+        samples = mcmc.get_samples(group_by_chain=True)
+        end = timeit.default_timer()
+        print('original: ', end - start)
+        return
+
+        self.fit_postprocess(samples, output)
 
     def fit_postprocess(self, samples, output):
         if not os.path.exists(os.path.join('results', output)):
@@ -1379,7 +1394,7 @@ class Model(object):
 
 if __name__ == '__main__':
     model = Model()
-    model.train(500, 500, 4, 'foundation_train_noeps', chain_method='vectorized', init_strategy='value')
+    model.train(1000, 1000, 4, 'foundation_train_noeps', chain_method='vectorized', init_strategy='value')
     # model.fit(250, 250, 4, 'foundation_fit_test', 'T21', chain_method='parallel')
     # model.get_flux_from_chains('foundation_fit_T21')
     # model.plot_hubble_diagram('foundation_train_noeps')
