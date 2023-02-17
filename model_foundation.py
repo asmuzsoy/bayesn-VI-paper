@@ -36,7 +36,7 @@ plt.rcParams.update({'font.size': 22})
 #jax.config.update('jax_platform_name', 'cpu')
 numpyro.set_host_device_count(4)
 
-#jax.config.update('jax_enable_x64', True)
+jax.config.update('jax_enable_x64', True)
 print(jax.devices())
 
 
@@ -837,8 +837,8 @@ class Model(object):
         with open(os.path.join('results', 'foundation_train_1000_val', 'chains.pkl'), 'rb') as file:
             chains = pickle.load(file)
 
-        param_init['theta'] = device_put(chains['theta'].mean(axis=(0, 1)))
-        param_init['Av'] = device_put(chains['AV'].mean(axis=(0, 1)))
+        #param_init['theta'] = device_put(chains['theta'].mean(axis=(0, 1)))
+        #param_init['Av'] = device_put(chains['AV'].mean(axis=(0, 1)))
 
         param_init['epsilon_tform'] = jnp.matmul(np.linalg.inv(L_Sigma), np.random.normal(0, 1, (n_eps, n_sne)))
         param_init['epsilon'] = np.random.normal(0, 1, (n_sne, n_eps))
