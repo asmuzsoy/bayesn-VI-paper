@@ -474,7 +474,7 @@ class Model(object):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
-            tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))
+            # tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))
             t = obs[0, ...] # - tmax[None, sn_index]
             keep_shape = t.shape
             t = t.flatten(order='F')
@@ -486,14 +486,14 @@ class Model(object):
             #raise ValueError('Nope')
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
-            eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
-            eps_tform = eps_tform.T
-            eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
-            eps = eps.T
-            eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
-            eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
-            eps = eps_full.at[:, 1:-1, :].set(eps)
-            #eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            #eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
+            #eps_tform = eps_tform.T
+            #eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
+            #eps = eps.T
+            #eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+            #eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            #eps = eps_full.at[:, 1:-1, :].set(eps)
+            eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             band_indices = obs[-6, :, sn_index].astype(int).T
             redshift = obs[-5, 0, sn_index]
             redshift_error = obs[-4, 0, sn_index]
@@ -525,13 +525,14 @@ class Model(object):
         #raise ValueError('Nope')
         eps_mu = jnp.zeros(N_knots_sig)
         # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
-        eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
-        eps_tform = eps_tform.T
-        eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
-        eps = eps.T
-        eps = jnp.reshape(eps, (1, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
-        eps_full = jnp.zeros((1, self.l_knots.shape[0], self.tau_knots.shape[0]))
-        eps = eps_full.at[:, 1:-1, :].set(eps)
+        #eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
+        #eps_tform = eps_tform.T
+        #eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
+        #eps = eps.T
+        #eps = jnp.reshape(eps, (1, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+        #eps_full = jnp.zeros((1, self.l_knots.shape[0], self.tau_knots.shape[0]))
+        #eps = eps_full.at[:, 1:-1, :].set(eps)
+        eps = jnp.zeros((1, self.l_knots.shape[0], self.tau_knots.shape[0]))
         band_indices = obs[-6, :, None].astype(int)
         redshift = obs[-5, 0, None]
         redshift_error = obs[-4, 0, None]
@@ -543,11 +544,9 @@ class Model(object):
         Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err)) # Ds_err
         flux = self.get_flux_batch_vmap(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
                                    J_t, J_t_hsiao, weights)[..., 0]
-        #plt.scatter(obs[0, :], flux)
-        #plt.errorbar(obs[0, :], obs[1, :], yerr=obs[2, :], fmt='x')
         with numpyro.handlers.mask(mask=mask):
-            test = numpyro.sample(f'obs', dist.Normal(flux, obs[2, :].T),
-                           obs=obs[1, :].T)  # _{sn_index}
+            numpyro.sample(f'obs', dist.Normal(flux, obs[2, :].T),
+                           obs=obs[1, :].T)
 
     def fit(self, num_samples, num_warmup, num_chains, output, result_path, chain_method='parallel', init_strategy='median'):
         self.process_dataset(mode='training', data_mode='flux')
@@ -568,16 +567,16 @@ class Model(object):
             self.W1 = device_put(
                 np.reshape(np.mean(result['W1'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
                            order='F'))
-            sigmaepsilon = np.mean(result['sigmaepsilon'], axis=(0, 1))
-            L_Omega = np.mean(result['L_Omega'], axis=(0, 1))
-            self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
+            #sigmaepsilon = np.mean(result['sigmaepsilon'], axis=(0, 1))
+            #L_Omega = np.mean(result['L_Omega'], axis=(0, 1))
+            #self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
             self.Rv = device_put(np.mean(result['Rv'], axis=(0, 1)))
             self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
         self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
-        self.data = self.data[..., 41:43]
-        self.band_weights = self.band_weights[41:43, ...]
+        #self.data = self.data[..., 41:43]
+        #self.band_weights = self.band_weights[41:43, ...]
 
         self.zp = jnp.array(
             [4.608419288004386e-09, 2.8305383925373084e-09, 1.917161265703195e-09, 1.446643295845274e-09])
@@ -607,6 +606,8 @@ class Model(object):
         end = timeit.default_timer()
         print('vmap: ', end - start)
 
+        self.fit_postprocess(samples, output)
+
         start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
@@ -615,9 +616,7 @@ class Model(object):
         samples = mcmc.get_samples(group_by_chain=True)
         end = timeit.default_timer()
         print('original: ', end - start)
-        return
 
-        self.fit_postprocess(samples, output)
 
     def fit_postprocess(self, samples, output):
         if not os.path.exists(os.path.join('results', output)):
@@ -1394,8 +1393,8 @@ class Model(object):
 
 if __name__ == '__main__':
     model = Model()
-    model.train(1000, 1000, 4, 'foundation_train_noeps', chain_method='vectorized', init_strategy='value')
-    # model.fit(250, 250, 4, 'foundation_fit_test', 'T21', chain_method='parallel')
+    # model.train(1000, 1000, 4, 'foundation_train_noeps', chain_method='vectorized', init_strategy='value')
+    model.fit(250, 250, 4, 'foundation_fit_test', 'foundation_train_noeps', chain_method='vectorized')
     # model.get_flux_from_chains('foundation_fit_T21')
     # model.plot_hubble_diagram('foundation_train_noeps')
     # model.compare_params()
