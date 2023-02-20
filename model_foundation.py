@@ -346,7 +346,7 @@ class Model(object):
         yk = yk.at[:, 7].set(f99_c1 + f99_c2 * self.xk[7] + f99_c3 * f99_d1)
         yk = yk.at[:, 8].set(f99_c1 + f99_c2 * self.xk[8] + f99_c3 * f99_d2)
 
-        A = Av[..., None] * (1 + (self.M_fitz_block @ yk.T).T / Rv)  # Rv[..., None]
+        A = Av[..., None] * (1 + (self.M_fitz_block @ yk.T).T / Rv[..., None])  # Rv[..., None]
         f_A = 10 ** (-0.4 * A)
         model_spectra = model_spectra * f_A[..., None]
 
@@ -474,6 +474,7 @@ class Model(object):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
+            Rv = numpyro.sample('Rv', dist.Uniform(1, 6))
             # tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))
             t = obs[0, ...] # - tmax[None, sn_index]
             keep_shape = t.shape
@@ -486,14 +487,14 @@ class Model(object):
             #raise ValueError('Nope')
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
-            #eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
-            #eps_tform = eps_tform.T
-            #eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
-            #eps = eps.T
-            #eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
-            #eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
-            #eps = eps_full.at[:, 1:-1, :].set(eps)
-            eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
+            eps_tform = eps_tform.T
+            eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
+            eps = eps.T
+            eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+            eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            eps = eps_full.at[:, 1:-1, :].set(eps)
+            # eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             band_indices = obs[-6, :, sn_index].astype(int).T
             redshift = obs[-5, 0, sn_index]
             redshift_error = obs[-4, 0, sn_index]
@@ -503,7 +504,7 @@ class Model(object):
             muhat_err = 10
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err)) # Ds_err
-            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, Rv, band_indices, mask,
                                        J_t, J_t_hsiao)
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
@@ -594,19 +595,19 @@ class Model(object):
             mcmc.run(rng_key, data, weights)
             return {**mcmc.get_samples(group_by_chain=True), **mcmc.get_extra_fields(group_by_chain=True)}
 
-        map = jax.vmap(do_mcmc, in_axes=(2, 0))
-        start = timeit.default_timer()
-        samples = map(self.data, self.band_weights)#.transpose(1, 2, 0)
-        for key, val in samples.items():
-            val = np.squeeze(val)
-            if len(val.shape) == 4:
-                samples[key] = val.transpose(1, 2, 0, 3)
-            else:
-                samples[key] = val.transpose(1, 2, 0)
-        end = timeit.default_timer()
-        print('vmap: ', end - start)
+        #map = jax.vmap(do_mcmc, in_axes=(2, 0))
+        #start = timeit.default_timer()
+        #samples = map(self.data, self.band_weights)#.transpose(1, 2, 0)
+        #for key, val in samples.items():
+        #    val = np.squeeze(val)
+        #    if len(val.shape) == 4:
+        #        samples[key] = val.transpose(1, 2, 0, 3)
+        #    else:
+        #        samples[key] = val.transpose(1, 2, 0)
+        #end = timeit.default_timer()
+        #print('vmap: ', end - start)
 
-        self.fit_postprocess(samples, output)
+        #self.fit_postprocess(samples, output)
 
         start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
@@ -616,7 +617,7 @@ class Model(object):
         samples = mcmc.get_samples(group_by_chain=True)
         end = timeit.default_timer()
         print('original: ', end - start)
-
+        self.fit_postprocess(samples, output)
 
     def fit_postprocess(self, samples, output):
         if not os.path.exists(os.path.join('results', output)):
@@ -1394,7 +1395,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.train(1000, 1000, 4, 'foundation_train_noeps', chain_method='vectorized', init_strategy='value')
-    model.fit(250, 250, 4, 'foundation_fit_test', 'foundation_train_noeps', chain_method='vectorized')
+    model.fit(250, 250, 4, 'foundation_fit_T21freeRv', 'T21', chain_method='vectorized')
     # model.get_flux_from_chains('foundation_fit_T21')
     # model.plot_hubble_diagram('foundation_train_noeps')
     # model.compare_params()
