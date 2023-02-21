@@ -26,6 +26,7 @@ from matplotlib import rc
 import arviz
 import extinction
 import timeit
+from plotting_utils import corner
 
 rc('font', **{'family': 'serif', 'serif': ['cmr10']})
 mpl.rcParams['axes.unicode_minus'] = False
@@ -474,14 +475,20 @@ class Model(object):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
-            Rv = numpyro.sample('Rv', dist.Uniform(1, 6))
-            # tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))
-            t = obs[0, ...] # - tmax[None, sn_index]
+            # Rv = numpyro.sample('Rv', dist.Uniform(1, 6))
+            tmax = numpyro.sample('tmax', dist.Uniform(-0.001, 0.001))
+            t = obs[0, ...] - tmax[None, sn_index]
             keep_shape = t.shape
             t = t.flatten(order='F')
-            map = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))
-            J_t = map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1, 2, 0)
-            J_t_hsiao = map(t, self.hsiao_t, self.KD_t_hsiao).reshape((*keep_shape, self.hsiao_t.shape[0]), order='F').transpose(1, 2, 0)
+            print('------')
+            start = timeit.default_timer()
+            J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1, 2, 0)
+            end = timeit.default_timer()
+            print(end - start)
+            start = timeit.default_timer()
+            J_t_hsiao = self.J_t_map(t, self.hsiao_t, self.KD_t_hsiao).reshape((*keep_shape, self.hsiao_t.shape[0]), order='F').transpose(1, 2, 0)
+            end = timeit.default_timer()
+            print(end - start)
             #print(J_t_hsiao[0, 0, :])
             #print(self.J_t_hsiao[0, 0, :])
             #raise ValueError('Nope')
@@ -504,7 +511,7 @@ class Model(object):
             muhat_err = 10
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err)) # Ds_err
-            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, Rv, band_indices, mask,
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
                                        J_t, J_t_hsiao)
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
@@ -586,7 +593,34 @@ class Model(object):
         # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy)
 
+        jit_spline_coeff = jax.jit(self.spline_coeffs_irr_step)
+        # map = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))
+        t = self.data[0, ...]
+        keep_shape = t.shape
+        t = t.flatten(order='F')
+        self.J_t_map = jax.jit(jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None)))
+        start = timeit.default_timer()
+        J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1,
+                                                                                                                     2,
+                                                                                                                     0)
+        J_t_hsiao = self.J_t_map(t, self.hsiao_t, self.KD_t_hsiao).reshape((*keep_shape, self.hsiao_t.shape[0]),
+                                                                  order='F').transpose(1, 2, 0)
+        end = timeit.default_timer()
+        print(end - start)
 
+        for key in range(10):
+            tmax = jax.random.uniform(PRNGKey(key), shape=(self.data.shape[-1],), minval=-5, maxval=5)
+            t = self.data[0, ...] - tmax[None, :]
+            keep_shape = t.shape
+            t = t.flatten(order='F')
+            start = timeit.default_timer()
+            J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
+                                                                     order='F').transpose(1, 2, 0)
+            J_t_hsiao = self.J_t_map(t, self.hsiao_t, self.KD_t_hsiao).reshape((*keep_shape, self.hsiao_t.shape[0]),
+                                                                               order='F').transpose(1, 2, 0)
+            end = timeit.default_timer()
+            print(end - start)
+        return
         def do_mcmc(data, weights):
             rng_key = PRNGKey(123)
             nuts_kernel = NUTS(self.fit_model_vmap, adapt_step_size=True, init_strategy=init_strategy)
@@ -618,6 +652,10 @@ class Model(object):
         end = timeit.default_timer()
         print('original: ', end - start)
         self.fit_postprocess(samples, output)
+
+        #corner([samples['mu'].flatten(), samples['theta'].flatten(), samples['AV'].flatten(), samples['tmax'].flatten()],
+        #       ["$\\mu$", "$\\theta$", "$A_V$", "$t_{max}$"], lims=[[None,None], [None,None], [0,None], [None,None]])
+        #plt.show()
 
     def fit_postprocess(self, samples, output):
         if not os.path.exists(os.path.join('results', output)):
@@ -1255,10 +1293,6 @@ class Model(object):
         self.process_dataset()
         with open(os.path.join('results', model, 'chains.pkl'), 'rb') as file:
             chains = pickle.load(file)
-        for i in range(4):
-            plt.hist(chains['theta'][i, :, 0])
-            plt.show()
-        return
         redshifts = np.array(self.data[-5, 0, :])
         mu_model = self.cosmo.distmod(redshifts).value
         mu_obs, mu_obs_err = chains['mu'].mean(axis=(0, 1)), chains['mu'].std(axis=(0, 1))
@@ -1395,9 +1429,9 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.train(1000, 1000, 4, 'foundation_train_noeps', chain_method='vectorized', init_strategy='value')
-    model.fit(250, 250, 4, 'foundation_fit_T21freeRv', 'T21', chain_method='vectorized')
-    # model.get_flux_from_chains('foundation_fit_T21')
-    # model.plot_hubble_diagram('foundation_train_noeps')
+    model.fit(250, 250, 4, 'foundation_fit_test', 'T21', chain_method='sequential')
+    # model.get_flux_from_chains('foundation_fit_T21freeRv')
+    # model.plot_hubble_diagram('foundation_fit_T21freeRv')
     # model.compare_params()
     # model.simulate_spectrum()
     # model.train_postprocess()

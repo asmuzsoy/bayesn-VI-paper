@@ -3,6 +3,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import scipy.optimize
 from astropy.io import fits, ascii
 from scipy.stats import pearsonr
 from scipy import odr
@@ -71,6 +72,12 @@ def correlation_step_plot(df, x_param, y_param, xlabel, ylabel, split_point=None
     m, c = result.beta
     merr, cerr = result.sd_beta
     print(f'{x_param}: ', m, merr, m / merr)
+
+    popt, pcov = scipy.optimize.curve_fit(line, param_df[x_param], param_df[y_param], p0=(m, c), sigma=yerr)
+    m, c,  = popt
+    merr, cerr = np.sqrt(np.diag(pcov))
+    print(f'{x_param}: ', m, merr, m / merr)
+
     plot_x = np.linspace(param_df[x_param].min(), param_df[x_param].max(), 3)
     plot_y = m * plot_x + c
     plt.plot(plot_x, plot_y, color='b')
@@ -104,7 +111,7 @@ def main():
     df['host_u-r'] = df.SDSSuMag_local - df.SDSSrMag_local
     df['host_u-r_err'] = np.sqrt(np.power(df.SDSSuMagErr_local, 2) + np.power(df.SDSSuMagErr_local, 2))
 
-    hres = np.load(os.path.join('results', 'foundation_fit_T21', 'hres.npy'))
+    hres = np.load(os.path.join('results', 'foundation_fit_T21freeRv', 'hres.npy'))
     df['Hres_bayesn'] = hres[1, :]
     df['Hres_bayesn_err'] = hres[2, :]
     df['theta'] = hres[3, :]
@@ -113,13 +120,13 @@ def main():
     df['Av_err'] = hres[6, :]
     df['Hres_err'] = df.e_Hres
 
-    mags = np.load(os.path.join('results', 'foundation_fit_T21', 'rf_mags.npy'))
+    mags = np.load(os.path.join('results', 'foundation_fit_T21freeRv', 'rf_mags.npy'))
     colours = np.zeros((mags.shape[0], mags.shape[1] - 1, *mags.shape[2:]))
     for i in range(colours.shape[1]):
         colours[:, i, ...] = mags[:, i, ...] - mags[:, i + 1, ...]
     c, cerr = colours.mean(axis=0), colours.std(axis=0)
 
-    eps0_mags = np.load(os.path.join('results', 'foundation_fit_noeps', 'rf_mags_eps0.npy'))
+    eps0_mags = np.load(os.path.join('results', 'foundation_fit_T21freeRv', 'rf_mags_eps0.npy'))
     eps0colours = np.zeros((eps0_mags.shape[0], eps0_mags.shape[1] - 1, *eps0_mags.shape[2:]))
     for i in range(eps0colours.shape[1]):
         eps0colours[:, i, ...] = eps0_mags[:, i, ...] - eps0_mags[:, i + 1, ...]
@@ -158,39 +165,39 @@ def main():
     plt.show()
 
     correlation_step_plot(df, 'Av', 'g_r_at_max', r'A$_V$', 'Intrinsic g-r SN colour at peak')
+    plt.xscale('log')
     plt.savefig('plots/intrinsic_g-r_vs_Av.png')
     plt.show()
 
-    return
-    correlation_step_plot(df, 'host_u-r', r'Local SDSS u-r', 'Intrinsic g-r SN colour at peak')
+    correlation_step_plot(df, 'host_u-r', 'g_r_at_max', r'Local SDSS u-r', 'Intrinsic g-r SN colour at peak')
     plt.savefig('plots/intrinsic_g-r_vs_host_u-r.png')
     plt.show()
 
-    correlation_step_plot(df, 'Mass', r'$\log_{10}$(Global mass)', 'Intrinsic g-r SN colour at peak')
+    correlation_step_plot(df, 'Mass', 'g_r_at_max', r'$\log_{10}$(Global mass)', 'Intrinsic g-r SN colour at peak')
     plt.savefig('plots/intrinsic_g-r_vs_global_mass.png')
     plt.show()
 
-    correlation_step_plot(df, 'Massloc', r'$\log_{10}$(Local mass)', 'Intrinsic g-r SN colour at peak')
+    correlation_step_plot(df, 'Massloc', 'g_r_at_max', r'$\log_{10}$(Local mass)', 'Intrinsic g-r SN colour at peak')
     plt.savefig('plots/intrinsic_g-r_vs_local_mass.png')
     plt.show()
 
-    correlation_step_plot(df, '(u-g)loc', r'Local u-g colour', 'Intrinsic g-r SN colour at peak')
+    correlation_step_plot(df, '(u-g)loc', 'g_r_at_max', r'Local u-g colour', 'Intrinsic g-r SN colour at peak')
     plt.savefig('plots/intrinsic_g-r_vs_local_colour.png')
     plt.show()
 
-    correlation_step_plot(df, 'SFRloc', r'$\log_{10}$(Local SFR)', 'Intrinsic g-r SN colour at peak')
+    correlation_step_plot(df, 'SFRloc', 'g_r_at_max', r'$\log_{10}$(Local SFR)', 'Intrinsic g-r SN colour at peak')
     plt.savefig('plots/intrinsic_g-r_vs_local_SFR.png')
     plt.show()
 
-    correlation_step_plot(df, 'Hres', r'Hubble residual (Jones+18)', 'Intrinsic g-r SN colour at peak')
+    correlation_step_plot(df, 'Hres', 'g_r_at_max', r'Hubble residual (Jones+18)', 'Intrinsic g-r SN colour at peak')
     plt.savefig('plots/intrinsic_g-r_vs_Hres.png')
     plt.show()
 
-    correlation_step_plot(df, 'Hres_bayesn', r'Hubble residual (BayeSN)', 'Intrinsic g-r SN colour at peak')
+    correlation_step_plot(df, 'Hres_bayesn', 'g_r_at_max', r'Hubble residual (BayeSN)', 'Intrinsic g-r SN colour at peak')
     plt.savefig('plots/intrinsic_g-r_vs_Hres_bayesn.png')
     plt.show()
 
-    correlation_step_plot(df, 'delta_mu', r'$\Delta \mu$', 'Intrinsic g-r SN colour at peak')
+    correlation_step_plot(df, 'delta_mu', 'g_r_at_max', r'$\Delta \mu$', 'Intrinsic g-r SN colour at peak')
     plt.savefig('plots/intrinsic_g-r_vs_delta_mu.png')
     plt.show()
 
