@@ -107,6 +107,7 @@ class Model(object):
         self.hsiao_t = device_put(hsiao_phase)
         self.hsiao_l = device_put(hsiao_wave)
         self.hsiao_flux = device_put(hsiao_flux.T)
+        self.hsiao_flux = jnp.matmul(self.J_l_T_hsiao, self.hsiao_flux)
 
     def _setup_band_weights(self):
         """Setup the interpolation for the band weights used for photometry"""
@@ -363,7 +364,7 @@ class Model(object):
 
         return model_mag
 
-    def get_flux_batch_vmap(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, J_t_hsiao, weights):
+    def get_flux_batch_vmap(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, J_t_hsiao, weights, hsiao_interp):
         num_batch = theta.shape[0]
         W0 = jnp.reshape(W0, (-1, *self.W0.shape))
         W0 = jnp.repeat(W0, num_batch, axis=0)
@@ -375,8 +376,12 @@ class Model(object):
         WJt = jnp.matmul(W, J_t)
         W_grid = jnp.matmul(self.J_l_T, WJt)
 
-        HJt = jnp.matmul(self.hsiao_flux, J_t_hsiao)
-        H_grid = jnp.matmul(self.J_l_T_hsiao, HJt)
+        low_hsiao = self.hsiao_flux[:, hsiao_interp[0, :].astype(int)]
+        up_hsiao = self.hsiao_flux[:, hsiao_interp[1, :].astype(int)]
+        H_grid = (1 - hsiao_interp[2, :]) * low_hsiao + hsiao_interp[2, :] * up_hsiao[None, ...]
+        # HJt = jnp.matmul(self.hsiao_flux, J_t_hsiao)[None, ...]
+        # H_grid = jax.vmap(jnp.interp, in_axes=(None, None, 1))(self.model_wave, self.hsiao_l, HJt[0, ...]).T[None, ...]
+        # H_grid = jnp.matmul(self.J_l_T_hsiao, HJt)
 
         model_spectra = H_grid * 10 ** (-0.4 * W_grid)
 
@@ -521,26 +526,41 @@ class Model(object):
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
         theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))[None, ...]  # _{sn_index}
         Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))[None, ...]
-        #tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))[None, ...]
-        t = obs[0, ...] # - tmax
+        tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))[None, ...]
+        t = obs[0, ...] - tmax
+        start = timeit.default_timer()
+        hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
+        def interp_hsiao(hsiao_interp):
+            low_hsiao = self.hsiao_flux[:, hsiao_interp[0, :].astype(int)]
+            up_hsiao = self.hsiao_flux[:, hsiao_interp[1, :].astype(int)]
+            HJt = (1 - hsiao_interp[2, :]) * low_hsiao + hsiao_interp[2, :] * up_hsiao[None, ...]
+            return HJt
+        #interp_jit = jax.jit(interp_hsiao)
+        #start = timeit.default_timer()
+        #test = interp_jit(hsiao_interp)
+        #end = timeit.default_timer()
+        #print(end - start)
+        #t = obs[0, ...] - tmax + 0.1
+        #start = timeit.default_timer()
+        #test = interp_jit(hsiao_interp)
+        #end = timeit.default_timer()
+        #print(end - start)
+        #raise ValueError('Nope')
         keep_shape = t.shape
         t = t.flatten(order='F')
         map = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))
         J_t = map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose()[None, ...]
-        J_t_hsiao = map(t, self.hsiao_t, self.KD_t_hsiao).reshape((*keep_shape, self.hsiao_t.shape[0]), order='F').transpose()[None, ...]
-        #print(J_t_hsiao[0, 0, :])
-        #print(self.J_t_hsiao[0, 0, :])
-        #raise ValueError('Nope')
+        #J_t_hsiao = map(t, self.hsiao_t, self.KD_t_hsiao).reshape((*keep_shape, self.hsiao_t.shape[0]), order='F').transpose()[None, ...]
         eps_mu = jnp.zeros(N_knots_sig)
         # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
-        #eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
-        #eps_tform = eps_tform.T
-        #eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
-        #eps = eps.T
-        #eps = jnp.reshape(eps, (1, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
-        #eps_full = jnp.zeros((1, self.l_knots.shape[0], self.tau_knots.shape[0]))
-        #eps = eps_full.at[:, 1:-1, :].set(eps)
-        eps = jnp.zeros((1, self.l_knots.shape[0], self.tau_knots.shape[0]))
+        eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
+        eps_tform = eps_tform.T
+        eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
+        eps = eps.T
+        eps = jnp.reshape(eps, (1, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+        eps_full = jnp.zeros((1, self.l_knots.shape[0], self.tau_knots.shape[0]))
+        eps = eps_full.at[:, 1:-1, :].set(eps)
+        #eps = jnp.zeros((1, self.l_knots.shape[0], self.tau_knots.shape[0]))
         band_indices = obs[-6, :, None].astype(int)
         redshift = obs[-5, 0, None]
         redshift_error = obs[-4, 0, None]
@@ -551,7 +571,7 @@ class Model(object):
         Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
         Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err)) # Ds_err
         flux = self.get_flux_batch_vmap(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
-                                   J_t, J_t_hsiao, weights)[..., 0]
+                                        J_t, self.J_t_hsiao, weights, hsiao_interp)[..., 0]
         with numpyro.handlers.mask(mask=mask):
             numpyro.sample(f'obs', dist.Normal(flux, obs[2, :].T),
                            obs=obs[1, :].T)
@@ -583,8 +603,10 @@ class Model(object):
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
         self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
-        #self.data = self.data[..., 41:43]
-        #self.band_weights = self.band_weights[41:43, ...]
+        #self.data = self.data[..., 41:42]
+        #self.band_weights = self.band_weights[41:42, ...]
+        #self.J_t = self.J_t[41, ...]
+        #self.J_t_hsiao = self.J_t_hsiao[41, ...]
 
         self.zp = jnp.array(
             [4.608419288004386e-09, 2.8305383925373084e-09, 1.917161265703195e-09, 1.446643295845274e-09])
@@ -593,55 +615,40 @@ class Model(object):
         # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy)
 
-        jit_spline_coeff = jax.jit(self.spline_coeffs_irr_step)
-        # map = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))
         t = self.data[0, ...]
         keep_shape = t.shape
         t = t.flatten(order='F')
         self.J_t_map = jax.jit(jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None)))
-        start = timeit.default_timer()
-        J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1,
-                                                                                                                     2,
-                                                                                                                     0)
-        J_t_hsiao = self.J_t_map(t, self.hsiao_t, self.KD_t_hsiao).reshape((*keep_shape, self.hsiao_t.shape[0]),
-                                                                  order='F').transpose(1, 2, 0)
-        end = timeit.default_timer()
-        print(end - start)
 
-        for key in range(10):
-            tmax = jax.random.uniform(PRNGKey(key), shape=(self.data.shape[-1],), minval=-5, maxval=5)
-            t = self.data[0, ...] - tmax[None, :]
-            keep_shape = t.shape
-            t = t.flatten(order='F')
-            start = timeit.default_timer()
-            J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
-                                                                     order='F').transpose(1, 2, 0)
-            J_t_hsiao = self.J_t_map(t, self.hsiao_t, self.KD_t_hsiao).reshape((*keep_shape, self.hsiao_t.shape[0]),
-                                                                               order='F').transpose(1, 2, 0)
-            end = timeit.default_timer()
-            print(end - start)
-        return
+        #J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1,
+        #                                                                                                             2,
+        #                                                                                                             0)
+        #J_t_hsiao = self.J_t_map(t, self.hsiao_t, self.KD_t_hsiao).reshape((*keep_shape, self.hsiao_t.shape[0]),
+        #                                                          order='F').transpose(1, 2, 0)
+
         def do_mcmc(data, weights):
             rng_key = PRNGKey(123)
-            nuts_kernel = NUTS(self.fit_model_vmap, adapt_step_size=True, init_strategy=init_strategy)
+            nuts_kernel = NUTS(self.fit_model_vmap, adapt_step_size=True, init_strategy=init_strategy,
+                               max_tree_depth=10)
             mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                         chain_method=chain_method, progress_bar=True)
             mcmc.run(rng_key, data, weights)
             return {**mcmc.get_samples(group_by_chain=True), **mcmc.get_extra_fields(group_by_chain=True)}
 
-        #map = jax.vmap(do_mcmc, in_axes=(2, 0))
-        #start = timeit.default_timer()
-        #samples = map(self.data, self.band_weights)#.transpose(1, 2, 0)
-        #for key, val in samples.items():
-        #    val = np.squeeze(val)
-        #    if len(val.shape) == 4:
-        #        samples[key] = val.transpose(1, 2, 0, 3)
-        #    else:
-        #        samples[key] = val.transpose(1, 2, 0)
-        #end = timeit.default_timer()
-        #print('vmap: ', end - start)
+        map = jax.vmap(do_mcmc, in_axes=(2, 0))
+        start = timeit.default_timer()
+        samples = map(self.data, self.band_weights)
+        for key, val in samples.items():
+            val = np.squeeze(val)
+            if len(val.shape) == 4:
+                samples[key] = val.transpose(1, 2, 0, 3)
+            else:
+                samples[key] = val.transpose(1, 2, 0)
+        end = timeit.default_timer()
+        print('vmap: ', end - start)
 
-        #self.fit_postprocess(samples, output)
+        self.fit_postprocess(samples, output)
+        return
 
         start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
@@ -1429,7 +1436,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.train(1000, 1000, 4, 'foundation_train_noeps', chain_method='vectorized', init_strategy='value')
-    model.fit(250, 250, 4, 'foundation_fit_test', 'T21', chain_method='sequential')
+    model.fit(250, 250, 4, 'foundation_fit_T21tmax', 'T21', chain_method='vectorized')
     # model.get_flux_from_chains('foundation_fit_T21freeRv')
     # model.plot_hubble_diagram('foundation_fit_T21freeRv')
     # model.compare_params()
