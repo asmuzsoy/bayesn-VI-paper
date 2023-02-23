@@ -311,14 +311,10 @@ class Model(object):
         up_hsiao = self.hsiao_flux[:, hsiao_interp[1, ...].astype(int)]
         H_grid = ((1 - hsiao_interp[2, :]) * low_hsiao + hsiao_interp[2, :] * up_hsiao).transpose(2, 0, 1)
 
-        # H_grid = jnp.matmul(self.hsiao_flux, J_t_hsiao)
-        # H_grid = jnp.matmul(self.J_l_T_hsiao, HJt)
-
         model_spectra = H_grid * 10 ** (-0.4 * W_grid)
 
         num_observations = band_indices.shape[0]
 
-        #band_weights = self._calculate_band_weights(redshifts, ebv)
         batch_indices = (
             jnp.arange(num_batch)
             .repeat(num_observations)
@@ -384,21 +380,13 @@ class Model(object):
         up_hsiao = self.hsiao_flux[:, hsiao_interp[1, :].astype(int)]
         H_grid = (1 - hsiao_interp[2, :]) * low_hsiao + hsiao_interp[2, :] * up_hsiao[None, ...]
 
-        # HJt = jnp.matmul(self.hsiao_flux, J_t_hsiao)[None, ...]
-        # H_grid = jax.vmap(jnp.interp, in_axes=(None, None, 1))(self.model_wave, self.hsiao_l, HJt[0, ...]).T[None, ...]
-        # H_grid = jnp.matmul(self.J_l_T_hsiao, HJt)
-
         model_spectra = H_grid * 10 ** (-0.4 * W_grid)
 
         num_observations = band_indices.shape[0]
 
-        batch_indices = (
-            jnp.arange(num_batch)
-            .repeat(num_observations)
-        ).astype(int)
 
         obs_band_weights = (
-            weights[None, :, band_indices.T.flatten()]#            .reshape((num_batch, num_observations, -1)).transpose(0, 2, 1)
+            weights[None, :, band_indices.T.flatten()]
         )
 
         # Extinction----------------------------------------------------------
