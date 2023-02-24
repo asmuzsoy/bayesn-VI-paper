@@ -577,7 +577,7 @@ class Model(object):
 
         rng = PRNGKey(321)
         # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
-        nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=8)
+        nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
 
         t = self.data[0, ...]
         keep_shape = t.shape
@@ -587,7 +587,7 @@ class Model(object):
         def do_mcmc(data, weights):
             rng_key = PRNGKey(123)
             nuts_kernel = NUTS(self.fit_model_vmap, adapt_step_size=True, init_strategy=init_strategy,
-                               max_tree_depth=8)
+                               max_tree_depth=10)
             mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                         chain_method=chain_method, progress_bar=True)
             mcmc.run(rng_key, data, weights)
@@ -1390,7 +1390,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.train(10, 10, 4, 'foundation_train_test', chain_method='sequential', init_strategy='value')
-    model.fit(250, 250, 4, 'foundation_fit_8tree', 'T21', chain_method='vectorized')
+    model.fit(250, 250, 4, 'foundation_fit_10tree', 'T21', chain_method='vectorized')
     # model.get_flux_from_chains('foundation_fit_T21freeRv')
     # model.plot_hubble_diagram('foundation_fit_T21freeRv')
     # model.compare_params()
