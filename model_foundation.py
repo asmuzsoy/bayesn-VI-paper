@@ -1390,7 +1390,7 @@ class Model(object):
 if __name__ == '__main__':
     model = Model()
     # model.train(10, 10, 4, 'foundation_train_test', chain_method='sequential', init_strategy='value')
-    model.fit(250, 250, 4, 'foundation_fit_test', 'T21', chain_method='sequential')
+    model.fit(250, 250, 4, 'foundation_fit_7tree', 'T21', chain_method='vectorized')
     # model.get_flux_from_chains('foundation_fit_T21freeRv')
     # model.plot_hubble_diagram('foundation_fit_T21freeRv')
     # model.compare_params()
