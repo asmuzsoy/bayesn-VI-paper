@@ -36,15 +36,16 @@ plt.rcParams.update({'font.size': 22})
 # mpl.use('macosx')
 
 #jax.config.update('jax_platform_name', 'cpu')
-numpyro.set_host_device_count(8)
-
-#jax.config.update('jax_enable_x64', True)
-print(jax.devices())
 
 
 class Model(object):
-    def __init__(self, load_model='T21_model',
+    def __init__(self, num_devices=4, enable_x64=False, load_model='T21_model',
                  fiducial_cosmology={"H0": 73.24, "Om0": 0.28}, obsmodel_file='data/SNmodel_pb_obsmode_map.txt'):
+        # Settings for jax/numpyro
+        numpyro.set_host_device_count(num_devices)
+        jax.config.update('jax_enable_x64', enable_x64)
+        print('Current devices:', jax.devices())
+
         self.cosmo = FlatLambdaCDM(**fiducial_cosmology)
         self.data = None
         self.M0 = device_put(jnp.array(-19.5))
@@ -731,90 +732,6 @@ class Model(object):
             'sigma0': np.mean(samples['sigma0'])
         }"""
 
-    def train_assess(self, params, yaml_dir):
-        with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
-            result = yaml.load(file, yaml.Loader)
-        # Add dist mods
-        params['distmod'] = self.cosmo.distmod(params.redshift.values).value
-        # Theta
-        params['fit_theta_mu'] = np.median(result['theta'], axis=0)
-        params['fit_theta_std'] = np.std(result['theta'], axis=0)
-        if (params.fit_theta_mu - params.theta).min() < -4:
-            sign = -1
-        else:
-            sign = 1
-        fig, ax = plt.subplots(2, 1, figsize=(9, 12), sharex='col')
-        ax[0].errorbar(params.theta, sign * params.fit_theta_mu, yerr=params.fit_theta_std, fmt='x')
-        ax[1].errorbar(params.theta, sign * params.fit_theta_mu - params.theta, yerr=params.fit_theta_std, fmt='x')
-        xlim = ax[0].get_xlim()
-        ax[0].autoscale(tight=True)
-        ax[0].plot(xlim, xlim, 'k--')
-        ax[1].hlines(0, *xlim, colors='k', ls='--')
-        ax[1].set_xlabel(rf'True $\theta$')
-        ax[0].set_ylabel(rf'Fit $\theta$')
-        ax[1].set_ylabel(rf'Residual')
-        plt.subplots_adjust(hspace=0, wspace=0)
-        plt.show()
-        print(params[['theta', 'fit_theta_mu', 'fit_theta_std']])
-        # Av
-        params['fit_AV_mu'] = np.median(result['AV'], axis=0)
-        params['fit_AV_std'] = np.std(result['AV'], axis=0)
-        fig, ax = plt.subplots(2, 1, figsize=(9, 12), sharex='col')
-        ax[0].scatter(params.AV, params.fit_AV_mu)  # , yerr=params.fit_AV_std, fmt='x')
-        ax[1].scatter(params.AV, params.fit_AV_mu - params.AV)  # , yerr=params.fit_AV_std, fmt='x')
-        ax[1].set_xscale('log')
-        ax[0].set_yscale('log')
-        xlim = ax[0].get_xlim()
-        ax[0].autoscale(tight=True)
-        ax[0].plot(xlim, xlim, 'k--')
-        ax[1].hlines(0, *xlim, colors='k', ls='--')
-        # ax[1].set_yscale('log')
-        ax[1].set_xlabel(rf'True $A_V$')
-        ax[0].set_ylabel(rf'Fit $A_V$')
-        ax[1].set_ylabel(rf'Residual')
-        plt.subplots_adjust(hspace=0, wspace=0)
-        plt.show()
-        # dist_mod
-        muhat = params['distmod'].values
-        muhat_err = 5 / (params.redshift.values * jnp.log(10)) * self.sigma_pec
-        sigma0 = np.mean(result['sigma0'], axis=0)
-        mu = (result['Ds'] * np.power(muhat_err, 2) + muhat * np.power(result['sigma0'][..., None], 2)) \
-             / (muhat_err * muhat_err + result['sigma0'][..., None] * result['sigma0'][..., None])
-        std = np.sqrt(np.power(sigma0 * muhat_err, 2) / (muhat_err * muhat_err + sigma0 * sigma0))
-        distmod = np.random.normal(mu, std)
-        del_M = result['Ds'] - distmod
-        result['distmod'] = distmod
-        result['del_M'] = del_M
-        params['fit_distmod_mu'] = np.median(result['distmod'], axis=0)
-        params['fit_distmod_std'] = np.std(result['distmod'], axis=0)
-        fig, ax = plt.subplots(2, 1, figsize=(9, 12), sharex='col')
-        ax[0].errorbar(params.distmod, params.fit_distmod_mu, yerr=params.fit_distmod_std, fmt='x')
-        ax[1].errorbar(params.distmod, params.fit_distmod_mu - params.distmod, yerr=params.fit_distmod_std, fmt='x')
-        xlim = ax[0].get_xlim()
-        ax[0].autoscale(tight=True)
-        ax[0].plot(xlim, xlim, 'k--')
-        ax[1].hlines(0, *xlim, colors='k', ls='--')
-        ax[1].set_xlabel(rf'True $\mu$')
-        ax[0].set_ylabel(rf'Fit $\mu$')
-        ax[1].set_ylabel(rf'Residual')
-        plt.subplots_adjust(hspace=0, wspace=0)
-        plt.show()
-        # dist_mod
-        params['fit_delM_mu'] = np.median(result['del_M'], axis=0)
-        params['fit_delM_std'] = np.std(result['del_M'], axis=0)
-        fig, ax = plt.subplots(2, 1, figsize=(9, 12), sharex='col')
-        ax[0].errorbar(params.del_M, params.fit_delM_mu, yerr=params.fit_delM_std, fmt='x')
-        ax[1].errorbar(params.del_M, params.fit_delM_mu - params.del_M, yerr=params.fit_delM_std, fmt='x')
-        xlim = ax[0].get_xlim()
-        ax[0].autoscale(tight=True)
-        ax[0].plot(xlim, xlim, 'k--')
-        ax[1].hlines(0, *xlim, colors='k', ls='--')
-        ax[1].set_xlabel(rf'True $\delta M$')
-        ax[0].set_ylabel(rf'Fit $\delta M$')
-        ax[1].set_ylabel(rf'Residual')
-        plt.subplots_adjust(hspace=0, wspace=0)
-        plt.show()
-
     def process_dataset(self, sample_name, lc_dir, meta_file, map_dict=None, sn_list=None, data_mode='flux'):
         if not os.path.exists(os.path.join('data', 'LCs', 'pickles', sample_name)):
             os.mkdir(os.path.join('data', 'LCs', 'pickles', sample_name))
@@ -974,7 +891,6 @@ class Model(object):
         np.save(os.path.join('results', model, 'rf_mags_eps0'), mag_bands)
 
     def plot_hubble_diagram(self, model):
-        self.process_dataset()
         with open(os.path.join('results', model, 'chains.pkl'), 'rb') as file:
             chains = pickle.load(file)
         redshifts = np.array(self.data[-5, 0, :])
