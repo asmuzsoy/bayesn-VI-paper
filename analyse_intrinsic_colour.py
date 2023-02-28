@@ -93,7 +93,7 @@ def main():
     df = pd.DataFrame.from_records(host_data)
     df['SN'] = df.SN.apply(lambda x: x.rstrip())
 
-    sn_list = pd.read_csv('data/LCs/Foundation/Foundation_DR1/Foundation_DR1.LIST', names=['file'])
+    sn_list = pd.read_csv('data/LCs/foundation/Foundation_DR1/Foundation_DR1.LIST', names=['file'])
     sn_list['sn'] = sn_list.file.apply(lambda x: x[x.rfind('_') + 1: x.rfind('.')])
     meta_file = pd.read_csv('data/LCs/meta/T21_training_set_meta.txt', delim_whitespace=True)
     sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')

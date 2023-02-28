@@ -2,11 +2,12 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import pearsonr
+from scipy.interpolate import interp1d
+from scipy.integrate import simpson
 import numpyro
 from numpyro.infer import MCMC, NUTS, Predictive, HMC, init_to_median, init_to_sample, init_to_value
 import numpyro.distributions as dist
 import h5py
-import lcdata
 import sncosmo
 from settings import parse_settings
 import spline_utils
@@ -15,18 +16,19 @@ import pickle
 import pandas as pd
 import jax
 from jax import device_put
-from jax.tree_util import tree_map
 import jax.numpy as jnp
 from jax.random import PRNGKey
 import extinction
 import yaml
 from astropy.cosmology import FlatLambdaCDM
+import astropy.constants as const
 import matplotlib as mpl
 from matplotlib import rc
 import arviz
 import extinction
 import timeit
 from plotting_utils import corner
+from astropy.io import fits
 
 rc('font', **{'family': 'serif', 'serif': ['cmr10']})
 mpl.rcParams['axes.unicode_minus'] = False
@@ -42,15 +44,11 @@ print(jax.devices())
 
 
 class Model(object):
-    def __init__(self, ignore_unknown_settings=False, settings={}, device='cuda',
-                 fiducial_cosmology={"H0": 73.24, "Om0": 0.28}):
-        bands = ['ps1::g', 'ps1::r', 'ps1::i', 'ps1::z']
-        self.band_dict = {band[-1]: i for i, band in enumerate(bands)}
+    def __init__(self, ignore_unknown_settings=False, settings={}, load_model='T21_model',
+                 fiducial_cosmology={"H0": 73.24, "Om0": 0.28}, obsmodel_file='data/SNmodel_pb_obsmode_map.txt'):
         self.cosmo = FlatLambdaCDM(**fiducial_cosmology)
         self.data = None
-        self.device = device
-        self.settings = parse_settings(bands, settings,
-                                       ignore_unknown_settings=ignore_unknown_settings)
+        self.settings = parse_settings(settings, ignore_unknown_settings=ignore_unknown_settings)
         self.M0 = device_put(jnp.array(-19.5))
         self.RV_MW = device_put(jnp.array(3.1))
 
@@ -58,15 +56,18 @@ class Model(object):
         self.device_scale = device_put(jnp.array(self.scale))
         self.sigma_pec = device_put(jnp.array(150 / 3e5))
 
-        self.l_knots = np.genfromtxt('model_files/T21_model/l_knots.txt')
-        self.tau_knots = np.genfromtxt('model_files/T21_model/tau_knots.txt')
-        self.W0 = np.genfromtxt('model_files/T21_model/W0.txt')
-        self.W1 = np.genfromtxt('model_files/T21_model/W1.txt')
-        self.L_Sigma = np.genfromtxt('model_files/T21_model/L_Sigma_epsilon.txt')
-        model_params = np.genfromtxt('model_files/T21_model/M0_sigma0_RV_tauA.txt')
-        self.sigma0 = device_put(model_params[1])
-        self.Rv = device_put(model_params[2])
-        self.tauA = device_put(model_params[3])
+        try:
+            self.l_knots = np.genfromtxt(f'model_files/{load_model}/l_knots.txt')
+            self.tau_knots = np.genfromtxt(f'model_files/{load_model}/tau_knots.txt')
+            self.W0 = np.genfromtxt(f'model_files/{load_model}/W0.txt')
+            self.W1 = np.genfromtxt(f'model_files/{load_model}/W1.txt')
+            self.L_Sigma = np.genfromtxt(f'model_files/{load_model}/L_Sigma_epsilon.txt')
+            model_params = np.genfromtxt(f'model_files/{load_model}/M0_sigma0_RV_tauA.txt')
+            self.sigma0 = device_put(model_params[1])
+            self.Rv = device_put(model_params[2])
+            self.tauA = device_put(model_params[3])
+        except:
+            raise ValueError('Must select one of M20_model, T21_model, T21_partial-split_model and W22_model')
 
         self.l_knots = device_put(self.l_knots)
         self.tau_knots = device_put(self.tau_knots)
@@ -74,6 +75,7 @@ class Model(object):
         self.W1 = device_put(self.W1)
         self.L_Sigma = device_put(self.L_Sigma)
 
+        self.obsmode_file = obsmodel_file
         self._setup_band_weights()
 
         KD_l = spline_utils.invKD_irr(self.l_knots)
@@ -135,16 +137,22 @@ class Model(object):
             band_max_log_wave + band_spacing * pad,
             band_spacing
         )
-        band_pad_dwave = (
-                10 ** (band_pad_log_wave + band_spacing / 2.)
-                - 10 ** (band_pad_log_wave - band_spacing / 2.)
-        )
 
-        ref = sncosmo.get_magsystem(self.settings['magsys'])
+        # Load reference source spectra
+        with fits.open('data/zp/alpha_lyr_stis_010.fits') as hdu:
+            vega_df = pd.DataFrame.from_records(hdu[1].data)
+        vega_lam, vega_f = vega_df.WAVELENGTH, vega_df.FLUX
 
-        band_weights = []
+        def f_lam(l):
+            f = (const.c.to('AA/s').value / 1e23) * ((l) ** -2) * 10 ** (-48.6 / 2.5) * 1e23
+            return f
 
-        for band_name in self.settings['bands']:
+        band_weights, zps = [], []
+        self.band_dict, self.zp_dict = {}, {}
+
+        obsmode = pd.read_csv(self.obsmode_file, delim_whitespace=True)
+
+        """        for band_name in self.settings['bands']:
             band = sncosmo.get_bandpass(band_name)
             filt = band_name[-1]
             # band_transmission = band(10 ** (band_pad_log_wave))
@@ -153,18 +161,19 @@ class Model(object):
             else:
                 filt_file = f'{filt}_filt_tonry.txt'
             R = np.loadtxt(f'data/filters/PS1/{filt_file}')
+            band_transmission = np.interp(10 ** band_pad_log_wave, R[:, 0], R[:, 1])"""
+
+        band_ind = 0
+        for i, row in obsmode.iterrows():
+            band, magsys = row.pb, row.magsys
+            try:
+                R = np.loadtxt(os.path.join('data', row.obsmode))
+            except:
+                continue
             band_transmission = np.interp(10 ** band_pad_log_wave, R[:, 0], R[:, 1])
 
             # Convolve the bands to match the sampling of the spectrum.
             band_conv_transmission = jnp.interp(band_wave, 10 ** band_pad_log_wave, band_transmission)
-
-            band_weight = (
-                    band_wave
-                    * band_conv_transmission
-                    / sncosmo.constants.HC_ERG_AA
-                    / ref.zpbandflux(band)
-                    * 10 ** (0.4 * -20.)
-            )
 
             dlamba = jnp.diff(band_wave)
             dlamba = jnp.r_[dlamba, dlamba[-1]]
@@ -174,6 +183,25 @@ class Model(object):
             band_weight = num / denom
 
             band_weights.append(band_weight)
+
+            # Get zero points
+            lam = R[:, 0]
+            if row.magsys == 'abmag':
+                zp = f_lam(lam)
+            elif row.magsys == 'vegamag':
+                zp = interp1d(vega_lam, vega_f, kind='cubic')(lam)
+            else:
+                continue
+
+            int1 = simpson(lam * zp * R[:, 1], lam)
+            int2 = simpson(lam * R[:, 1], lam)
+            zp = 2.5 * np.log10(int1 / int2)
+            self.band_dict[band] = band_ind
+            self.zp_dict[band] = zp
+            zps.append(zp)
+            band_ind += 1
+
+        self.zps = zps
 
         # Get the locations that should be sampled at redshift 0. We can scale these to
         # get the locations at any redshift.
@@ -297,10 +325,10 @@ class Model(object):
 
     def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, hsiao_interp):
         num_batch = theta.shape[0]
-        W0 = jnp.reshape(W0, (-1, *self.W0.shape))
-        W0 = jnp.repeat(W0, num_batch, axis=0)
-        W1 = jnp.reshape(W1, (-1, *self.W1.shape))
-        W1 = jnp.repeat(W1, num_batch, axis=0)
+        #W0 = jnp.reshape(W0, (-1, *W0.shape))
+        W0 = jnp.repeat(W0[None, ...], num_batch, axis=0)
+        #W1 = jnp.reshape(W1, (-1, *W1.shape))
+        W1 = jnp.repeat(W1[None, ...], num_batch, axis=0)
 
         W = W0 + theta[..., None, None] * W1 + eps
 
@@ -543,7 +571,6 @@ class Model(object):
                            obs=obs[1, :].T)
 
     def fit(self, num_samples, num_warmup, num_chains, output, result_path, chain_method='parallel', init_strategy='median'):
-        self.process_dataset(mode='training', data_mode='flux')
         if init_strategy == 'value':
             init_strategy = init_to_value(values=self.initial_guess())
         elif init_strategy == 'median':
@@ -568,16 +595,17 @@ class Model(object):
             self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
-        self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
-        #self.data = self.data[..., 41:42]
-        #self.band_weights = self.band_weights[41:42, ...]
+        #self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
+        self.data = self.data[..., 41:42]
+        print(self.data.shape)
+        self.band_weights = self.band_weights[41:42, ...]
 
         self.zp = jnp.array(
             [4.608419288004386e-09, 2.8305383925373084e-09, 1.917161265703195e-09, 1.446643295845274e-09])
 
         rng = PRNGKey(321)
         # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
-        nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=7)
+        nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
 
         t = self.data[0, ...]
         keep_shape = t.shape
@@ -593,18 +621,18 @@ class Model(object):
             mcmc.run(rng_key, data, weights)
             return {**mcmc.get_samples(group_by_chain=True), **mcmc.get_extra_fields(group_by_chain=True)}
 
-        map = jax.vmap(do_mcmc, in_axes=(2, 0))
-        start = timeit.default_timer()
-        samples = map(self.data, self.band_weights)
-        for key, val in samples.items():
-            val = np.squeeze(val)
-            if len(val.shape) == 4:
-                samples[key] = val.transpose(1, 2, 0, 3)
-            else:
-                samples[key] = val.transpose(1, 2, 0)
-        end = timeit.default_timer()
-        print('vmap: ', end - start)
-        self.fit_postprocess(samples, output)
+        #map = jax.vmap(do_mcmc, in_axes=(2, 0))
+        #start = timeit.default_timer()
+        #samples = map(self.data, self.band_weights)
+        #for key, val in samples.items():
+        #    val = np.squeeze(val)
+        #    if len(val.shape) == 4:
+        #        samples[key] = val.transpose(1, 2, 0, 3)
+        #    else:
+        #        samples[key] = val.transpose(1, 2, 0)
+        #end = timeit.default_timer()
+        #print('vmap: ', end - start)
+        #self.fit_postprocess(samples, output)
 
         start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
@@ -817,19 +845,6 @@ class Model(object):
 
         # Prepare initial guesses
         # I should make the jittering more free for the user to control
-        param_init = {
-            'W0': np.zeros((n_chains, *W0_init.shape)),
-            'W1': np.zeros((n_chains, *W1_init.shape)),
-            'Rv': np.zeros(n_chains),
-            'tauA': np.zeros(n_chains),
-            'sigma0': np.zeros(n_chains),
-            'sigmaepsilon': np.zeros((n_chains, *sigmaepsilon_init.shape)),
-            'L_Omega': np.zeros((n_chains, *L_Omega_init.shape)),
-            'Av': np.zeros((n_chains, n_sne)),
-            'theta': np.zeros((n_chains, n_sne)),
-            'epsilon': np.zeros((n_chains, n_sne, n_eps)),
-            'Ds': np.zeros((n_chains, n_sne))
-        }
         param_init = {}
         tauA_ = tauA_init + np.random.normal(0, 0.01)
         while tauA_ < 0:
@@ -863,8 +878,8 @@ class Model(object):
 
         return param_init
 
-    def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median', mode='flux'):
-        self.process_dataset(mode='training', data_mode=mode)
+    def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median', mode='flux',
+              l_knots=None):
         if init_strategy == 'value':
             init_strategy = init_to_value(values=self.initial_guess())
         elif init_strategy == 'median':
@@ -873,6 +888,10 @@ class Model(object):
             init_strategy = init_to_sample()
         else:
             raise ValueError('Invalid init strategy, must be one of value, median and sample')
+        if l_knots is not None:
+            self.l_knots = jnp.array(l_knots)
+            KD_l = spline_utils.invKD_irr(self.l_knots)
+            self.J_l_T = device_put(spline_utils.spline_coeffs_irr(self.model_wave, self.l_knots, KD_l))
         self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
         self.zp = jnp.array([4.608419288004386e-09, 2.8305383925373084e-09, 1.917161265703195e-09, 1.446643295845274e-09])
         t = self.data[0, ...]
@@ -1039,43 +1058,46 @@ class Model(object):
         plt.subplots_adjust(hspace=0, wspace=0)
         plt.show()
 
-    def process_dataset(self, mode='training', data_mode='flux'):
-        if os.path.exists(os.path.join('data', 'LCs', 'pickles', 'foundation', f'dataset_{data_mode}.pkl')):
-            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', f'dataset_{data_mode}.pkl'), 'rb') as file:
+    def process_dataset(self, sample_name, lc_dir, meta_file, map_dict=None, sn_list=None, data_mode='flux'):
+        if not os.path.exists(os.path.join('data', 'LCs', 'pickles', sample_name)):
+            os.mkdir(os.path.join('data', 'LCs', 'pickles', sample_name))
+        if os.path.exists(os.path.join('data', 'LCs', 'pickles', sample_name, f'dataset_{data_mode}.pkl')):
+            with open(os.path.join('data', 'LCs', 'pickles', sample_name, f'dataset_{data_mode}.pkl'), 'rb') as file:
                 all_data = pickle.load(file)
-            if mode == 'training':
-                with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t.pkl'), 'rb') as file:
-                    all_J_t = pickle.load(file)
-                with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t_hsiao.pkl'), 'rb') as file:
-                    all_J_t_hsiao = pickle.load(file)
-            else:
-                with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'fitting.pkl'), 'rb') as file:
-                    self.J_t = pickle.load(file)
-                with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'fitting_J_t_hsiao.pkl'), 'rb') as file:
-                    self.J_t_hsiao = pickle.load(file)
+            with open(os.path.join('data', 'LCs', 'pickles', sample_name, 'J_t.pkl'), 'rb') as file:
+                all_J_t = pickle.load(file)
             self.data = device_put(all_data.T)
             self.J_t = device_put(all_J_t)
-            self.J_t_hsiao = device_put(all_J_t_hsiao)
+            self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
             return
-        sn_list = pd.read_csv('data/LCs/Foundation/Foundation_DR1/Foundation_DR1.LIST', names=['file'])
-        sn_list['sn'] = sn_list.file.apply(lambda x: x[x.rfind('_') + 1: x.rfind('.')])
-        meta_file = pd.read_csv('data/LCs/meta/T21_training_set_meta.txt', delim_whitespace=True)
+        if sn_list is not None and sample_name.lower() == 'foundation':
+            sn_list = pd.read_csv(sn_list, names=['file'])
+            sn_list['sn'] = sn_list.file.apply(lambda x: x[x.rfind('_') + 1: x.rfind('.')])
+        elif sn_list is not None:
+            sn_list = pd.read_csv(sn_list, names=['file'])
+            sn_list['sn'] = sn_list.file.apply(lambda x: x[:x.find('.')])
+        else:
+            sn_list = pd.DataFrame(os.listdir(lc_dir), columns=['file'])
+            sn_list['sn'] = sn_list.file.apply(lambda x: x[:x.find('.')])
 
+        meta_file = pd.read_csv(meta_file, delim_whitespace=True)
         sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')
-        zp_dict = {'g': 4.608419288004386e-09, 'r': 2.8305383925373084e-09, 'i': 1.917161265703195e-09, 'z': 1.446643295845274e-09}
         n_obs = []
 
         all_lcs = []
         t_ranges = []
         for i, row in sn_list.iterrows():
-            meta, lcdata = sncosmo.read_snana_ascii(os.path.join('data', 'LCs', 'Foundation', 'Foundation_DR1', row.file), default_tablename='OBS')
+            meta, lcdata = sncosmo.read_snana_ascii(os.path.join(lc_dir, row.file), default_tablename='OBS')
             data = lcdata['OBS'].to_pandas()
             data['t'] = (data.MJD - row.SEARCH_PEAKMJD) / (1 + row.REDSHIFT_CMB)
-            data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[x])
-            data['zp'] = data.FLT.apply(lambda x: zp_dict[x])
-            data['flux'] = data['zp'] * np.power(10, -0.4 * data['MAG']) * self.scale
+            if map_dict is not None:
+                data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[map_dict[x]])
+                data['zp'] = data.FLT.apply(lambda x: self.zp_dict[map_dict[x]])
+            else:
+                data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[x])
+                data['zp'] = data.FLT.apply(lambda x: self.zp_dict[x])
+            data['flux'] = np.power(10, -0.4 * (data['MAG'] - data['zp'])) * self.scale
             data['flux_err'] = (np.log(10) / 2.5) * data['flux'] * data['MAGERR']
-            data['ratio'] = data.FLUXCAL / data.flux
             data['redshift'] = row.REDSHIFT_CMB
             data['redshift_error'] = row.REDSHIFT_CMB_ERR
             data['MWEBV'] = meta['MWEBV']
@@ -1098,38 +1120,18 @@ class Model(object):
         all_data = np.zeros((N_sn, N_obs, N_col))
         all_J_t = np.zeros((N_sn, self.tau_knots.shape[0], N_obs))
         all_J_t_hsiao = np.zeros((N_sn, self.hsiao_t.shape[0], N_obs))
-        if mode == 'fitting':
-            all_J_t = np.zeros((N_sn, self.tau_knots.shape[0], 200))
-            all_J_t_hsiao = np.zeros((N_sn, self.hsiao_t.shape[0], 200))
-            ts = np.linspace(-10, 40, 50)
-            ts = np.repeat(ts, len(self.band_dict.keys()))
-            self.ts = ts
-            J_t = spline_utils.spline_coeffs_irr(ts, self.tau_knots, self.KD_t).T
-            J_t_hsiao = spline_utils.spline_coeffs_irr(ts, self.hsiao_t, self.KD_t_hsiao).T
         for i, lc in enumerate(all_lcs):
             all_data[i, :lc.shape[0], :] = lc.values
             all_data[i, lc.shape[0]:, 2] = 1 / jnp.sqrt(2 * np.pi)
-            if mode == 'training':
-                all_J_t[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.tau_knots, self.KD_t).T
-                all_J_t_hsiao[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.hsiao_t, self.KD_t_hsiao).T
-            else:
-                all_J_t[i, ...] = J_t
-                all_J_t_hsiao[i, ...] = J_t_hsiao
-        with open(os.path.join('data', 'LCs', 'pickles', 'foundation', f'dataset_{data_mode}.pkl'), 'wb') as file:
+            all_J_t[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.tau_knots, self.KD_t).T
+        with open(os.path.join('data', 'LCs', 'pickles', sample_name, f'dataset_{data_mode}.pkl'), 'wb') as file:
             pickle.dump(all_data, file)
-        if mode == 'training':
-            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t.pkl'), 'wb') as file:
-                pickle.dump(all_J_t, file)
-            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'training_J_t_hsiao.pkl'), 'wb') as file:
-                pickle.dump(all_J_t_hsiao, file)
-        else:
-            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'fitting_J_t.pkl'), 'wb') as file:
-                pickle.dump(all_J_t, file)
-            with open(os.path.join('data', 'LCs', 'pickles', 'foundation', 'fitting_J_t_hsiao.pkl'), 'wb') as file:
-                pickle.dump(all_J_t_hsiao, file)
+        with open(os.path.join('data', 'LCs', 'pickles', sample_name, 'J_t.pkl'), 'wb') as file:
+            pickle.dump(all_J_t, file)
         self.data = device_put(all_data.T)
         self.J_t = device_put(all_J_t)
         self.J_t_hsiao = device_put(all_J_t_hsiao)
+        self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
 
     def fit_from_results(self, input_file):
         with open(os.path.join('results', f'{input_file}.pkl'), 'rb') as file:
@@ -1157,42 +1159,6 @@ class Model(object):
                 fit_inds = (fit_band_indices[:, _] == i) & (fit_flag[:, _] == 1)
                 plt.errorbar(self.data[0, inds, _], self.data[1, inds, _], yerr=self.data[2, inds, _], fmt='x')
                 plt.plot(ts, model_flux[fit_inds, _], ls='--')
-        plt.show()
-
-    def test_params(self, dataset, params):
-        W0 = np.array([[-0.11843238, 0.5618372, 0.38466904, 0.23944603,
-                        -0.48216674, 0.63915277],
-                       [0.08652873, 0.18803605, 0.26729473, 0.31465054,
-                        0.39766428, 0.1856934],
-                       [0.09866332, 0.24971685, 0.31222486, 0.27499378,
-                        0.29981762, 0.2305843],
-                       [0.1864955, 0.3214951, 0.34273627, 0.29547283,
-                        0.43862557, 0.29078126],
-                       [0.29226252, 0.39753425, 0.36405647, 0.47865516,
-                        0.44378856, 0.43702376],
-                       [1.1537213, 1.0743428, 0.0494406, 0.46162465,
-                        1.333291, 0.04616207]])
-        W1 = np.array([[0.21677628, -0.15750809, 0.7421827, 0.0212789,
-                        0.64179885, -0.3533681],
-                       [0.41216654, 0.20722015, 0.2119322, 0.4584896,
-                        0.39576882, 0.3574507],
-                       [0.29122993, 0.13642277, 0.20810808, 0.11366853,
-                        0.4389719, 0.23162062],
-                       [0.29141757, 0.0731663, 0.12748136, -0.01537234,
-                        0.33767635, 0.31357116],
-                       [0.21928684, 0.18876176, 0.12241068, 0.08746054,
-                        0.36593395, 0.4919144],
-                       [0.08234484, 0.21387804, -0.3760478, 1.0113571,
-                        1.0101043, 1.4508004]])
-        self.process_dataset(dataset)
-        band_indices = self.data[-2, :, 0:1].astype(int)
-        redshift = self.data[-1, 0, 0:1]
-        theta, Av = params.theta.values, params.AV.values
-        flux = self.get_flux_batch(theta, Av, W0, W1, redshift, band_indices)
-        for i in range(4):
-            inds = band_indices[:, 0] == i
-            plt.scatter(self.t[inds], flux[inds, 0])
-            plt.errorbar(self.t[inds], self.data[1, inds, 0], yerr=self.data[2, inds, 0], fmt='x')
         plt.show()
 
     def get_flux_from_chains(self, model):
@@ -1270,7 +1236,7 @@ class Model(object):
         np.save(os.path.join('results', model, 'hres'), save_data)
 
     def compare_params(self):
-        sn_list = pd.read_csv('data/LCs/Foundation/Foundation_DR1/Foundation_DR1.LIST', names=['file'])
+        sn_list = pd.read_csv('data/LCs/foundation/Foundation_DR1/Foundation_DR1.LIST', names=['file'])
         sn_list['sn'] = sn_list.file.apply(lambda x: x[x.rfind('_') + 1: x.rfind('.')])
         meta_file = pd.read_csv('data/LCs/meta/T21_training_set_meta.txt', delim_whitespace=True)
         sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')
@@ -1389,8 +1355,14 @@ class Model(object):
 
 if __name__ == '__main__':
     model = Model()
-    # model.train(10, 10, 4, 'foundation_train_test', chain_method='sequential', init_strategy='value')
-    model.fit(250, 250, 4, 'foundation_fit_7tree', 'T21', chain_method='vectorized')
+    filt_map_dict = {'g': 'g_PS1', 'r': 'r_PS1', 'i': 'i_PS1', 'z': 'z_PS1'}
+    #model.process_dataset('foundation', 'data/LCs/foundation/Foundation_DR1', 'data/LCs/meta/T21_training_set_meta.txt',
+    #                      filt_map_dict, sn_list='data/LCs/foundation/Foundation_DR1/Foundation_DR1.LIST')
+    model.process_dataset('ztf', 'data/LCs/ZTF', 'data/LCs/meta/ztf_dr1_training.txt',
+                          map_dict=None)
+    model.train(1000, 1000, 4, 'ztf_train_test', chain_method='parallel', init_strategy='median',
+                l_knots=[4150, 4760, 6390, 7930, 9000])
+    #model.fit(250, 250, 4, 'foundation_fit_7tree', 'T21', chain_method='parallel')
     # model.get_flux_from_chains('foundation_fit_T21freeRv')
     # model.plot_hubble_diagram('foundation_fit_T21freeRv')
     # model.compare_params()
