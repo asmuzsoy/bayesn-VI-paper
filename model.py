@@ -408,14 +408,14 @@ class Model(object):
             J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1, 2, 0)
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
-            eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
+            """eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
             eps_tform = eps_tform.T
             eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
             eps = eps.T
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
-            eps = eps_full.at[:, 1:-1, :].set(eps)
-            # eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            eps = eps_full.at[:, 1:-1, :].set(eps)"""
+            eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             band_indices = obs[-6, :, sn_index].astype(int).T
             redshift = obs[-5, 0, sn_index]
             redshift_error = obs[-4, 0, sn_index]
@@ -457,8 +457,8 @@ class Model(object):
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
         #self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
-        self.data = self.data[..., 41:43]
-        self.band_weights = self.band_weights[41:43, ...]
+        self.data = self.data[..., 41:42]
+        self.band_weights = self.band_weights[41:42, ...]
 
         rng = PRNGKey(321)
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
@@ -474,7 +474,7 @@ class Model(object):
             mcmc.run(rng_key, data[..., None], weights[None, ...])
             return {**mcmc.get_samples(group_by_chain=True), **mcmc.get_extra_fields(group_by_chain=True)}
 
-        map = jax.vmap(do_mcmc, in_axes=(2, 0))
+        """map = jax.vmap(do_mcmc, in_axes=(2, 0))
         start = timeit.default_timer()
         samples = map(self.data, self.band_weights)
         for key, val in samples.items():
@@ -485,7 +485,7 @@ class Model(object):
                 samples[key] = val.transpose(1, 2, 0)
         end = timeit.default_timer()
         print('vmap: ', end - start)
-        self.fit_postprocess(samples, output)
+        self.fit_postprocess(samples, output)"""
 
         start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
