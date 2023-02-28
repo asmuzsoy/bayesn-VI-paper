@@ -280,32 +280,6 @@ class Model(object):
 
         return result
 
-    def get_spectra(self, theta, Av, eps, Rv, t):
-        num_batch = theta.shape[0]
-        W0 = jnp.reshape(self.W0, (-1, *self.W0.shape))
-        W0 = jnp.repeat(W0, num_batch, axis=0)
-        W1 = jnp.reshape(self.W1, (-1, *self.W1.shape))
-        W1 = jnp.repeat(W1, num_batch, axis=0)
-
-        W = W0 + theta[..., None, None] * W1 + eps
-
-        J_t = spline_utils.spline_coeffs_irr(t, self.tau_knots, self.KD_t).T
-        J_t_hsiao = spline_utils.spline_coeffs_irr(t, self.hsiao_t, self.KD_t_hsiao).T
-        J_t = jnp.reshape(J_t, (-1, *J_t.shape))
-        J_t = jnp.repeat(J_t, num_batch, axis=0)
-        J_t_hsiao = jnp.reshape(J_t_hsiao, (-1, *J_t_hsiao.shape))
-        J_t_hsiao = jnp.repeat(J_t_hsiao, num_batch, axis=0)
-
-        WJt = jnp.matmul(W, J_t)
-        W_grid = jnp.matmul(self.J_l_T, WJt)
-
-        HJt = jnp.matmul(self.hsiao_flux, J_t_hsiao)
-        H_grid = jnp.matmul(self.J_l_T_hsiao, HJt)
-
-        model_spectra = H_grid * 10 ** (-0.4 * W_grid)
-
-        return model_spectra
-
     def simulate_spectrum(self):
         t = jnp.array([0])
 
@@ -317,11 +291,9 @@ class Model(object):
         plt.plot(self.model_wave, spectra[0, :, :])
         plt.show()
 
-    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, hsiao_interp):
+    def get_spectra(self, theta, Av, W0, W1, eps, Rv, J_t, hsiao_interp):
         num_batch = theta.shape[0]
-        #W0 = jnp.reshape(W0, (-1, *W0.shape))
         W0 = jnp.repeat(W0[None, ...], num_batch, axis=0)
-        #W1 = jnp.reshape(W1, (-1, *W1.shape))
         W1 = jnp.repeat(W1[None, ...], num_batch, axis=0)
 
         W = W0 + theta[..., None, None] * W1 + eps
@@ -334,19 +306,6 @@ class Model(object):
         H_grid = ((1 - hsiao_interp[2, :]) * low_hsiao + hsiao_interp[2, :] * up_hsiao).transpose(2, 0, 1)
 
         model_spectra = H_grid * 10 ** (-0.4 * W_grid)
-
-        num_observations = band_indices.shape[0]
-
-        batch_indices = (
-            jnp.arange(num_batch)
-            .repeat(num_observations)
-        ).astype(int)
-
-        obs_band_weights = (
-            self.band_weights[batch_indices, :, band_indices.T.flatten()]
-            .reshape((num_batch, num_observations, -1))
-            .transpose(0, 2, 1)
-        )
 
         # Extinction----------------------------------------------------------
         f99_x0 = 4.596
@@ -374,6 +333,28 @@ class Model(object):
         f_A = 10 ** (-0.4 * A)
         model_spectra = model_spectra * f_A[..., None]
 
+        return model_spectra
+
+    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, hsiao_interp):
+        num_batch = theta.shape[0]
+        num_observations = band_indices.shape[0]
+
+        print(hsiao_interp.shape)
+        raise ValueError('Nope')
+
+        model_spectra = self.get_spectra(theta, Av, W0, W1, eps, Rv, J_t, hsiao_interp)
+
+        batch_indices = (
+            jnp.arange(num_batch)
+            .repeat(num_observations)
+        ).astype(int)
+
+        obs_band_weights = (
+            self.band_weights[batch_indices, :, band_indices.T.flatten()]
+            .reshape((num_batch, num_observations, -1))
+            .transpose(0, 2, 1)
+        )
+
         model_flux = jnp.sum(model_spectra * obs_band_weights, axis=1).T
         model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
         model_flux *= self.device_scale
@@ -387,55 +368,11 @@ class Model(object):
         return model_mag
 
     def get_flux_batch_vmap(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, hsiao_interp, weights):
-        num_batch = theta.shape[0]
-        W0 = jnp.reshape(W0, (-1, *self.W0.shape))
-        W0 = jnp.repeat(W0, num_batch, axis=0)
-        W1 = jnp.reshape(W1, (-1, *self.W1.shape))
-        W1 = jnp.repeat(W1, num_batch, axis=0)
-
-        W = W0 + theta[..., None, None] * W1 + eps
-
-        WJt = jnp.matmul(W, J_t)
-        W_grid = jnp.matmul(self.J_l_T, WJt)
-
-        low_hsiao = self.hsiao_flux[:, hsiao_interp[0, :].astype(int)]
-        up_hsiao = self.hsiao_flux[:, hsiao_interp[1, :].astype(int)]
-        H_grid = (1 - hsiao_interp[2, :]) * low_hsiao + hsiao_interp[2, :] * up_hsiao[None, ...]
-
-        model_spectra = H_grid * 10 ** (-0.4 * W_grid)
-
-        num_observations = band_indices.shape[0]
-
+        model_spectra = self.get_spectra(theta, Av, W0, W1, eps, Rv, J_t, hsiao_interp[..., None])
 
         obs_band_weights = (
             weights[None, :, band_indices.T.flatten()]
         )
-
-        # Extinction----------------------------------------------------------
-        f99_x0 = 4.596
-        f99_gamma = 0.99
-        f99_c2 = -0.824 + 4.717 / Rv
-        f99_c1 = 2.030 - 3.007 * f99_c2
-        f99_c3 = 3.23
-        f99_c4 = 0.41
-        f99_c5 = 5.9
-        f99_d1 = self.xk[7] ** 2 / ((self.xk[7] ** 2 - f99_x0 ** 2) ** 2 + (f99_gamma * self.xk[7]) ** 2)
-        f99_d2 = self.xk[8] ** 2 / ((self.xk[8] ** 2 - f99_x0 ** 2) ** 2 + (f99_gamma * self.xk[8]) ** 2)
-        yk = jnp.zeros((num_batch, 9))
-        yk = yk.at[:, 0].set(-Rv)
-        yk = yk.at[:, 1].set(0.26469 * Rv / 3.1 - Rv)
-        yk = yk.at[:, 2].set(0.82925 * Rv / 3.1 - Rv)
-        yk = yk.at[:, 3].set(-0.422809 + 1.00270 * Rv + 2.13572e-4 * Rv ** 2 - Rv)
-        yk = yk.at[:, 4].set(-5.13540e-2 + 1.00216 * Rv - 7.35778e-5 * Rv ** 2 - Rv)
-        yk = yk.at[:, 5].set(0.700127 + 1.00184 * Rv - 3.32598e-5 * Rv ** 2 - Rv)
-        yk = yk.at[:, 6].set(
-            1.19456 + 1.01707 * Rv - 5.46959e-3 * Rv ** 2 + 7.97809e-4 * Rv ** 3 - 4.45636e-5 * Rv ** 4 - Rv)
-        yk = yk.at[:, 7].set(f99_c1 + f99_c2 * self.xk[7] + f99_c3 * f99_d1)
-        yk = yk.at[:, 8].set(f99_c1 + f99_c2 * self.xk[8] + f99_c3 * f99_d2)
-
-        A = Av[..., None] * (1 + (self.M_fitz_block @ yk.T).T / Rv)  # Rv[..., None]
-        f_A = 10 ** (-0.4 * A)
-        model_spectra = model_spectra * f_A[..., None]
 
         model_flux = jnp.sum(model_spectra * obs_band_weights, axis=1).T
         model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
