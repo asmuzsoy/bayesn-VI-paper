@@ -526,13 +526,12 @@ class Model(object):
         W0 = jnp.reshape(W0, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
         W1 = jnp.reshape(W1, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
 
-        """
         # sigmaepsilon = numpyro.sample('sigmaepsilon', dist.HalfNormal(1 * jnp.ones(N_knots_sig)))
         sigmaepsilon_tform = numpyro.sample('sigmaepsilon_tform', dist.Uniform(0, (jnp.pi / 2.) * jnp.ones(N_knots_sig)))
         sigmaepsilon = numpyro.deterministic('sigmaepsilon', 1. * jnp.tan(sigmaepsilon_tform))
         L_Omega = numpyro.sample('L_Omega', dist.LKJCholesky(N_knots_sig))
         L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon), L_Omega)
-        """
+
         # sigma0 = numpyro.sample('sigma0', dist.HalfCauchy(0.1))
         sigma0_tform = numpyro.sample('sigma0_tform', dist.Uniform(0, jnp.pi / 2.))
         sigma0 = numpyro.deterministic('sigma0', 0.1 * jnp.tan(sigma0_tform))
@@ -546,7 +545,6 @@ class Model(object):
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             Av = numpyro.sample(f'AV', dist.Exponential(1 / tauA))
 
-            """
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=L_Sigma))
             eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
@@ -556,8 +554,7 @@ class Model(object):
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
-            """
-            eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            #eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
 
             band_indices = obs[-6, :, sn_index].astype(int).T
             redshift = obs[-5, 0, sn_index]
@@ -570,18 +567,8 @@ class Model(object):
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
             flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, band_indices, mask, self.J_t, self.hsiao_interp,
                                        self.band_weights)
-            """for i in range(4):
-                inds = (band_indices[:, 0] == i) & (flag[:, 0] > 0)
-                plt.scatter(obs[0, inds, 0], flux[inds, 0])
-                plt.errorbar(obs[0, inds, 0], obs[1, inds, 0], yerr=obs[2, inds, 0], fmt='x')
-            plt.show()
-            for i in range(4):
-                inds = (band_indices[:, 1] == i) & (flag[:, 1] > 0)
-                plt.scatter(obs[0, inds, 1], flux[inds, 1])
-                plt.errorbar(obs[0, inds, 1], obs[1, inds, 1], yerr=obs[2, inds, 1], fmt='x')
-            plt.show()"""
             with numpyro.handlers.mask(mask=mask):
-                numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)  # _{sn_index}
+                numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)
 
     def initial_guess(self, n_chains=1, reference_model="M20", RV_init=3.0, tauA_init=0.3):
         # Set hyperparameter initialisations
