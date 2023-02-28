@@ -43,7 +43,7 @@ print(jax.devices())
 
 
 class Model(object):
-    def __init__(self, ignore_unknown_settings=False, settings={}, load_model='T21_model',
+    def __init__(self, load_model='T21_model',
                  fiducial_cosmology={"H0": 73.24, "Om0": 0.28}, obsmodel_file='data/SNmodel_pb_obsmode_map.txt'):
         self.cosmo = FlatLambdaCDM(**fiducial_cosmology)
         self.data = None
@@ -280,17 +280,6 @@ class Model(object):
 
         return result
 
-    def simulate_spectrum(self):
-        t = jnp.array([0])
-
-        theta = jnp.array([0])
-        Av = jnp.zeros((1, 1))
-        eps = jnp.zeros((1, 6, 6))
-        Rv = jnp.array([[2.61]])
-        spectra = self.get_spectra(theta, Av, eps, Rv, t)
-        plt.plot(self.model_wave, spectra[0, :, :])
-        plt.show()
-
     def get_spectra(self, theta, Av, W0, W1, eps, Rv, J_t, hsiao_interp):
         num_batch = theta.shape[0]
         W0 = jnp.repeat(W0[None, ...], num_batch, axis=0)
@@ -335,12 +324,9 @@ class Model(object):
 
         return model_spectra
 
-    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, hsiao_interp):
+    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, hsiao_interp, weights):
         num_batch = theta.shape[0]
         num_observations = band_indices.shape[0]
-
-        print(hsiao_interp.shape)
-        raise ValueError('Nope')
 
         model_spectra = self.get_spectra(theta, Av, W0, W1, eps, Rv, J_t, hsiao_interp)
 
@@ -350,28 +336,9 @@ class Model(object):
         ).astype(int)
 
         obs_band_weights = (
-            self.band_weights[batch_indices, :, band_indices.T.flatten()]
+            weights[batch_indices, :, band_indices.T.flatten()]
             .reshape((num_batch, num_observations, -1))
             .transpose(0, 2, 1)
-        )
-
-        model_flux = jnp.sum(model_spectra * obs_band_weights, axis=1).T
-        model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
-        model_flux *= self.device_scale
-        model_flux *= flag
-        return model_flux
-
-        zps = self.zp[band_indices]
-        model_mag = self.M0 + Ds - 2.5 * jnp.log10(model_flux / zps)
-        model_mag *= flag
-
-        return model_mag
-
-    def get_flux_batch_vmap(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, hsiao_interp, weights):
-        model_spectra = self.get_spectra(theta, Av, W0, W1, eps, Rv, J_t, hsiao_interp[..., None])
-
-        obs_band_weights = (
-            weights[None, :, band_indices.T.flatten()]
         )
 
         model_flux = jnp.sum(model_spectra * obs_band_weights, axis=1).T
@@ -424,11 +391,10 @@ class Model(object):
 
         return X
 
-    def fit_model(self, obs):
-        sample_size = self.data.shape[-1]
+    def fit_model(self, obs, weights):
+        sample_size = obs.shape[-1]
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
 
-        # for sn_index in numpyro.plate('SNe', sample_size):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
@@ -459,47 +425,10 @@ class Model(object):
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err)) # Ds_err
             flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
-                                       J_t, hsiao_interp)
+                                       J_t, hsiao_interp, weights)
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
                                obs=obs[1, :, sn_index].T)  # _{sn_index}
-
-    def fit_model_vmap(self, obs, weights):
-        N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
-        theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))[None, ...]  # _{sn_index}
-        Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))[None, ...]
-        tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))[None, ...]
-        t = obs[0, ...] - tmax
-        hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
-        keep_shape = t.shape
-        t = t.flatten(order='F')
-        map = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))
-        J_t = map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose()[None, ...]
-        #J_t_hsiao = map(t, self.hsiao_t, self.KD_t_hsiao).reshape((*keep_shape, self.hsiao_t.shape[0]), order='F').transpose()[None, ...]
-        eps_mu = jnp.zeros(N_knots_sig)
-        # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
-        eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
-        eps_tform = eps_tform.T
-        eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
-        eps = eps.T
-        eps = jnp.reshape(eps, (1, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
-        eps_full = jnp.zeros((1, self.l_knots.shape[0], self.tau_knots.shape[0]))
-        eps = eps_full.at[:, 1:-1, :].set(eps)
-        #eps = jnp.zeros((1, self.l_knots.shape[0], self.tau_knots.shape[0]))
-        band_indices = obs[-6, :, None].astype(int)
-        redshift = obs[-5, 0, None]
-        redshift_error = obs[-4, 0, None]
-        muhat = obs[-3, 0, None]
-        ebv = obs[-2, 0, None]
-        mask = obs[-1, :, None].astype(bool).T
-        muhat_err = 10
-        Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
-        Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err)) # Ds_err
-        flux = self.get_flux_batch_vmap(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
-                                        J_t, hsiao_interp, weights)[..., 0]
-        with numpyro.handlers.mask(mask=mask):
-            numpyro.sample(f'obs', dist.Normal(flux, obs[2, :].T),
-                           obs=obs[1, :].T)
 
     def fit(self, num_samples, num_warmup, num_chains, output, result_path, chain_method='parallel', init_strategy='median'):
         if init_strategy == 'value':
@@ -527,47 +456,40 @@ class Model(object):
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
         #self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
-        self.data = self.data[..., 41:42]
-        self.band_weights = self.band_weights[41:42, ...]
-
-        self.zp = jnp.array(
-            [4.608419288004386e-09, 2.8305383925373084e-09, 1.917161265703195e-09, 1.446643295845274e-09])
+        self.data = self.data[..., 41:43]
+        self.band_weights = self.band_weights[41:43, ...]
 
         rng = PRNGKey(321)
-        # numpyro.render_model(self.fit_model, model_args=(self.data,), filename='fit_model.pdf')
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
 
-        t = self.data[0, ...]
-        keep_shape = t.shape
-        t = t.flatten(order='F')
         self.J_t_map = jax.jit(jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None)))
 
         def do_mcmc(data, weights):
             rng_key = PRNGKey(123)
-            nuts_kernel = NUTS(self.fit_model_vmap, adapt_step_size=True, init_strategy=init_strategy,
+            nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy,
                                max_tree_depth=10)
             mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                         chain_method=chain_method, progress_bar=True)
-            mcmc.run(rng_key, data, weights)
+            mcmc.run(rng_key, data[..., None], weights[None, ...])
             return {**mcmc.get_samples(group_by_chain=True), **mcmc.get_extra_fields(group_by_chain=True)}
 
-        #map = jax.vmap(do_mcmc, in_axes=(2, 0))
-        #start = timeit.default_timer()
-        #samples = map(self.data, self.band_weights)
-        #for key, val in samples.items():
-        #    val = np.squeeze(val)
-        #    if len(val.shape) == 4:
-        #        samples[key] = val.transpose(1, 2, 0, 3)
-        #    else:
-        #        samples[key] = val.transpose(1, 2, 0)
-        #end = timeit.default_timer()
-        #print('vmap: ', end - start)
-        #self.fit_postprocess(samples, output)
+        map = jax.vmap(do_mcmc, in_axes=(2, 0))
+        start = timeit.default_timer()
+        samples = map(self.data, self.band_weights)
+        for key, val in samples.items():
+            val = np.squeeze(val)
+            if len(val.shape) == 4:
+                samples[key] = val.transpose(1, 2, 0, 3)
+            else:
+                samples[key] = val.transpose(1, 2, 0)
+        end = timeit.default_timer()
+        print('vmap: ', end - start)
+        self.fit_postprocess(samples, output)
 
         start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
-        mcmc.run(rng, self.data)
+        mcmc.run(rng, self.data, self.band_weights)
         mcmc.print_summary()
         samples = mcmc.get_samples(group_by_chain=True)
         end = timeit.default_timer()
@@ -592,102 +514,6 @@ class Model(object):
         # Save convergence data for each parameter to csv file
         summary = arviz.summary(samples)
         summary.to_csv(os.path.join('results', output, 'fit_summary.csv'))
-
-    def fit_assess(self, params, yaml_dir):
-        with open(os.path.join('results', f'{yaml_dir}.yaml'), 'r') as file:
-            result = yaml.load(file, yaml.Loader)
-        print(result['theta'].shape)
-        return
-        # Add dist mods
-        params['distmod'] = self.cosmo.distmod(params.redshift.values).value
-        # Theta
-        params['fit_theta_mu'] = np.median(result['theta'], axis=0)
-        params['fit_theta_std'] = np.std(result['theta'], axis=0)
-        if (params.fit_theta_mu - params.theta).min() < -4:
-            sign = -1
-        else:
-            sign = 1
-        fig, ax = plt.subplots(2, 1, figsize=(9, 12), sharex='col')
-        ax[0].errorbar(params.theta, sign * params.fit_theta_mu, yerr=params.fit_theta_std, fmt='x')
-        ax[1].errorbar(params.theta, sign * params.fit_theta_mu - params.theta, yerr=params.fit_theta_std, fmt='x')
-        xlim = ax[0].get_xlim()
-        ax[0].autoscale(tight=True)
-        ax[0].plot(xlim, xlim, 'k--')
-        ax[1].hlines(0, *xlim, colors='k', ls='--')
-        ax[1].set_xlabel(rf'True $\theta$')
-        ax[0].set_ylabel(rf'Fit $\theta$')
-        ax[1].set_ylabel(rf'Residual')
-        plt.subplots_adjust(hspace=0, wspace=0)
-        plt.show()
-        print(params[['theta', 'fit_theta_mu', 'fit_theta_std']])
-        # Av
-        params['fit_AV_mu'] = np.median(result['AV'], axis=0)
-        params['fit_AV_std'] = np.std(result['AV'], axis=0)
-        fig, ax = plt.subplots(2, 1, figsize=(9, 12), sharex='col')
-        ax[0].scatter(params.AV, params.fit_AV_mu)  # , yerr=params.fit_AV_std, fmt='x')
-        ax[1].scatter(params.AV, params.fit_AV_mu - params.AV)  # , yerr=params.fit_AV_std, fmt='x')
-        ax[1].set_xscale('log')
-        ax[0].set_yscale('log')
-        xlim = ax[0].get_xlim()
-        ax[0].autoscale(tight=True)
-        ax[0].plot(xlim, xlim, 'k--')
-        ax[1].hlines(0, *xlim, colors='k', ls='--')
-        # ax[1].set_yscale('log')
-        ax[1].set_xlabel(rf'True $A_V$')
-        ax[0].set_ylabel(rf'Fit $A_V$')
-        ax[1].set_ylabel(rf'Residual')
-        plt.subplots_adjust(hspace=0, wspace=0)
-        plt.show()
-        # dist_mod
-        muhat = params['distmod'].values
-        muhat_err = 5 / (params.redshift.values * jnp.log(10)) * self.sigma_pec
-        sigma0 = 0.103
-        print(params.keys())
-        mu = (result['Ds'] * np.power(muhat_err, 2) + muhat * np.power(sigma0, 2)) \
-             / (muhat_err * muhat_err + sigma0 * sigma0)
-        std = np.sqrt(np.power(sigma0 * muhat_err, 2) / (muhat_err * muhat_err + sigma0 * sigma0))
-        distmod = np.random.normal(mu, std)
-        del_M = result['Ds'] - distmod
-        result['distmod'] = distmod
-        result['del_M'] = del_M
-        params['fit_distmod_mu'] = np.median(result['distmod'], axis=0)
-        params['fit_distmod_std'] = np.std(result['distmod'], axis=0)
-        fig, ax = plt.subplots(2, 1, figsize=(9, 12), sharex='col')
-        ax[0].errorbar(params.distmod, params.fit_distmod_mu, yerr=params.fit_distmod_std, fmt='x')
-        ax[1].errorbar(params.distmod, params.fit_distmod_mu - params.distmod, yerr=params.fit_distmod_std, fmt='x')
-        xlim = ax[0].get_xlim()
-        ax[0].autoscale(tight=True)
-        ax[0].plot(xlim, xlim, 'k--')
-        ax[1].hlines(0, *xlim, colors='k', ls='--')
-        ax[1].set_xlabel(rf'True $\mu$')
-        ax[0].set_ylabel(rf'Fit $\mu$')
-        ax[1].set_ylabel(rf'Residual')
-        plt.subplots_adjust(hspace=0, wspace=0)
-        plt.show()
-        # dist_mod
-        params['fit_delM_mu'] = np.median(result['del_M'], axis=0)
-        params['fit_delM_std'] = np.std(result['del_M'], axis=0)
-        fig, ax = plt.subplots(2, 1, figsize=(9, 12), sharex='col')
-        ax[0].errorbar(params.del_M, params.fit_delM_mu, yerr=params.fit_delM_std, fmt='x')
-        ax[1].errorbar(params.del_M, params.fit_delM_mu - params.del_M, yerr=params.fit_delM_std, fmt='x')
-        xlim = ax[0].get_xlim()
-        ax[0].autoscale(tight=True)
-        ax[0].plot(xlim, xlim, 'k--')
-        ax[1].hlines(0, *xlim, colors='k', ls='--')
-        ax[1].set_xlabel(rf'True $\delta M$')
-        ax[0].set_ylabel(rf'Fit $\delta M$')
-        ax[1].set_ylabel(rf'Residual')
-        plt.subplots_adjust(hspace=0, wspace=0)
-        plt.show()
-        # epsilon
-        correlation_array = np.zeros((24, 24))
-        for i in range(24):
-            params[f'fit_epsilon{i}_mu'] = np.median(result['eps'][..., i], axis=0)
-            params[f'fit_epsilon{i}_std'] = np.std(result['eps'][..., i], axis=0)
-            for j in range(24):
-                correlation_array[i, j] = pearsonr(params[f'epsilon_{j}'], params[f'fit_epsilon{i}_mu'])[0]
-        for row in correlation_array:
-            print(np.max(row))
 
     def train_model(self, obs):
         sample_size = self.data.shape[-1]
@@ -741,7 +567,8 @@ class Model(object):
             muhat_err = 5 / (redshift * jnp.log(10)) * jnp.sqrt(jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))
             Ds_err = jnp.sqrt(muhat_err * muhat_err + sigma0 * sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
-            flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, band_indices, mask, self.J_t, self.hsiao_interp)
+            flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, band_indices, mask, self.J_t, self.hsiao_interp,
+                                       self.band_weights)
             """for i in range(4):
                 inds = (band_indices[:, 0] == i) & (flag[:, 0] > 0)
                 plt.scatter(obs[0, inds, 0], flux[inds, 0])
