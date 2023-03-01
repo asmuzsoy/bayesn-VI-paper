@@ -39,7 +39,7 @@ plt.rcParams.update({'font.size': 22})
 
 
 class Model(object):
-    def __init__(self, num_devices=8, enable_x64=True, load_model='T21_model',
+    def __init__(self, num_devices=8, enable_x64=False, load_model='T21_model',
                  fiducial_cosmology={"H0": 73.24, "Om0": 0.28}, obsmodel_file='data/SNmodel_pb_obsmode_map.txt'):
         # Settings for jax/numpyro
         numpyro.set_host_device_count(num_devices)
@@ -570,18 +570,25 @@ class Model(object):
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)
 
-    def initial_guess(self, n_chains=1, reference_model="M20", RV_init=3.0, tauA_init=0.3):
+    def initial_guess(self, n_chains=1, reference_model="T21", RV_init=3.0, tauA_init=0.3):
         # Set hyperparameter initialisations
-        # Set initialisations (these will be jittered chain by chain)
-        param_root = 'model_files/T21_model'
+        param_root = f'model_files/{reference_model}_model'
         W0_init = np.loadtxt(f'{param_root}/W0.txt')
+        l_knots = np.loadtxt(f'{param_root}/l_knots.txt')
         n_lknots, n_tauknots = W0_init.shape
-        W0_init = W0_init.flatten(order='F')
-        W1_init = np.loadtxt(f'{param_root}/W1.txt').flatten(order='F')
+        #W0_init = W0_init.flatten(order='F')
+        W1_init = np.loadtxt(f'{param_root}/W1.txt')
         RV_init, tauA_init = np.loadtxt(f'{param_root}/M0_sigma0_RV_tauA.txt')[[2, 3]]
 
+        # Interpolate to match new wavelength knots
+        W0_init = interp1d(l_knots, W0_init, kind='cubic', axis=0)(self.l_knots)
+        W1_init = interp1d(l_knots, W1_init, kind='cubic', axis=0)(self.l_knots)
+
+        W0_init = W0_init.flatten(order='F')
+        W1_init = W1_init.flatten(order='F')
+
         # I should remove all of this hardcoding
-        n_eps = (n_lknots - 2) * n_tauknots
+        n_eps = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
         sigma0_init = 0.1
         sigmaepsilon_init = 0.1 * np.ones(n_eps)
         L_Omega_init = np.eye(n_eps)
@@ -625,6 +632,10 @@ class Model(object):
 
     def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median', mode='flux',
               l_knots=None):
+        if l_knots is not None:
+            self.l_knots = jnp.array(l_knots)
+            KD_l = spline_utils.invKD_irr(self.l_knots)
+            self.J_l_T = device_put(spline_utils.spline_coeffs_irr(self.model_wave, self.l_knots, KD_l))
         if init_strategy == 'value':
             init_strategy = init_to_value(values=self.initial_guess())
         elif init_strategy == 'median':
@@ -633,10 +644,6 @@ class Model(object):
             init_strategy = init_to_sample()
         else:
             raise ValueError('Invalid init strategy, must be one of value, median and sample')
-        if l_knots is not None:
-            self.l_knots = jnp.array(l_knots)
-            KD_l = spline_utils.invKD_irr(self.l_knots)
-            self.J_l_T = device_put(spline_utils.spline_coeffs_irr(self.model_wave, self.l_knots, KD_l))
         t = self.data[0, ...]
         self.hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
         rng = PRNGKey(321)
