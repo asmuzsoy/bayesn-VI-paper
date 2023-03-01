@@ -57,7 +57,7 @@ module load cuda/11.2 cudnn/8.1_cuda-11.2
 conda activate jaxtest
 
 #! Full path to application executable: 
-application="python fit.py"
+application="python train.py"
 
 #! Run options for the application:
 options=""
