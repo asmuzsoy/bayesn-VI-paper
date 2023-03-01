@@ -39,7 +39,7 @@ plt.rcParams.update({'font.size': 22})
 
 
 class Model(object):
-    def __init__(self, num_devices=8, enable_x64=False, load_model='T21_model',
+    def __init__(self, num_devices=8, enable_x64=True, load_model='T21_model',
                  fiducial_cosmology={"H0": 73.24, "Om0": 0.28}, obsmodel_file='data/SNmodel_pb_obsmode_map.txt'):
         # Settings for jax/numpyro
         numpyro.set_host_device_count(num_devices)
