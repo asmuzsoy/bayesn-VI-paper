@@ -39,7 +39,7 @@ plt.rcParams.update({'font.size': 22})
 
 
 class Model(object):
-    def __init__(self, num_devices=4, enable_x64=False, load_model='T21_model',
+    def __init__(self, num_devices=8, enable_x64=False, load_model='T21_model',
                  fiducial_cosmology={"H0": 73.24, "Om0": 0.28}, obsmodel_file='data/SNmodel_pb_obsmode_map.txt'):
         # Settings for jax/numpyro
         numpyro.set_host_device_count(num_devices)
@@ -408,7 +408,8 @@ class Model(object):
             J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1, 2, 0)
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
-            """eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
+            """
+            eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
             eps_tform = eps_tform.T
             eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
             eps = eps.T
@@ -473,7 +474,7 @@ class Model(object):
             mcmc.run(rng_key, data[..., None], weights[None, ...])
             return {**mcmc.get_samples(group_by_chain=True), **mcmc.get_extra_fields(group_by_chain=True)}
 
-        """map = jax.vmap(do_mcmc, in_axes=(2, 0))
+        map = jax.vmap(do_mcmc, in_axes=(2, 0))
         start = timeit.default_timer()
         samples = map(self.data, self.band_weights)
         for key, val in samples.items():
@@ -484,7 +485,7 @@ class Model(object):
                 samples[key] = val.transpose(1, 2, 0)
         end = timeit.default_timer()
         print('vmap: ', end - start)
-        self.fit_postprocess(samples, output)"""
+        self.fit_postprocess(samples, output)
 
         start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
@@ -636,8 +637,6 @@ class Model(object):
             self.l_knots = jnp.array(l_knots)
             KD_l = spline_utils.invKD_irr(self.l_knots)
             self.J_l_T = device_put(spline_utils.spline_coeffs_irr(self.model_wave, self.l_knots, KD_l))
-        self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
-        self.zp = jnp.array([4.608419288004386e-09, 2.8305383925373084e-09, 1.917161265703195e-09, 1.446643295845274e-09])
         t = self.data[0, ...]
         self.hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
         rng = PRNGKey(321)
