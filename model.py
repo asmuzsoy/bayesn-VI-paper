@@ -196,7 +196,7 @@ class Model(object):
             zps.append(zp)
             band_ind += 1
 
-        self.zps = zps
+        self.zps = jnp.array(zps)
 
         # Get the locations that should be sampled at redshift 0. We can scale these to
         # get the locations at any redshift.
@@ -344,12 +344,13 @@ class Model(object):
 
         model_flux = jnp.sum(model_spectra * obs_band_weights, axis=1).T
         model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
-        model_flux *= self.device_scale
-        model_flux *= flag
-        return model_flux
+        #model_flux *= self.device_scale
+        #model_flux *= flag
+        #return model_flux
 
-        zps = self.zp[band_indices]
-        model_mag = self.M0 + Ds - 2.5 * jnp.log10(model_flux / zps)
+        zps = self.zps[band_indices]
+
+        model_mag = self.M0 + Ds - 2.5 * jnp.log10(model_flux) + zps
         model_mag *= flag
 
         return model_mag
@@ -604,7 +605,7 @@ class Model(object):
         sigma0_ = sigma0_init + np.random.normal(0, 0.01)
         param_init['W0'] = jnp.array(W0_init + np.random.normal(0, 0.01, W0_init.shape[0]))
         param_init['W1'] = jnp.array(W1_init + np.random.normal(0, 0.01, W1_init.shape[0]))
-        param_init['Rv'] = jnp.array(RV_init + np.random.uniform(1.0 - RV_init, 5.0 - RV_init))
+        param_init['Rv'] = jnp.array(3)
         param_init['tauA_tform'] = jnp.arctan(tauA_ / 1.)
         # param_init['tauA'] = tauA_
         param_init['sigma0_tform'] = jnp.arctan(sigma0_ / 0.1)
@@ -612,9 +613,6 @@ class Model(object):
         param_init['theta'] = jnp.array(np.random.normal(0, 1, n_sne))
         param_init['Av'] = jnp.array(np.random.exponential(tauA_, n_sne))
         L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon_init), L_Omega_init)
-
-        with open(os.path.join('results', 'foundation_train_1000_val', 'chains.pkl'), 'rb') as file:
-            chains = pickle.load(file)
 
         #param_init['theta'] = device_put(chains['theta'].mean(axis=(0, 1)))
         #param_init['Av'] = device_put(chains['AV'].mean(axis=(0, 1)))
@@ -651,7 +649,7 @@ class Model(object):
         #rng = PRNGKey(101)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy,
-                           dense_mass=False, find_heuristic_step_size=False, regularize_mass_matrix=True)
+                           dense_mass=False, find_heuristic_step_size=False, regularize_mass_matrix=False)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
         mcmc.run(rng, self.data, extra_fields=('potential_energy',))
