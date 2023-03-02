@@ -39,7 +39,7 @@ plt.rcParams.update({'font.size': 22})
 
 
 class Model(object):
-    def __init__(self, num_devices=8, enable_x64=False, load_model='T21_model',
+    def __init__(self, num_devices=8, enable_x64=True, load_model='T21_model',
                  fiducial_cosmology={"H0": 73.24, "Om0": 0.28}, obsmodel_file='data/SNmodel_pb_obsmode_map.txt'):
         # Settings for jax/numpyro
         numpyro.set_host_device_count(num_devices)
@@ -649,7 +649,7 @@ class Model(object):
         #rng = PRNGKey(101)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy,
-                           dense_mass=False, find_heuristic_step_size=False, regularize_mass_matrix=False)
+                           dense_mass=False, find_heuristic_step_size=False, regularize_mass_matrix=False, step_size=5e-4)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
         mcmc.run(rng, self.data, extra_fields=('potential_energy',))

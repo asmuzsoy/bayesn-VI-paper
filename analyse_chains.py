@@ -5,7 +5,7 @@ import pickle
 with open('results/ztf_train_test/chains.pkl', 'rb') as file:
     chains = pickle.load(file)
 
-print(chains['Rv'])
+print(chains.keys())
 
 for i in range(chains['Rv'].shape[0]):
     plt.hist(chains['Rv'][i, :])
