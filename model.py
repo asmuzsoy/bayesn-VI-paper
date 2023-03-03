@@ -635,7 +635,7 @@ class Model(object):
         optimizer = Adam(0.1)
         guide = AutoDelta(self.train_model)
         svi = SVI(self.train_model, guide, optimizer, loss=Trace_ELBO())
-        svi_result = svi.run(PRNGKey(123), 1000, self.data)
+        svi_result = svi.run(PRNGKey(123), 100000, self.data)
         params, losses = svi_result.params, svi_result.losses
 
         param_init = {}
