@@ -7,6 +7,9 @@ from scipy.integrate import simpson
 import numpyro
 from numpyro.infer import MCMC, NUTS, Predictive, HMC, init_to_median, init_to_sample, init_to_value
 import numpyro.distributions as dist
+from numpyro.optim import Minimize, Adam
+from numpyro.infer import SVI, Trace_ELBO
+from numpyro.infer.autoguide import AutoDelta
 import h5py
 import sncosmo
 import spline_utils
@@ -39,7 +42,7 @@ plt.rcParams.update({'font.size': 22})
 
 
 class Model(object):
-    def __init__(self, num_devices=8, enable_x64=True, load_model='T21_model',
+    def __init__(self, num_devices=8, enable_x64=False, load_model='T21_model',
                  fiducial_cosmology={"H0": 73.24, "Om0": 0.28}, obsmodel_file='data/SNmodel_pb_obsmode_map.txt'):
         # Settings for jax/numpyro
         numpyro.set_host_device_count(num_devices)
@@ -344,9 +347,9 @@ class Model(object):
 
         model_flux = jnp.sum(model_spectra * obs_band_weights, axis=1).T
         model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
-        #model_flux *= self.device_scale
-        #model_flux *= flag
-        #return model_flux
+        model_flux *= self.device_scale
+        model_flux *= flag
+        return model_flux
 
         zps = self.zps[band_indices]
 
@@ -628,14 +631,58 @@ class Model(object):
 
         return param_init
 
+    def map_initial_guess(self):
+        optimizer = Adam(0.1)
+        guide = AutoDelta(self.train_model)
+        svi = SVI(self.train_model, guide, optimizer, loss=Trace_ELBO())
+        svi_result = svi.run(PRNGKey(123), 1000, self.data)
+        params, losses = svi_result.params, svi_result.losses
+
+        param_init = {}
+
+        param_init['theta'] = params['theta_auto_loc']
+        #sample_size = theta.shape[0]
+        param_init['Av'] = params['AV_auto_loc']
+        param_init['W0'] = params['W0_auto_loc']#.reshape((self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
+        param_init['W1'] = params['W1_auto_loc']#.reshape((self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
+        param_init['eps_tform'] = params['eps_tform_auto_loc']
+        param_init['sigmaepsilon_tform'] = params['sigmaepsilon_tform_auto_loc']
+        #sigmaepsilon = 1 * jnp.tan(sigmaepsilon_tform)
+        param_init['L_Omega'] = params['L_Omega_auto_loc']
+        #L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon), L_Omega)
+        #eps = jnp.matmul(L_Sigma, eps_tform)
+        #eps = eps.T
+        #eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+        #eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+        #eps = eps_full.at[:, 1:-1, :].set(eps)
+        param_init['Ds'] = params['Ds_auto_loc']
+        param_init['Rv'] = params['Rv_auto_loc']
+
+        return param_init
+        band_indices = self.data[-6, :, :].astype(int)
+        mask = self.data[-1, :, :].astype(bool)
+
+        test = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, band_indices, mask, self.J_t, self.hsiao_interp,
+                                   self.band_weights)
+        for i in range(sample_size):
+            plt.errorbar(self.data[0, :, i], self.data[1, :, i], yerr=self.data[2, :, i], fmt='x')
+            plt.scatter(self.data[0, :, i], test[:, i])
+            plt.show()
+
     def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median', mode='flux',
               l_knots=None):
         if l_knots is not None:
             self.l_knots = jnp.array(l_knots)
             KD_l = spline_utils.invKD_irr(self.l_knots)
             self.J_l_T = device_put(spline_utils.spline_coeffs_irr(self.model_wave, self.l_knots, KD_l))
+        t = self.data[0, ...]
+        self.hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
+
+        # -------------------------
         if init_strategy == 'value':
             init_strategy = init_to_value(values=self.initial_guess())
+        elif init_strategy == 'map':
+            init_strategy = init_to_value(values=self.map_initial_guess())
         elif init_strategy == 'median':
             init_strategy = init_to_median()
         elif init_strategy == 'sample':
@@ -649,7 +696,7 @@ class Model(object):
         #rng = PRNGKey(101)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy,
-                           dense_mass=False, find_heuristic_step_size=False, regularize_mass_matrix=False, step_size=5e-4)
+                           dense_mass=False, find_heuristic_step_size=False, regularize_mass_matrix=False, step_size=10)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
         mcmc.run(rng, self.data, extra_fields=('potential_energy',))
