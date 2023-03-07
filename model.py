@@ -636,7 +636,7 @@ class Model(object):
         return param_init
 
     def map_initial_guess(self):
-        optimizer = Adam(0.01)
+        optimizer = Adam(0.02)
         guide = AutoDelta(self.train_model)
         svi = SVI(self.train_model, guide, optimizer, loss=Trace_ELBO())
         svi_result = svi.run(PRNGKey(123), 5000, self.data)
@@ -661,6 +661,9 @@ class Model(object):
         #eps = eps_full.at[:, 1:-1, :].set(eps)
         param_init['Ds'] = params['Ds_auto_loc']
         param_init['Rv'] = params['Rv_auto_loc']
+
+        print(param_init)
+        raise ValueError('Nope')
 
         return param_init
         band_indices = self.data[-6, :, :].astype(int)
