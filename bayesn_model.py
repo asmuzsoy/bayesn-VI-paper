@@ -1,27 +1,28 @@
+"""
+BayeSN SED Model. Defines a class which allows one to fit or simulate from the
+BayeSN Optical+NIR SED model.
+"""
+
 import os
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.stats import pearsonr
 from scipy.interpolate import interp1d
 from scipy.integrate import simpson
 import numpyro
-from numpyro.infer import MCMC, NUTS, Predictive, HMC, init_to_median, init_to_sample, init_to_value
+from numpyro.infer import MCMC, NUTS, init_to_median, init_to_sample, init_to_value
 import numpyro.distributions as dist
-from numpyro.optim import Minimize, Adam
+from numpyro.optim import Adam
 from numpyro.infer import SVI, Trace_ELBO
 from numpyro.infer.autoguide import AutoDelta
 import h5py
 import sncosmo
 import spline_utils
-import time
 import pickle
 import pandas as pd
 import jax
 from jax import device_put
 import jax.numpy as jnp
 from jax.random import PRNGKey
-import extinction
-import yaml
 from astropy.cosmology import FlatLambdaCDM
 import astropy.constants as const
 import matplotlib as mpl
@@ -29,9 +30,9 @@ from matplotlib import rc
 import arviz
 import extinction
 import timeit
-from plotting_utils import corner
 from astropy.io import fits
 
+# Make plots look pretty
 rc('font', **{'family': 'serif', 'serif': ['cmr10']})
 mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
@@ -41,9 +42,94 @@ plt.rcParams.update({'font.size': 22})
 #jax.config.update('jax_platform_name', 'cpu')
 
 
-class Model(object):
+class SEDmodel(object):
+    """
+    	BayeSN-SED Model
+
+    	Class which imports a BayeSN model, and allows one to fit or simulate
+    	Type Ia supernovae based on this model.
+
+    	Parameters
+    	----------
+    	model : str, optional
+    		Can be either a pre-defined BayeSN model name (see table below), or
+    		a path to directory containing a set of .txt files from which a
+    		valid model can be constructed. Currently implemented default models
+    		are listed below - default is M20. See README in `BayeSNmodel/model_files`
+    		for more info.
+    		  ``'M20'`` | Mandel+20 BayeSN model (arXiv:2008.07538). Covers
+    		            |   rest wavelength range of 3000-18500A (BVRIYJH). No
+    		            |   treatment of host mass effects. Global RV assumed.
+    		            |   Trained on low-z Avelino+19 (ApJ, 887, 106)
+    		            |   compilation of CfA, CSP and others.
+    		  ``'T21'`` | Thorp+21 No-Split BayeSN model (arXiv:2102:05678). Covers
+    		            |   rest wavelength range of 3500-9500A (griz). No
+    		            |   treatment of host mass effects. Global RV assumed.
+    		            |   Trained on Foundation DR1 (Foley+18, Jones+19).
+    	fiducial_cosmology :  dict, optional
+    		Dictionary containg kwargs ``{H0, Om0}`` for initialising a
+    		:py:class:`astropy.cosmology.FlatLambdaCDM` instance. Defaults to
+    		Riess+16 (ApJ, 826, 56) cosmology ``{H0:73.24, "Om0":0.28}``.
+    	compile : bool, optional
+    		Decides whether to precompile Stan code necessary for fitting.
+    		If False, Stan code can be compiled later with a call to
+    		`compile_stan_model`. If True, compiles Stan model (takes around
+    		30 seconds)
+    	fix_tmax : bool, optional
+    		If precompiling Stan model, decides whether to load model where tmax
+    		is fixed (defaults to True).
+    	fix_RV : bool, optional
+    		If precompiling Stan model, decides whether to load model where RV
+    		is fixed (defaults to True).
+
+    	Attributes
+    	----------
+    	params : dict
+    		Dictionary containing BayeSN model parameters.
+    	zpt : float
+    		SNANA zero point which is to be assumed
+    	t_k : :py:class:`numpy.array`
+    		Array of time knots which the model is defined at
+    	l_k : :py:class:`numpy.array`
+    		Array of wavelength knots which the model is defined at
+    	knots : :py:class:`numpy.array`
+    		Cartesian product of t_k and l_k
+    	dl_int : float
+    		Wavelength pacing of the Hsiao template (defaults to 10A)
+    	hsiao : dict
+    		Dictionary containing specification of the Hsiao template from
+    		Hsiao+07 (ApJ, 663, 1187)
+    	passbands : dict
+    		Dictionary of all passbands with available specification. Indexed
+    		by filter name.
+    	cosmo : :py:class:`astropy.cosmology.FlatLambdaCDM`
+    		:py:class:`astropy.cosmology.FlatLambdaCDM` instance defining the
+    		fiducial cosmology which the model was trained using.
+    	stan_model : None or :py:class:`cmdstanpy.CmdStanModel`
+    		Compiled Stan model for fitting the BayeSN photometric distance
+    		model to a supernova.
+    	fixed_tmax : bool
+    		Indicates whether the currently compiled Stan model assumes a fixed
+    		time of maximum.
+    	fixed_RV : bool
+    		Indicates whether the currently compiled Stan model assumes a fixed RV
+
+    	Returns
+    	-------
+    	out : :py:class:`bayesn_model.SEDmodel` instance
+    	"""
     def __init__(self, num_devices=8, enable_x64=True, load_model='T21_model',
                  fiducial_cosmology={"H0": 73.24, "Om0": 0.28}, obsmodel_file='data/SNmodel_pb_obsmode_map.txt'):
+        """
+
+        Parameters
+        ----------
+        num_devices
+        enable_x64
+        load_model
+        fiducial_cosmology
+        obsmodel_file
+        """
         # Settings for jax/numpyro
         numpyro.set_host_device_count(num_devices)
         jax.config.update('jax_enable_x64', enable_x64)
@@ -103,6 +189,12 @@ class Model(object):
         self.M_fitz_block = device_put(spline_utils.spline_coeffs_irr(1e4 / self.model_wave, self.xk, KD_x))
 
     def load_hsiao_template(self):
+        """
+
+        Returns
+        -------
+
+        """
         with h5py.File(os.path.join('data', 'hsiao.h5'), 'r') as file:
             data = file['default']
 
@@ -121,6 +213,12 @@ class Model(object):
         self.hsiao_flux = jnp.matmul(self.J_l_T_hsiao, self.hsiao_flux)
 
     def _setup_band_weights(self):
+        """
+
+        Returns
+        -------
+
+        """
         """Setup the interpolation for the band weights used for photometry"""
         # Build the model in log wavelength
         model_log_wave = np.linspace(np.log10(self.min_wave),
@@ -216,6 +314,17 @@ class Model(object):
         self.model_wave = 10 ** (model_log_wave)
 
     def _calculate_band_weights(self, redshifts, ebv):
+        """
+
+        Parameters
+        ----------
+        redshifts
+        ebv
+
+        Returns
+        -------
+
+        """
         """Calculate the band weights for a given set of redshifts
 
         We have precomputed the weights for each bandpass, so we simply interpolate
@@ -266,7 +375,7 @@ class Model(object):
         sum = jnp.sum(result, axis=1)
         result /= sum[:, None, :]"""
 
-        # Hack fix maybe
+        # Normalise so max transmission = 1
         sum = jnp.sum(result, axis=1)
         result /= sum[:, None, :]
 
@@ -285,6 +394,23 @@ class Model(object):
         return result
 
     def get_spectra(self, theta, Av, W0, W1, eps, Rv, J_t, hsiao_interp):
+        """
+
+        Parameters
+        ----------
+        theta
+        Av
+        W0
+        W1
+        eps
+        Rv
+        J_t
+        hsiao_interp
+
+        Returns
+        -------
+
+        """
         num_batch = theta.shape[0]
         W0 = jnp.repeat(W0[None, ...], num_batch, axis=0)
         W1 = jnp.repeat(W1[None, ...], num_batch, axis=0)
@@ -329,6 +455,27 @@ class Model(object):
         return model_spectra
 
     def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, hsiao_interp, weights):
+        """
+
+        Parameters
+        ----------
+        theta
+        Av
+        W0
+        W1
+        eps
+        Ds
+        Rv
+        band_indices
+        flag
+        J_t
+        hsiao_interp
+        weights
+
+        Returns
+        -------
+
+        """
         num_batch = theta.shape[0]
         num_observations = band_indices.shape[0]
 
@@ -352,6 +499,27 @@ class Model(object):
         return model_flux
 
     def get_mag_batch(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, hsiao_interp, weights):
+        """
+
+        Parameters
+        ----------
+        theta
+        Av
+        W0
+        W1
+        eps
+        Ds
+        Rv
+        band_indices
+        flag
+        J_t
+        hsiao_interp
+        weights
+
+        Returns
+        -------
+
+        """
         model_flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, hsiao_interp, weights)
         model_flux = model_flux / self.device_scale
         model_flux = model_flux + (1 - flag) * 0.01
@@ -364,6 +532,18 @@ class Model(object):
 
     @staticmethod
     def spline_coeffs_irr_step(x_now, x, invkd):
+        """
+
+        Parameters
+        ----------
+        x_now
+        x
+        invkd
+
+        Returns
+        -------
+
+        """
         X = jnp.zeros_like(x)
         up_extrap = x_now > x[-1]
         down_extrap = x_now < x[0]
@@ -401,6 +581,17 @@ class Model(object):
         return X
 
     def fit_model(self, obs, weights):
+        """
+
+        Parameters
+        ----------
+        obs
+        weights
+
+        Returns
+        -------
+
+        """
         sample_size = obs.shape[-1]
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
 
@@ -416,20 +607,16 @@ class Model(object):
             J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1, 2, 0)
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
-            """
             eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
             eps_tform = eps_tform.T
             eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
             eps = eps.T
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
-            eps = eps_full.at[:, 1:-1, :].set(eps)"""
-            eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            eps = eps_full.at[:, 1:-1, :].set(eps)
+            #eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             band_indices = obs[-6, :, sn_index].astype(int).T
-            redshift = obs[-5, 0, sn_index]
-            redshift_error = obs[-4, 0, sn_index]
             muhat = obs[-3, 0, sn_index]
-            ebv = obs[-2, 0, sn_index]
             mask = obs[-1, :, sn_index].T.astype(bool)
             muhat_err = 10
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
@@ -441,6 +628,22 @@ class Model(object):
                                obs=obs[1, :, sn_index].T)  # _{sn_index}
 
     def fit(self, num_samples, num_warmup, num_chains, output, result_path, chain_method='parallel', init_strategy='median'):
+        """
+
+        Parameters
+        ----------
+        num_samples
+        num_warmup
+        num_chains
+        output
+        result_path
+        chain_method
+        init_strategy
+
+        Returns
+        -------
+
+        """
         if init_strategy == 'value':
             init_strategy = init_to_value(values=self.initial_guess())
         elif init_strategy == 'median':
@@ -474,6 +677,17 @@ class Model(object):
         self.J_t_map = jax.jit(jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None)))
 
         def do_mcmc(data, weights):
+            """
+
+            Parameters
+            ----------
+            data
+            weights
+
+            Returns
+            -------
+
+            """
             rng_key = PRNGKey(123)
             nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy,
                                max_tree_depth=10)
@@ -506,6 +720,17 @@ class Model(object):
         #self.fit_postprocess(samples, output)
 
     def fit_postprocess(self, samples, output):
+        """
+
+        Parameters
+        ----------
+        samples
+        output
+
+        Returns
+        -------
+
+        """
         if not os.path.exists(os.path.join('results', output)):
             os.mkdir(os.path.join('results', output))
 
@@ -525,6 +750,16 @@ class Model(object):
         summary.to_csv(os.path.join('results', output, 'fit_summary.csv'))
 
     def train_model(self, obs):
+        """
+
+        Parameters
+        ----------
+        obs
+
+        Returns
+        -------
+
+        """
         sample_size = self.data.shape[-1]
         N_knots = self.l_knots.shape[0] * self.tau_knots.shape[0]
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
@@ -578,7 +813,17 @@ class Model(object):
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)
 
-    def initial_guess(self, n_chains=1, reference_model="T21", RV_init=3.0, tauA_init=0.3):
+    def initial_guess(self, reference_model="T21"):
+        """
+
+        Parameters
+        ----------
+        reference_model
+
+        Returns
+        -------
+
+        """
         # Set hyperparameter initialisations
         param_root = f'model_files/{reference_model}_model'
         W0_init = np.loadtxt(f'{param_root}/W0.txt')
@@ -636,6 +881,12 @@ class Model(object):
         return param_init
 
     def map_initial_guess(self):
+        """
+
+        Returns
+        -------
+
+        """
         optimizer = Adam(0.02)
         guide = AutoDelta(self.train_model)
         svi = SVI(self.train_model, guide, optimizer, loss=Trace_ELBO())
@@ -678,6 +929,23 @@ class Model(object):
 
     def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median', mode='flux',
               l_knots=None):
+        """
+
+        Parameters
+        ----------
+        num_samples
+        num_warmup
+        num_chains
+        output
+        chain_method
+        init_strategy
+        mode
+        l_knots
+
+        Returns
+        -------
+
+        """
         if l_knots is not None:
             self.l_knots = jnp.array(l_knots)
             KD_l = spline_utils.invKD_irr(self.l_knots)
@@ -713,6 +981,18 @@ class Model(object):
         self.train_postprocess(samples, extras, output)
 
     def train_postprocess(self, samples, extras, output):
+        """
+
+        Parameters
+        ----------
+        samples
+        extras
+        output
+
+        Returns
+        -------
+
+        """
         if not os.path.exists(os.path.join('results', output)):
             os.mkdir(os.path.join('results', output))
         with open(os.path.join('results', output, 'initial_chains.pkl'), 'wb') as file:
@@ -777,6 +1057,21 @@ class Model(object):
         }"""
 
     def process_dataset(self, sample_name, lc_dir, meta_file, map_dict=None, sn_list=None, data_mode='flux'):
+        """
+
+        Parameters
+        ----------
+        sample_name
+        lc_dir
+        meta_file
+        map_dict
+        sn_list
+        data_mode
+
+        Returns
+        -------
+
+        """
         if not os.path.exists(os.path.join('data', 'LCs', 'pickles', sample_name)):
             os.mkdir(os.path.join('data', 'LCs', 'pickles', sample_name))
         if os.path.exists(os.path.join('data', 'LCs', 'pickles', sample_name, f'dataset_{data_mode}.pkl')):
@@ -852,6 +1147,16 @@ class Model(object):
         self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
 
     def fit_from_results(self, input_file):
+        """
+
+        Parameters
+        ----------
+        input_file
+
+        Returns
+        -------
+
+        """
         with open(os.path.join('results', f'{input_file}.pkl'), 'rb') as file:
             result = pickle.load(file)
         N = result['theta'].shape[1]
@@ -880,6 +1185,16 @@ class Model(object):
         plt.show()
 
     def get_flux_from_chains(self, model):
+        """
+
+        Parameters
+        ----------
+        model
+
+        Returns
+        -------
+
+        """
         with open(os.path.join('results', model, 'chains.pkl'), 'rb') as file:
             chains = pickle.load(file)
         sample_size = chains['theta'].shape[-1]
@@ -935,6 +1250,27 @@ class Model(object):
         np.save(os.path.join('results', model, 'rf_mags_eps0'), mag_bands)
 
     def simulate_spectrum(self, t, N, dl=10, z=0, mu=0, ebv_mw=0, Rv=None, logM=None, del_M=None, AV=None, theta=None, eps=None):
+        """
+
+        Parameters
+        ----------
+        t
+        N
+        dl
+        z
+        mu
+        ebv_mw
+        Rv
+        logM
+        del_M
+        AV
+        theta
+        eps
+
+        Returns
+        -------
+
+        """
         if del_M is None:
             del_M = self.sample_del_M(N)
         else:
@@ -1037,6 +1373,27 @@ class Model(object):
         return l_o, spectra, param_dict
 
     def simulate_light_curve(self, t, N, bands, z=0, mu=0, ebv_mw=0, Rv=None, logM=None, del_M=None, AV=None, theta=None, eps=None):
+        """
+
+        Parameters
+        ----------
+        t
+        N
+        bands
+        z
+        mu
+        ebv_mw
+        Rv
+        logM
+        del_M
+        AV
+        theta
+        eps
+
+        Returns
+        -------
+
+        """
         if del_M is None:
             del_M = self.sample_del_M(N)
         else:
@@ -1138,18 +1495,58 @@ class Model(object):
         return flux, param_dict
 
     def sample_del_M(self, N):
+        """
+
+        Parameters
+        ----------
+        N
+
+        Returns
+        -------
+
+        """
         del_M = np.random.normal(0, self.sigma0, N)
         return del_M
 
     def sample_AV(self, N):
+        """
+
+        Parameters
+        ----------
+        N
+
+        Returns
+        -------
+
+        """
         AV = np.random.exponential(self.tauA, N)
         return AV
 
     def sample_theta(self, N):
+        """
+
+        Parameters
+        ----------
+        N
+
+        Returns
+        -------
+
+        """
         theta = np.random.normal(0, 1, N)
         return theta
 
     def sample_epsilon(self, N):
+        """
+
+        Parameters
+        ----------
+        N
+
+        Returns
+        -------
+
+        """
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
         eps_mu = jnp.zeros(N_knots_sig)
         eps = np.random.multivariate_normal(eps_mu, np.matmul(self.L_Sigma.T, self.L_Sigma), N )
@@ -1158,8 +1555,17 @@ class Model(object):
         eps_full[:, 1:-1, :] = eps
         return eps_full
 
-
     def plot_hubble_diagram(self, model):
+        """
+
+        Parameters
+        ----------
+        model
+
+        Returns
+        -------
+
+        """
         with open(os.path.join('results', model, 'chains.pkl'), 'rb') as file:
             chains = pickle.load(file)
         redshifts = np.array(self.data[-5, 0, :])
@@ -1176,142 +1582,3 @@ class Model(object):
         plt.show()
         save_data = np.array([redshifts, hres, hres_err, theta, theta_err, Av, Av_err])
         np.save(os.path.join('results', model, 'hres'), save_data)
-
-    def compare_params(self):
-        sn_list = pd.read_csv('data/LCs/foundation/Foundation_DR1/Foundation_DR1.LIST', names=['file'])
-        sn_list['sn'] = sn_list.file.apply(lambda x: x[x.rfind('_') + 1: x.rfind('.')])
-        meta_file = pd.read_csv('data/LCs/meta/T21_training_set_meta.txt', delim_whitespace=True)
-        sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')
-        T21_order = pd.read_csv(
-            'model_files/T21_model/sn_training_list_realn157F_alpha_4x500+500_nou_av-exp_W1_210204_180221.txt',
-            header=None, names=['sn'])
-        T21_order['inds'] = np.arange(157)
-        sn_list = sn_list.merge(T21_order, on='sn')
-        ord = sn_list['inds'].values
-
-        T21_summary = pd.read_csv('model_files/T21_model/summary_realn157F_alpha_4x500+500_nou_av-exp_W1_210204_180221.txt', delim_whitespace=True)
-        # Reorder T21 params and prepare comparisons
-        T21_summary = T21_summary.dropna()
-        params = []
-        for param in T21_summary.param.values:
-            if 'epsilons' in param:
-                num1, num2 = param[param.find('[') + 1:param.find(',')], param[param.find(',') + 1:-1]
-                param = f'epsilons[{num2},{num1}]'
-            params.append(param)
-        T21_summary['param'] = params
-
-        all_eps_df = None
-        for i in ord + 1:
-            eps_df = T21_summary[T21_summary.param.str.contains(f'epsilons\[{i},')]
-            if eps_df is None:
-                all_eps_df = eps_df
-            else:
-                all_eps_df = pd.concat([all_eps_df, eps_df])
-
-        sn_param_dfs = []
-        for param in ['AV', 'Ds']:
-            param_df = T21_summary[T21_summary.param.str.contains(param)]
-            param_df = param_df.iloc[ord, :]
-            sn_param_dfs.append(param_df)
-
-        glob_params_dfs = []
-        for param in ['W1', 'sigmaepsilon', 'sigma0', 'RV']:
-            param_df = T21_summary[T21_summary.param.str.contains(param)]
-            glob_params_dfs.append(param_df)
-
-        T21_comparison = pd.concat([*sn_param_dfs, *glob_params_dfs]).reset_index(drop=True)
-
-        # Prepare numpyro comparisons
-        np_summary = pd.read_csv('results/foundation_train_1000_mag/fit_summary.csv')
-        np_summary.columns = ['param'] + list(np_summary.columns[1:])
-        np_eps_df = np_summary[np_summary.param.str.contains('eps\[')]
-
-        sn_param_dfs = []
-        for param in ['AV', 'Ds']:
-            param_df = np_summary[np_summary.param.str.contains(param)]
-            sn_param_dfs.append(param_df)
-
-        glob_params_dfs = []
-        for param in ['W1', 'sigmaepsilon', 'sigma0', 'Rv']:
-            param_df = np_summary[(np_summary.param.str.contains(param)) & (~np_summary.param.str.contains('tform'))]
-            glob_params_dfs.append(param_df)
-
-        np_comparison = pd.concat([*sn_param_dfs, *glob_params_dfs]).reset_index(drop=True)
-
-        T21_comparison.columns = 'stan_' + T21_comparison.columns
-        np_comparison.columns = 'np_' + np_comparison.columns
-        comparison_df = T21_comparison.merge(np_comparison, left_index=True, right_index=True)
-
-        """theta_df = comparison_df[comparison_df.stan_param.str.contains('Ds', case=True)]
-        print(theta_df.np_mean.std())
-        theta_err = np.sqrt(np.power(theta_df.stan_sd / np.sqrt(157), 2) + np.power(theta_df.np_sd / np.sqrt(157), 2))
-        theta_sig = np.abs(theta_df.stan_mean - theta_df.np_mean) / theta_err
-        theta_df['err'] = theta_err
-        theta_df['sig'] = theta_sig
-        print(theta_df.sig.describe(percentiles=(0.5, 0.68, 0.95)))
-        # print(theta_df[['stan_mean', 'stan_sd', 'np_mean', 'np_sd']])
-        plt.figure(figsize=(12, 8))
-        plt.errorbar(theta_df['stan_mean'], theta_df['np_mean'], xerr=theta_df.stan_sd / np.sqrt(theta_df.stan_n_eff),
-                     yerr=theta_df.np_sd / np.sqrt(theta_df.np_ess_bulk), fmt='x')
-        #plt.plot([-5, 5], [-5, 5], ls='--')
-        #plt.xlim(-0.5, 2)
-        #plt.ylim(-0.5, 2)
-        plt.xlabel(r'$W0$ (stan)')
-        plt.ylabel(r'$W0$ (numpyro)')
-        plt.show()
-        plt.figure(figsize=(12, 8))
-        plt.errorbar(theta_df['stan_mean'], theta_df['np_mean'] - theta_df['stan_mean'],
-                     yerr=theta_df['err'], fmt='x')
-        plt.xlabel('stan Ds')
-        plt.ylabel('Residual')
-        plt.show()
-        return"""
-
-        comparison_df['sig'] = np.abs(comparison_df.stan_mean - comparison_df.np_mean) / np.sqrt(np.power(comparison_df.stan_sd, 2) + np.power(comparison_df.np_sd, 2))
-                               #np.sqrt(np.power(comparison_df.stan_sd / np.sqrt(comparison_df.stan_n_eff), 2) + np.power(comparison_df.np_sd / np.sqrt(comparison_df.np_ess_bulk), 2))
-        # comparison_df = comparison_df[comparison_df.stan_param.str.contains('AV')]
-        print(comparison_df.sig.describe())
-        print(comparison_df.sort_values(by='sig', ascending=False))
-        plt.figure(figsize=(12, 8))
-        plt.hist(comparison_df.sig, bins=30)
-        plt.xlabel('Significance of difference')
-        plt.ylabel('Frequency')
-        plt.show()
-
-        return
-        print(comparison_df.sig.describe())
-        print(comparison_df.sort_values(by='sig', ascending=False).head(20))
-        Rv1, Rv2 = T21_summary[T21_summary.param == 'RV'], np_summary[np_summary.param == 'Rv']
-        Rv1_mcerr = Rv1.sd.values[0] / np.sqrt(Rv1.n_eff.values[0])
-        Rv2_mcerr = Rv2.sd.values[0] / np.sqrt(Rv2.ess_bulk.values[0])
-        Rv_diff = np.abs(Rv1['mean'].values[0] - Rv2['mean'].values[0])
-        Rv_mcerr = np.sqrt(np.power(Rv1_mcerr, 2) + np.power(Rv2_mcerr, 2))
-        Rv_sig = Rv_diff / Rv_mcerr
-        print(Rv_sig)
-        Av1, Av2 = T21_summary[T21_summary.param.str.contains('theta', case=False)], np_summary[np_summary.param.str.contains('theta', case=False)]
-        plt.scatter(Av1['mean'].values[ord], Av2['mean'])
-        plt.show()
-
-
-# -------------------------------------------------
-
-"""if __name__ == '__main__':
-    model = Model()
-    filt_map_dict = {'g': 'g_PS1', 'r': 'r_PS1', 'i': 'i_PS1', 'z': 'z_PS1'}
-    model.process_dataset('foundation', 'data/LCs/foundation/Foundation_DR1', 'data/LCs/meta/T21_training_set_meta.txt',
-                          filt_map_dict, sn_list='data/LCs/foundation/Foundation_DR1/Foundation_DR1.LIST')
-    #model.process_dataset('ztf', 'data/LCs/ZTF', 'data/LCs/meta/ztf_dr1_training.txt',
-    #                      map_dict=None)
-    #model.train(1000, 1000, 4, 'ztf_train_test', chain_method='parallel', init_strategy='median',
-    #            l_knots=[4150, 4760, 6390, 7930, 9000])
-    model.fit(250, 250, 4, 'foundation_fit_7tree', 'T21', chain_method='parallel')
-    # model.get_flux_from_chains('foundation_fit_T21freeRv')
-    # model.plot_hubble_diagram('foundation_fit_T21freeRv')
-    # model.compare_params()
-    # model.simulate_spectrum()
-    # model.train_postprocess()
-    # result.print_summary()
-    # model.save_results_to_yaml(result, 'foundation_train_4chain')
-    # model.fit_assess(params, '4chain_fit_test')
-    # model.fit_from_results('foundation_train')
-    # model.train_assess(params, 'gpu_train_dist')"""

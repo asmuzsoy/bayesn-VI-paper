@@ -1,6 +1,6 @@
-from model import Model
+from bayesn_model import SEDmodel
 
-model = Model()
+model = SEDmodel()
 filt_map_dict = {'g': 'g_PS1', 'r': 'r_PS1', 'i': 'i_PS1', 'z': 'z_PS1'}
 model.process_dataset('foundation', 'data/LCs/foundation/Foundation_DR1', 'data/LCs/meta/T21_training_set_meta.txt',
                       filt_map_dict, sn_list='data/LCs/foundation/Foundation_DR1/Foundation_DR1.LIST', data_mode='mag')

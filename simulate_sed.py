@@ -1,11 +1,8 @@
-import os
-
 import numpy as np
 from timeit import default_timer
+from bayesn_model import SEDmodel
 
-from model import Model
-
-model = Model()
+model = SEDmodel()
 start = default_timer()
 model.simulate_light_curve(np.arange(-8, 40, 4), 100, ['p48g', 'p48r', 'p48i'], mu='z', z=np.random.uniform(0, 0.1, 100))
 end = default_timer()
