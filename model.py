@@ -58,18 +58,18 @@ class Model(object):
         self.device_scale = device_put(jnp.array(self.scale))
         self.sigma_pec = device_put(jnp.array(150 / 3e5))
 
-        try:
-            self.l_knots = np.genfromtxt(f'model_files/{load_model}/l_knots.txt')
-            self.tau_knots = np.genfromtxt(f'model_files/{load_model}/tau_knots.txt')
-            self.W0 = np.genfromtxt(f'model_files/{load_model}/W0.txt')
-            self.W1 = np.genfromtxt(f'model_files/{load_model}/W1.txt')
-            self.L_Sigma = np.genfromtxt(f'model_files/{load_model}/L_Sigma_epsilon.txt')
-            model_params = np.genfromtxt(f'model_files/{load_model}/M0_sigma0_RV_tauA.txt')
-            self.sigma0 = device_put(model_params[1])
-            self.Rv = device_put(model_params[2])
-            self.tauA = device_put(model_params[3])
-        except:
-            raise ValueError('Must select one of M20_model, T21_model, T21_partial-split_model and W22_model')
+        #try:
+        self.l_knots = np.genfromtxt(f'model_files/{load_model}/l_knots.txt')
+        self.tau_knots = np.genfromtxt(f'model_files/{load_model}/tau_knots.txt')
+        self.W0 = np.genfromtxt(f'model_files/{load_model}/W0.txt')
+        self.W1 = np.genfromtxt(f'model_files/{load_model}/W1.txt')
+        self.L_Sigma = np.genfromtxt(f'model_files/{load_model}/L_Sigma_epsilon.txt')
+        model_params = np.genfromtxt(f'model_files/{load_model}/M0_sigma0_RV_tauA.txt')
+        self.sigma0 = device_put(model_params[1])
+        self.Rv = device_put(model_params[2])
+        self.tauA = device_put(model_params[3])
+        #except:
+        #    raise ValueError('Must select one of M20_model, T21_model, T21_partial-split_model and W22_model')
 
         self.l_knots = device_put(self.l_knots)
         self.tau_knots = device_put(self.tau_knots)
@@ -351,9 +351,13 @@ class Model(object):
         model_flux *= flag
         return model_flux
 
+    def get_mag_batch(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, hsiao_interp, weights):
+        model_flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, hsiao_interp, weights)
+        model_flux = model_flux / self.device_scale
+        model_flux = model_flux + (1 - flag) * 0.01
         zps = self.zps[band_indices]
 
-        model_mag = self.M0 + Ds - 2.5 * jnp.log10(model_flux) + zps
+        model_mag = - 2.5 * jnp.log10(model_flux) + zps # self.M0 + Ds
         model_mag *= flag
 
         return model_mag
@@ -569,7 +573,7 @@ class Model(object):
             muhat_err = 5 / (redshift * jnp.log(10)) * jnp.sqrt(jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))
             Ds_err = jnp.sqrt(muhat_err * muhat_err + sigma0 * sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
-            flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, band_indices, mask, self.J_t, self.hsiao_interp,
+            flux = self.get_mag_batch(theta, Av, W0, W1, eps, Ds, Rv, band_indices, mask, self.J_t, self.hsiao_interp,
                                        self.band_weights)
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)
@@ -632,10 +636,10 @@ class Model(object):
         return param_init
 
     def map_initial_guess(self):
-        optimizer = Adam(0.1)
+        optimizer = Adam(0.01)
         guide = AutoDelta(self.train_model)
         svi = SVI(self.train_model, guide, optimizer, loss=Trace_ELBO())
-        svi_result = svi.run(PRNGKey(123), 100000, self.data)
+        svi_result = svi.run(PRNGKey(123), 5000, self.data)
         params, losses = svi_result.params, svi_result.losses
 
         param_init = {}
@@ -926,6 +930,231 @@ class Model(object):
             [4.608419288004386e-09, 2.8305383925373084e-09, 1.917161265703195e-09, 1.446643295845274e-09])
         mag_bands = -2.5 * np.log10(flux_bands / self.zp[None, :, None, None])
         np.save(os.path.join('results', model, 'rf_mags_eps0'), mag_bands)
+
+    def simulate_spectrum(self, t, N, dl=10, z=0, mu=0, ebv_mw=0, Rv=None, logM=None, del_M=None, AV=None, theta=None, eps=None):
+        if del_M is None:
+            del_M = self.sample_del_M(N)
+        else:
+            del_M = np.array(del_M)
+            if len(del_M.shape) == 0:
+                del_M = del_M.repeat(N)
+            elif del_M.shape[0] != N:
+                raise ValueError('If not providing a scalar del_M value, array must be of same length as the number of '
+                                 'objects to simulate, N')
+        if AV is None:
+            AV = self.sample_AV(N)
+        else:
+            AV = np.array(AV)
+            if len(AV.shape) == 0:
+                AV = AV.repeat(N)
+            elif AV.shape[0] != N:
+                raise ValueError('If not providing a scalar AV value, array must be of same length as the number of '
+                                 'objects to simulate, N')
+        if theta is None:
+            theta = self.sample_theta(N)
+        else:
+            theta = np.array(theta)
+            if len(theta.shape) == 0:
+                theta = theta.repeat(N)
+            elif theta.shape[0] != N:
+                raise ValueError('If not providing a scalar theta value, array must be of same length as the number of '
+                                 'objects to simulate, N')
+        if eps is None:
+            eps = self.sample_epsilon(N)
+        elif len(np.array(eps).shape) == 0:
+            eps = np.array(eps)
+            if eps == 0:
+                eps = np.zeros((N, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            else:
+                raise ValueError('For epsilon, please pass an array-like object of shape (N, l_knots, tau_knots). The only scalar '
+                                 'value accepted is 0, which will effectively remove the effect of epsilon')
+        elif len(eps.shape) != 3 or eps.shape[0] != N or eps.shape[1] != self.l_knots.shape[0] or eps.shape[2] != self.tau_knots.shape[0]:
+            raise ValueError('For epsilon, please pass an array-like object of shape (N, l_knots, tau_knots)')
+        ebv_mw = np.array(ebv_mw)
+        if len(ebv_mw.shape) == 0:
+            ebv_mw = ebv_mw.repeat(N)
+        elif ebv_mw.shape[0] != N:
+            raise ValueError('For ebv_mw, either pass a single scalar value or an array of values for each of the N simulated objects')
+        if Rv is None:
+            Rv = self.Rv
+        Rv = np.array(Rv)
+        if len(Rv.shape) == 0:
+            Rv = Rv.repeat(N)
+        elif Rv.shape[0] != N:
+            raise ValueError('For Rv, either pass a single scalar value or an array of values for each of the N simulated objects')
+        z = np.array(z)
+        if len(z.shape) == 0:
+            z = z.repeat(N)
+        elif z.shape[0] != N:
+            raise ValueError('For z, either pass a single scalar value or an array of values for each of the N simulated objects')
+        mu = np.array(mu)
+        if len(mu.shape) == 0:
+            mu = mu.repeat(N)
+        elif mu.shape[0] != N:
+            raise ValueError('For mu, either pass a single scalar value or an array of values for each of the N simulated objects')
+        param_dict = {
+            'del_M': del_M,
+            'AV': AV,
+            'theta': theta,
+            'eps': eps,
+            'z': z,
+            'mu': mu,
+            'ebv_mw': ebv_mw,
+            'Rv': Rv
+        }
+        l_r = np.linspace(min(self.l_knots), max(self.l_knots), int((max(self.l_knots) - min(self.l_knots)) / dl) + dl)
+        l_o = l_r[None, ...].repeat(N, axis=0) * (1 + z[:, None])
+
+        self.model_wave = l_r
+        KD_l = spline_utils.invKD_irr(self.l_knots)
+        self.J_l_T = device_put(spline_utils.spline_coeffs_irr(self.model_wave, self.l_knots, KD_l))
+        KD_x = spline_utils.invKD_irr(self.xk)
+        self.M_fitz_block = device_put(spline_utils.spline_coeffs_irr(1e4 / self.model_wave, self.xk, KD_x))
+        self.load_hsiao_template()
+
+        t = jnp.array(t)
+        t = jnp.repeat(t[..., None], N, axis=1)
+        hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
+        keep_shape = t.shape
+        t = t.flatten(order='F')
+        map = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))
+        J_t = map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1, 2, 0)
+        spectra = self.get_spectra(theta, AV, self.W0, self.W1, eps, Rv, J_t, hsiao_interp)
+
+        # Host extinction
+        host_ext = np.zeros((N, l_r.shape[0], 1))
+        for i in range(N):
+            host_ext[i, :, 0] = extinction.fitzpatrick99(l_r, AV[i], Rv[i])
+
+        # MW extinction
+        mw_ext = np.zeros((N, l_o.shape[1], 1))
+        for i in range(N):
+            mw_ext[i, :, 0] = extinction.fitzpatrick99(l_o[i, ...], 3.1 * ebv_mw[i], 3.1)
+
+        return l_o, spectra, param_dict
+
+    def simulate_light_curve(self, t, N, bands, z=0, mu=0, ebv_mw=0, Rv=None, logM=None, del_M=None, AV=None, theta=None, eps=None):
+        if del_M is None:
+            del_M = self.sample_del_M(N)
+        else:
+            del_M = np.array(del_M)
+            if len(del_M.shape) == 0:
+                del_M = del_M.repeat(N)
+            elif del_M.shape[0] != N:
+                raise ValueError('If not providing a scalar del_M value, array must be of same length as the number of '
+                                 'objects to simulate, N')
+        if AV is None:
+            AV = self.sample_AV(N)
+        else:
+            AV = np.array(AV)
+            if len(AV.shape) == 0:
+                AV = AV.repeat(N)
+            elif AV.shape[0] != N:
+                raise ValueError('If not providing a scalar AV value, array must be of same length as the number of '
+                                 'objects to simulate, N')
+        if theta is None:
+            theta = self.sample_theta(N)
+        else:
+            theta = np.array(theta)
+            if len(theta.shape) == 0:
+                theta = theta.repeat(N)
+            elif theta.shape[0] != N:
+                raise ValueError('If not providing a scalar theta value, array must be of same length as the number of '
+                                 'objects to simulate, N')
+        if eps is None:
+            eps = self.sample_epsilon(N)
+        elif len(np.array(eps).shape) == 0:
+            eps = np.array(eps)
+            if eps == 0:
+                eps = np.zeros((N, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            else:
+                raise ValueError('For epsilon, please pass an array-like object of shape (N, l_knots, tau_knots). The only scalar '
+                                 'value accepted is 0, which will effectively remove the effect of epsilon')
+        elif len(eps.shape) != 3 or eps.shape[0] != N or eps.shape[1] != self.l_knots.shape[0] or eps.shape[2] != self.tau_knots.shape[0]:
+            raise ValueError('For epsilon, please pass an array-like object of shape (N, l_knots, tau_knots)')
+        ebv_mw = np.array(ebv_mw)
+        if len(ebv_mw.shape) == 0:
+            ebv_mw = ebv_mw.repeat(N)
+        elif ebv_mw.shape[0] != N:
+            raise ValueError('For ebv_mw, either pass a single scalar value or an array of values for each of the N simulated objects')
+        if Rv is None:
+            Rv = self.Rv
+        Rv = np.array(Rv)
+        if len(Rv.shape) == 0:
+            Rv = Rv.repeat(N)
+        elif Rv.shape[0] != N:
+            raise ValueError('For Rv, either pass a single scalar value or an array of values for each of the N simulated objects')
+        z = np.array(z)
+        if len(z.shape) == 0:
+            z = z.repeat(N)
+        elif z.shape[0] != N:
+            raise ValueError('For z, either pass a single scalar value or an array of values for each of the N simulated objects')
+        if mu == 'z':
+            mu = self.cosmo.distmod(z).value
+        else:
+            mu = np.array(mu)
+            if len(mu.shape) == 0:
+                mu = mu.repeat(N)
+            elif mu.shape[0] != N:
+                raise ValueError('For mu, either pass a single scalar value or an array of values for each of the N simulated objects')
+        param_dict = {
+            'del_M': del_M,
+            'AV': AV,
+            'theta': theta,
+            'eps': eps,
+            'z': z,
+            'mu': mu,
+            'ebv_mw': ebv_mw,
+            'Rv': Rv
+        }
+
+        t = jnp.array(t)
+        num_per_band = t.shape[0]
+        num_bands = len(bands)
+        band_indices = np.zeros(num_bands * num_per_band)
+        t = t[:, None].repeat(num_bands, axis=1).flatten(order='F')
+        for i, band in enumerate(bands):
+            if band not in self.band_dict.keys():
+                raise ValueError(f'{band} is not included in current model')
+            band_indices[i * num_per_band: (i + 1) * num_per_band] = self.band_dict[band]
+        band_indices = band_indices[:, None].repeat(N, axis=1).astype(int)
+        flag = np.ones_like(band_indices)
+        band_weights = self._calculate_band_weights(z, ebv_mw)
+
+        t = jnp.repeat(t[..., None], N, axis=1)
+        hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
+        keep_shape = t.shape
+        t = t.flatten(order='F')
+        map = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))
+        J_t = map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1, 2, 0)
+        t = t.reshape(keep_shape, order='F')
+        flux = self.get_mag_batch(theta, AV, self.W0, self.W1, eps, mu + del_M, Rv, band_indices, flag, J_t, hsiao_interp, band_weights)
+        plt.scatter(t[:, 0], flux[:, 0])
+        plt.show()
+
+        return flux, param_dict
+
+    def sample_del_M(self, N):
+        del_M = np.random.normal(0, self.sigma0, N)
+        return del_M
+
+    def sample_AV(self, N):
+        AV = np.random.exponential(self.tauA, N)
+        return AV
+
+    def sample_theta(self, N):
+        theta = np.random.normal(0, 1, N)
+        return theta
+
+    def sample_epsilon(self, N):
+        N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
+        eps_mu = jnp.zeros(N_knots_sig)
+        eps = np.random.multivariate_normal(eps_mu, np.matmul(self.L_Sigma.T, self.L_Sigma), N )
+        eps = np.reshape(eps, (N, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+        eps_full = np.zeros((N, self.l_knots.shape[0], self.tau_knots.shape[0]))
+        eps_full[:, 1:-1, :] = eps
+        return eps_full
+
 
     def plot_hubble_diagram(self, model):
         with open(os.path.join('results', model, 'chains.pkl'), 'rb') as file:
