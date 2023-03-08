@@ -140,7 +140,7 @@ class SEDmodel(object):
         self.hsiao_interp = None
         self.RV_MW = device_put(jnp.array(3.1))
 
-        self.scale = 1e18
+        self.scale = 1e16
         self.device_scale = device_put(jnp.array(self.scale))
         self.sigma_pec = device_put(jnp.array(150 / 3e5))
 
