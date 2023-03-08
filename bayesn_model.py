@@ -50,7 +50,15 @@ class SEDmodel(object):
 
     Parameters
     ----------
-    model : str, optional
+    num_devices: int, optional
+            If running on a CPU, numpyro will by default see it as a single device - this argument will set the number
+            of available cores for numpyro to use e.g. set to 4, you can train 4 chains on 4 cores in parallel. Defaults
+            to 4
+    enable_x64: Bool, optional
+        Determines whether 64-bit precision is used. Often required when training on GPU, typically better left
+        enabled although worth a try disabled to improve performance depending on your model/initialisation. Defaults to
+        True
+    load_model : str, optional
         Can be either a pre-defined BayeSN model name (see table below), or
         a path to directory containing a set of .txt files from which a
         valid model can be constructed. Currently implemented default models
@@ -69,58 +77,59 @@ class SEDmodel(object):
         Dictionary containg kwargs ``{H0, Om0}`` for initialising a
         :py:class:`astropy.cosmology.FlatLambdaCDM` instance. Defaults to
         Riess+16 (ApJ, 826, 56) cosmology ``{H0:73.24, "Om0":0.28}``.
+    obsmodel_file: str, optional
+        Path to file containing details on all bands loaded into model. Defaults to data/SNmodel_pb_obsmode_map.txt
 
     Attributes
     ----------
-    params : dict
-        Dictionary containing BayeSN model parameters.
-    zpt : float
-        SNANA zero point which is to be assumed
-    t_k : :py:class:`numpy.array`
-        Array of time knots which the model is defined at
-    l_k : :py:class:`numpy.array`
-        Array of wavelength knots which the model is defined at
-    knots : :py:class:`numpy.array`
-        Cartesian product of t_k and l_k
-    dl_int : float
-        Wavelength pacing of the Hsiao template (defaults to 10A)
-    hsiao : dict
-        Dictionary containing specification of the Hsiao template from
-        Hsiao+07 (ApJ, 663, 1187)
-    passbands : dict
-        Dictionary of all passbands with available specification. Indexed
-        by filter name.
-    cosmo : :py:class:`astropy.cosmology.FlatLambdaCDM`
+    cosmo: :py:class:`astropy.cosmology.FlatLambdaCDM`
         :py:class:`astropy.cosmology.FlatLambdaCDM` instance defining the
         fiducial cosmology which the model was trained using.
-    stan_model : None or :py:class:`cmdstanpy.CmdStanModel`
-        Compiled Stan model for fitting the BayeSN photometric distance
-        model to a supernova.
-    fixed_tmax : bool
-        Indicates whether the currently compiled Stan model assumes a fixed
-        time of maximum.
-    fixed_RV : bool
-        Indicates whether the currently compiled Stan model assumes a fixed RV
+    Rv_MW: float
+        Rv value for calculating Milky Way extinction
     scale: float
         Scaling factor used when training/fitting in flux space to ensure that flux values are of order unity
+    sigma_pec: float
+        Peculiar velocity to be used in calculating redshift uncertainties, set to 150 km/s
+    l_knots: array-like
+        Array of wavelength knots which the model is defined at
+    t_knots: array-like
+        Array of time knots which the model is defined at
+    W0: array-like
+        W0 matrix for loaded model
+    W1: array-like
+        W1 matrix for loaded model
+    L_Sigma: array-like
+        Covariance matrix describing epsilon distribution for loaded model
+    M0: float
+        Reference absolute magnitude for scaling Hsiao template
+    sigma0: float
+        Standard deviation of grey offset parameter for loaded model
+    Rv: float
+        Global host extinction value for loaded model
+    tauA: float
+        Global tauA value for exponential AV prior for loaded model
+    min_wave: float
+        Minimum wavelength covered by model, used when preparing band responses
+    max_wave: float
+        Maximum wavelength covered by model, used when preparing band responses
+    spectrum_bins: int
+        Number of wavelength bins used for modelling spectra and calculating photometry. Based on ParSNiP as presented
+        in Boone+21
+    hsiao_flux: array-like
+        Grid of flux value for Hsiao template
+    hsiao_t: array-like
+        Time values corresponding to Hsiao template grid
+    hsiao_l: array-like
+        Wavelength values corresponding to Hsiao template grid
 
     Returns
     -------
     out : :py:class:`bayesn_model.SEDmodel` instance
-    	"""
+    """
 
-    def __init__(self, num_devices=8, enable_x64=True, load_model='T21_model',
+    def __init__(self, num_devices=4, enable_x64=True, load_model='T21_model',
                  fiducial_cosmology={"H0": 73.24, "Om0": 0.28}, obsmodel_file='data/SNmodel_pb_obsmode_map.txt'):
-        """
-
-        Parameters
-        ----------
-        num_devices
-        enable_x64
-        load_model
-        fiducial_cosmology
-        obsmodel_file
-        """
         # Settings for jax/numpyro
         numpyro.set_host_device_count(num_devices)
         jax.config.update('jax_enable_x64', enable_x64)
@@ -128,7 +137,7 @@ class SEDmodel(object):
 
         self.cosmo = FlatLambdaCDM(**fiducial_cosmology)
         self.data = None
-        self.M0 = device_put(jnp.array(-19.5))
+        self.hsiao_interp = None
         self.RV_MW = device_put(jnp.array(3.1))
 
         self.scale = 1e18
@@ -142,6 +151,7 @@ class SEDmodel(object):
             self.W1 = np.genfromtxt(f'model_files/{load_model}/W1.txt')
             self.L_Sigma = np.genfromtxt(f'model_files/{load_model}/L_Sigma_epsilon.txt')
             model_params = np.genfromtxt(f'model_files/{load_model}/M0_sigma0_RV_tauA.txt')
+            self.M0 = device_put(model_params[0])
             self.sigma0 = device_put(model_params[1])
             self.Rv = device_put(model_params[2])
             self.tauA = device_put(model_params[3])
@@ -600,21 +610,22 @@ class SEDmodel(object):
 
     def fit_model(self, obs, weights):
         """
+        Numpyro model used for fitting SN properties assuming fixed global properties from a trained model. Will fit for tmax
+        as well as theta, epsilon, Av and distance modulus
 
         Parameters
         ----------
-        obs
-        weights
-
-        Returns
-        -------
+        obs: array-like
+            Data to fit, from output of process_dataset
+        weights: array-like
+            Band-weights to calculate photometry
 
         """
         sample_size = obs.shape[-1]
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
 
         with numpyro.plate('SNe', sample_size) as sn_index:
-            theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
+            theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
             Rv = numpyro.sample('Rv', dist.Uniform(1, 6))
             tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))
@@ -646,34 +657,51 @@ class SEDmodel(object):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
                                obs=obs[1, :, sn_index].T)  # _{sn_index}
 
-    def fit(self, num_samples, num_warmup, num_chains, output, result_path, chain_method='parallel',
+    def fit(self, num_samples, num_warmup, num_chains, output, model_path=None, chain_method='parallel',
             init_strategy='median'):
         """
+        Function to run fitting process and save chains and fit statistics. I'm still experimenting with the best way to
+        do this - you can either run lots of separate HMC processes or you can do one big process which fits all SNe
+        (with different SN parameters treated as independent). The latter has advantages as all flux integrals across
+        all objects are calculated in one tensor operation, but the downside is that it can make it more difficult to
+        converge as the parameter space grows.
 
         Parameters
         ----------
-        num_samples
-        num_warmup
-        num_chains
-        output
-        result_path
-        chain_method
-        init_strategy
-
-        Returns
-        -------
+        num_samples: int
+            Number of posterior samples
+        num_warmup: int
+            Number of warmup steps before sampling
+        num_chains: int
+            Number of chains
+        output: str
+            Name of output directory which will store results
+        model_path: str, optional
+            Name of directory containing model parameters to use for fitting. I'm using this for now to keep my
+            numpyro trained models separate from T21/M20/W22 etc. until we're confident with them. Defaults to None,
+            which means that the model loaded when initialising the SEDmodel object is used.
+        chain_method: str, optional
+            Method used to distribute different chains, defaults to parallel. Options are:
+            ``'sequential'`` | Chains are run one after the other.
+            ``'parallel'`` | Chains are spread in parallel across all available devices and run simultaneously. If you
+                           |try to run more chains than there are devices available, numpyro will automatically revert
+                           |from parallel to sequential
+            ``'vectorized'`` | Chains are run simultaneously on a single device. Only really advisable on a GPU, and
+                             | will probably lead to a memory error on CPU
+        init_strategy: str, optional
+            Strategy to use for initialisation, default to median. Options are:
+            ``'median'`` | Chains are initialised to prior media
+            ``'sample'`` | Chains are initialised to a random sample from the priors
 
         """
-        if init_strategy == 'value':
-            init_strategy = init_to_value(values=self.initial_guess())
-        elif init_strategy == 'median':
+        if init_strategy == 'median':
             init_strategy = init_to_median()
         elif init_strategy == 'sample':
             init_strategy = init_to_sample()
         else:
-            raise ValueError('Invalid init strategy, must be one of value, median and sample')
-        if result_path != 'T21':
-            with open(os.path.join('results', result_path, 'chains.pkl'), 'rb') as file:
+            raise ValueError('Invalid init strategy, must be one of median or sample')
+        if model_path is not None:
+            with open(os.path.join('results', model_path, 'chains.pkl'), 'rb') as file:
                 result = pickle.load(file)
             self.W0 = device_put(
                 np.reshape(np.mean(result['W0'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
@@ -688,8 +716,8 @@ class SEDmodel(object):
             self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
-        # self.data = self.data[..., 41:42]
-        # self.band_weights = self.band_weights[41:42, ...]
+        # self.data = self.data[..., 41:42] # Just to subsample the data, for testing
+        # self.band_weights = self.band_weights[41:42, ...] # Just to subsample the data, for testing
 
         rng = PRNGKey(321)
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
@@ -698,14 +726,21 @@ class SEDmodel(object):
 
         def do_mcmc(data, weights):
             """
+            Short function-in-a-function just to allow you to map over different objects and spread over multiple
+            devices. Could probably implement this better but still experimenting with it
 
             Parameters
             ----------
-            data
-            weights
+            obs: array-like
+                Data to fit, from output of process_dataset
+            weights: array-like
+                Band-weights to calculate photometry
 
             Returns
             -------
+
+            sample_dict: dict
+                Samples and other information from MCMC fit
 
             """
             rng_key = PRNGKey(123)
@@ -741,14 +776,14 @@ class SEDmodel(object):
 
     def fit_postprocess(self, samples, output):
         """
+        Processes output of fit function, saving the chains and calculating fitting statistics
 
         Parameters
         ----------
-        samples
-        output
-
-        Returns
-        -------
+        samples: dict
+            Dictionary containing samples for all parameters from fitting process
+        output: str
+            Name of directory to store output files in
 
         """
         if not os.path.exists(os.path.join('results', output)):
@@ -771,10 +806,12 @@ class SEDmodel(object):
 
     def train_model(self, obs):
         """
+        Numpyro model used for training to learn global parameters
 
         Parameters
         ----------
-        obs
+        obs: array-like
+            Data to fit, from output of process_dataset
 
         Returns
         -------
@@ -837,21 +874,25 @@ class SEDmodel(object):
 
     def initial_guess(self, reference_model="T21"):
         """
+        Function to set initialisation for training chains, using some global parameter values from previous models as a
+        reference. W0 and W1 matrices are interpolated to match wavelength knots of new model. Note that unlike Stan,
+        in numpyro we cannot set each chain's initialisation separately.
 
         Parameters
         ----------
-        reference_model
+        reference_model: str, optional
+            Previously-trained model to be used to set initialisation, defaults to T21.
 
         Returns
         -------
+        param_init: dict
+            Dictionary containing initial values to be used
 
         """
         # Set hyperparameter initialisations
         param_root = f'model_files/{reference_model}_model'
         W0_init = np.loadtxt(f'{param_root}/W0.txt')
         l_knots = np.loadtxt(f'{param_root}/l_knots.txt')
-        n_lknots, n_tauknots = W0_init.shape
-        # W0_init = W0_init.flatten(order='F')
         W1_init = np.loadtxt(f'{param_root}/W1.txt')
         RV_init, tauA_init = np.loadtxt(f'{param_root}/M0_sigma0_RV_tauA.txt')[[2, 3]]
 
@@ -904,9 +945,13 @@ class SEDmodel(object):
 
     def map_initial_guess(self):
         """
+        This is just experimental and doesn't seem to help, I was testing using a MAP estimate to initialise the HMC
+        but it didn't seem to help much
 
         Returns
         -------
+        param_init: dict
+            Dictionary containing initial values to be used
 
         """
         optimizer = Adam(0.02)
@@ -937,38 +982,39 @@ class SEDmodel(object):
         param_init['Ds'] = params['Ds_auto_loc']
         param_init['Rv'] = params['Rv_auto_loc']
 
-        print(param_init)
-        raise ValueError('Nope')
-
         return param_init
-        band_indices = self.data[-6, :, :].astype(int)
-        mask = self.data[-1, :, :].astype(bool)
-
-        test = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, band_indices, mask, self.J_t, self.hsiao_interp,
-                                   self.band_weights)
-        for i in range(sample_size):
-            plt.errorbar(self.data[0, :, i], self.data[1, :, i], yerr=self.data[2, :, i], fmt='x')
-            plt.scatter(self.data[0, :, i], test[:, i])
-            plt.show()
 
     def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median',
               mode='flux',
               l_knots=None):
         """
+        Function to run training process and save chains and fit statistics.
 
         Parameters
         ----------
-        num_samples
-        num_warmup
-        num_chains
-        output
-        chain_method
-        init_strategy
-        mode
-        l_knots
-
-        Returns
-        -------
+        num_samples: int
+            Number of posterior samples
+        num_warmup: int
+            Number of warmup steps before sampling
+        num_chains: int
+            Number of chains
+        output: str
+            Name of output directory which will store results
+        chain_method: str, optional
+            Method used to distribute different chains, defaults to parallel. Options are:
+            ``'sequential'`` | Chains are run one after the other.
+            ``'parallel'`` | Chains are spread in parallel across all available devices and run simultaneously. If you
+                           |try to run more chains than there are devices available, numpyro will automatically revert
+                           |from parallel to sequential
+            ``'vectorized'`` | Chains are run simultaneously on a single device. Only really advisable on a GPU, and
+                             | will probably lead to a memory error on CPU
+        init_strategy: str, optional
+            Strategy to use for initialisation, default to median. Options are:
+            ``'value'`` | Chains are initialised to values set by initial_guess function
+            ``'map'`` | Chains are initialised to a map estimate calculated by map_initial_guess. This doesn't work very
+                      | well so I'll probably remove it
+            ``'median'`` | Chains are initialised to prior media
+            ``'sample'`` | Chains are initialised to a random sample from the priors
 
         """
         if l_knots is not None:
@@ -1007,15 +1053,17 @@ class SEDmodel(object):
 
     def train_postprocess(self, samples, extras, output):
         """
+        Function to postprocess training chains. This will apply sign flipping to avoid any mirroring in theta/W1 and
+        also ensure that theta follows a normal distribution. This function also calculates and saves fit statistics.
 
         Parameters
         ----------
-        samples
-        extras
-        output
-
-        Returns
-        -------
+        samples: dict
+            Dictionary containing samples for all parameters from training process
+        extras: dict
+            Dictionary containing extra properties from fits. In this case, the potential energy is also retrieved.
+        output: str
+            Name of directory to store output files in
 
         """
         if not os.path.exists(os.path.join('results', output)):
@@ -1086,18 +1134,42 @@ class SEDmodel(object):
 
     def process_dataset(self, sample_name, lc_dir, meta_file, map_dict=None, sn_list=None, data_mode='flux'):
         """
+        Function to process a data set to be used by the numpyro model. Currently, this is set up just to read in SNANA
+        format files, there is more to be added. This will read through all light curves and work out the maximum number
+        of data points for a single object - all others will then be padded to match this size. This is required
+        because in order to benefit from the GPU, we need to have a fixed array structure allowing us to calculate flux
+        integrals from parameter values across the whole sample in a single tensor operation. A mask is applied in the
+        model to ensure that these padded values do not contribute to the posterior.
+
+        This function will save the generated data-sets as pickle files so that they do not need to be generated again
+        when using the same dataset.
+
+        Generated data set is saved to the SEDmodel.data attribute, while the J_t matrices used to interpolate the W0, W1
+        and epsilon matrices are also calculated and saved to the SEDmodel.J_t attribute. Observer-frame band weights,
+        including the effect of Milky Way extincation, are also calculated for the data set and save to the
+        SEDmodel.band_weights attribute.
 
         Parameters
         ----------
-        sample_name
-        lc_dir
-        meta_file
-        map_dict
-        sn_list
-        data_mode
-
-        Returns
-        -------
+        sample_name: str
+            Name of data set to be used when saving the model. If a data set matching this name already exists, this
+            will be loaded in and no further processing will be done
+        lc_dir: str
+            Path to directory containing photometry files for each SN in SNANA format
+        meta_file: str
+            Path to file containing required meta information for each SN when training, including Milky Way E(B-V)
+            values and CMB-frame redshifts
+        map_dict: dict, optional
+            Can be used to provide a mapping between filter names used in SNANA file and those used in BayeSN. For
+            example, Foundation files simply use griz to denote the filters, but in BayeSN we refer to these filters as
+            g_PS1/r_PS1 etc. to separate them from other griz filters. The use of a dictionary {'g': 'g_PS1'} will
+            ensure that each data point in the file corresponding to g-band is treated as g_PS1 by BayeSN.
+        sn_list: str, optional
+            Path to file containing list of files to use. By default, all files in lc_dir will be used but if a separate
+            list is provided within a file, only objects in that list will be used.
+        data_mode: str, optional
+            Specifies whether to generate data in flux or mag space. If generated in flux space, values will be
+            multiplied by SEDmodel.scale to ensure that values are of order unity, to assist in HMC processes.
 
         """
         if not os.path.exists(os.path.join('data', 'LCs', 'pickles', sample_name)):
@@ -1161,7 +1233,6 @@ class SEDmodel(object):
         N_col = lc.shape[1]
         all_data = np.zeros((N_sn, N_obs, N_col))
         all_J_t = np.zeros((N_sn, self.tau_knots.shape[0], N_obs))
-        all_J_t_hsiao = np.zeros((N_sn, self.hsiao_t.shape[0], N_obs))
         for i, lc in enumerate(all_lcs):
             all_data[i, :lc.shape[0], :] = lc.values
             all_data[i, lc.shape[0]:, 2] = 1 / jnp.sqrt(2 * np.pi)
@@ -1172,56 +1243,13 @@ class SEDmodel(object):
             pickle.dump(all_J_t, file)
         self.data = device_put(all_data.T)
         self.J_t = device_put(all_J_t)
-        self.J_t_hsiao = device_put(all_J_t_hsiao)
         self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
-
-    def fit_from_results(self, input_file):
-        """
-
-        Parameters
-        ----------
-        input_file
-
-        Returns
-        -------
-
-        """
-        with open(os.path.join('results', f'{input_file}.pkl'), 'rb') as file:
-            result = pickle.load(file)
-        N = result['theta'].shape[1]
-        W0 = np.reshape(np.mean(result['W0'], axis=0), (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
-        W1 = np.reshape(np.mean(result['W1'], axis=0), (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
-        eps = np.reshape(np.mean(result['eps'], axis=0), (N, 4, 6), order='F')
-        new_eps = np.zeros((eps.shape[0], eps.shape[1] + 2, eps.shape[2]))
-        theta, Av, Ds = np.mean(result['theta'], axis=0), np.mean(result['AV'], axis=0), np.mean(result['Ds'], axis=0)
-        new_eps[:, 1:-1, :] = eps
-        eps = new_eps
-        N_fit = self.J_t.shape[-1]
-        band_indices = self.data[-4, :, :].astype(int)
-        fit_band_indices = np.tile(np.arange(4), (band_indices.shape[-1], int(N_fit / len(self.band_dict.keys())))).T
-        redshift = self.data[-3, 0, :]
-        mask = self.data[-1, ...]
-        fit_mask = np.ones_like(fit_band_indices)
-        model_flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, redshift, fit_band_indices, fit_mask)
-        ts = np.linspace(-10, 40, 50)
-        for _ in range(10):
-            plt.figure()
-            for i in range(4):
-                inds = (band_indices[:, _] == i) & (mask[:, _] == 1)
-                fit_inds = (fit_band_indices[:, _] == i) & (fit_mask[:, _] == 1)
-                plt.errorbar(self.data[0, inds, _], self.data[1, inds, _], yerr=self.data[2, inds, _], fmt='x')
-                plt.plot(ts, model_flux[fit_inds, _], ls='--')
-        plt.show()
 
     def get_flux_from_chains(self, model):
         """
-
-        Parameters
-        ----------
-        model
-
-        Returns
-        -------
+        This function will calculate the fluxes/mags for each sample from the output chains from fitting, ignoring
+        the effects of host extinction. This was designed to look at intrinsic and residual intrinsic colour. It will
+        need to be reimplemented, just leaving it here for reference.
 
         """
         with open(os.path.join('results', model, 'chains.pkl'), 'rb') as file:
@@ -1283,24 +1311,65 @@ class SEDmodel(object):
     def simulate_spectrum(self, t, N, dl=10, z=0, mu=0, ebv_mw=0, Rv=None, logM=None, del_M=None, AV=None, theta=None,
                           eps=None):
         """
+        Simulates spectra for given parameter values in the observer-frame. If parameter values are not set, model
+        priors will be sampled.
 
         Parameters
         ----------
-        t
-        N
-        dl
-        z
-        mu
-        ebv_mw
-        Rv
-        logM
-        del_M
-        AV
-        theta
-        eps
+        t: array-like
+            Set of t values to simulate spectra at
+        N: int
+            Number of separate objects to simulate spectra for
+        dl: float, optional
+            Wavelength spacing for simulated spectra in rest-frame. Default is 10 AA
+        z: float or array-like, optional
+            Redshift to simulate spectra at, affecting observer-frame wavelengths and reducing spectra by factor of
+            (1+z). Defaults to 0. If passing an array-like object, there must be a corresponding value for each of the N
+            simulated objects. If a float is passed, the same redshift will be used for all objects.
+        mu: float, array-like or str, optional
+            Distance modulus to simulate spectra at. Defaults to 0. If passing an array-like object, there must be a
+            corresponding value for each of the N simulated objects. If a float is passed, the same value will be used
+            for all objects. If set to 'z', distance moduli corresponding to the redshift values passed in the default
+            model cosmology will be used.
+        ebv_mw: float or array-like, optional
+            Milky Way E(B-V) values for simulated spectra. Defaults to 0. If passing an array-like object, there must be
+            a corresponding value for each of the N simulated objects. If a float is passed, the same value will be used
+            for all objects.
+        Rv: float or array-like, optional
+            Rv values for host extinction curves for simulated spectra. If passing an array-like object, there must be a
+            corresponding value for each of the N simulated objects. If a float is passed, the same value will be used
+            for all objects. Defaults to None, in which case the global Rv value for the BayeSN model loaded when
+            initialising SEDmodel will be used.
+        logM: float or array-like, optional
+            Currently unused, will be implemented when split models are included
+        del_M: float or array-like, optional
+            Grey offset del_M value to be used for each SN. If passing an array-like object, there must be a
+            corresponding value for each of the N simulated objects. If a float is passed, the same value will be used
+            for all objects. Defaults to None, in which case the prior distribution will be sampled for each object.
+        AV: float or array-like, optional
+            Host extinction Rv value to be used for each SN. If passing an array-like object, there must be a
+            corresponding value for each of the N simulated objects. If a float is passed, the same value will be used
+            for all objects. Defaults to None, in which case the prior distribution will be sampled for each object.
+        theta: float or array-like, optional
+            Theta value to be used for each SN. If passing an array-like object, there must be a
+            corresponding value for each of the N simulated objects. If a float is passed, the same value will be used
+            for all objects. Defaults to None, in which case the prior distribution will be sampled for each object.
+        eps: array-like or int, optional
+            Epsilon values to be used for each SN. If passing a 2d array, this must be of shape (l_knots, tau_knots)
+            and will be used for each SN generated. If passing a 3d array, this must be of shape (N, l_knots, tau_knots)
+            and provide an epsilon value for each generated SN. You can also pass 0, in which case an array of zeros of
+            shape (N, l_knots, tau_knots) will be used and epsilon is effectively turned off. Defaults to None, in which
+            case the prior distribution will be sampled for each object.
 
         Returns
         -------
+
+        l_o: array-like
+            Array of observer-frame wavelength values
+        spectra: array-like
+            Array of simulated spectra
+        param_dict: dict
+            Dictionary of corresponding parameter values for each simulated object
 
         """
         if del_M is None:
@@ -1332,17 +1401,20 @@ class SEDmodel(object):
                                  'objects to simulate, N')
         if eps is None:
             eps = self.sample_epsilon(N)
-        elif len(np.array(eps).shape) == 0:
+        else:
             eps = np.array(eps)
-            if eps == 0:
-                eps = np.zeros((N, self.l_knots.shape[0], self.tau_knots.shape[0]))
-            else:
-                raise ValueError(
-                    'For epsilon, please pass an array-like object of shape (N, l_knots, tau_knots). The only scalar '
-                    'value accepted is 0, which will effectively remove the effect of epsilon')
-        elif len(eps.shape) != 3 or eps.shape[0] != N or eps.shape[1] != self.l_knots.shape[0] or eps.shape[2] != \
-                self.tau_knots.shape[0]:
-            raise ValueError('For epsilon, please pass an array-like object of shape (N, l_knots, tau_knots)')
+            if len(eps.shape) == 0:
+                if eps == 0:
+                    eps = np.zeros((N, self.l_knots.shape[0], self.tau_knots.shape[0]))
+                else:
+                    raise ValueError(
+                        'For epsilon, please pass an array-like object of shape (N, l_knots, tau_knots). The only scalar '
+                        'value accepted is 0, which will effectively remove the effect of epsilon')
+            elif len(eps.shape) == 2 and eps.shape[0] == self.l_knots.shape[0] and eps.shape[1] == self.tau_knots.shape[0]:
+                eps = eps[None, ...].repeat(N, axis=0)
+            elif len(eps.shape) != 3 or eps.shape[0] != N or eps.shape[1] != self.l_knots.shape[0] or eps.shape[2] != \
+                    self.tau_knots.shape[0]:
+                raise ValueError('For epsilon, please pass an array-like object of shape (N, l_knots, tau_knots)')
         ebv_mw = np.array(ebv_mw)
         if len(ebv_mw.shape) == 0:
             ebv_mw = ebv_mw.repeat(N)
@@ -1413,26 +1485,64 @@ class SEDmodel(object):
         return l_o, spectra, param_dict
 
     def simulate_light_curve(self, t, N, bands, z=0, mu=0, ebv_mw=0, Rv=None, logM=None, del_M=None, AV=None,
-                             theta=None, eps=None):
+                             theta=None, eps=None, mag=True):
         """
 
         Parameters
         ----------
-        t
-        N
-        bands
-        z
-        mu
-        ebv_mw
-        Rv
-        logM
-        del_M
-        AV
-        theta
-        eps
+        t: array-like
+            Set of t values to simulate spectra at
+        N: int
+            Number of separate objects to simulate spectra for
+        bands: array-like
+            List of bands in which to simulate photometry
+        z: float or array-like, optional
+            Redshift to simulate spectra at, affecting observer-frame wavelengths and reducing spectra by factor of
+            (1+z). Defaults to 0. If passing an array-like object, there must be a corresponding value for each of the N
+            simulated objects. If a float is passed, the same redshift will be used for all objects.
+        mu: float, array-like or str, optional
+            Distance modulus to simulate spectra at. Defaults to 0. If passing an array-like object, there must be a
+            corresponding value for each of the N simulated objects. If a float is passed, the same value will be used
+            for all objects. If set to 'z', distance moduli corresponding to the redshift values passed in the default
+            model cosmology will be used.
+        ebv_mw: float or array-like, optional
+            Milky Way E(B-V) values for simulated spectra. Defaults to 0. If passing an array-like object, there must be
+            a corresponding value for each of the N simulated objects. If a float is passed, the same value will be used
+            for all objects.
+        Rv: float or array-like, optional
+            Rv values for host extinction curves for simulated spectra. If passing an array-like object, there must be a
+            corresponding value for each of the N simulated objects. If a float is passed, the same value will be used
+            for all objects. Defaults to None, in which case the global Rv value for the BayeSN model loaded when
+            initialising SEDmodel will be used.
+        logM: float or array-like, optional
+            Currently unused, will be implemented when split models are included
+        del_M: float or array-like, optional
+            Grey offset del_M value to be used for each SN. If passing an array-like object, there must be a
+            corresponding value for each of the N simulated objects. If a float is passed, the same value will be used
+            for all objects. Defaults to None, in which case the prior distribution will be sampled for each object.
+        AV: float or array-like, optional
+            Host extinction Rv value to be used for each SN. If passing an array-like object, there must be a
+            corresponding value for each of the N simulated objects. If a float is passed, the same value will be used
+            for all objects. Defaults to None, in which case the prior distribution will be sampled for each object.
+        theta: float or array-like, optional
+            Theta value to be used for each SN. If passing an array-like object, there must be a
+            corresponding value for each of the N simulated objects. If a float is passed, the same value will be used
+            for all objects. Defaults to None, in which case the prior distribution will be sampled for each object.
+        eps: array-like or int, optional
+            Epsilon values to be used for each SN. If passing a 2d array, this must be of shape (l_knots, tau_knots)
+            and will be used for each SN generated. If passing a 3d array, this must be of shape (N, l_knots, tau_knots)
+            and provide an epsilon value for each generated SN. You can also pass 0, in which case an array of zeros of
+            shape (N, l_knots, tau_knots) will be used and epsilon is effectively turned off. Defaults to None, in which
+            case the prior distribution will be sampled for each object.
+        mag: Bool, optional
+            Determines whether returned values are mags or fluxes
 
         Returns
         -------
+        data: array-like
+            Array containing simulated flux or mag values
+        param_dict: dict
+            Dictionary of corresponding parameter values for each simulated object
 
         """
         if del_M is None:
@@ -1537,22 +1647,27 @@ class SEDmodel(object):
                                                                                                                      2,
                                                                                                                      0)
         t = t.reshape(keep_shape, order='F')
-        flux = self.get_mag_batch(theta, AV, self.W0, self.W1, eps, mu + del_M, Rv, band_indices, mask, J_t,
-                                  hsiao_interp, band_weights)
-        plt.scatter(t[:, 0], flux[:, 0])
-        plt.show()
-
-        return flux, param_dict
+        if mag:
+            data = self.get_mag_batch(theta, AV, self.W0, self.W1, eps, mu + del_M, Rv, band_indices, mask, J_t,
+                                       hsiao_interp, band_weights)
+        else:
+            data = self.get_flux_batch(theta, AV, self.W0, self.W1, eps, mu + del_M, Rv, band_indices, mask, J_t,
+                                    hsiao_interp, band_weights)
+        return data, param_dict
 
     def sample_del_M(self, N):
         """
+        Samples grey offset del_M from model prior
 
         Parameters
         ----------
-        N
+        N: int
+            Number of objects to sample for
 
         Returns
         -------
+        del_M: array-like
+            Sampled del_M values
 
         """
         del_M = np.random.normal(0, self.sigma0, N)
@@ -1560,13 +1675,17 @@ class SEDmodel(object):
 
     def sample_AV(self, N):
         """
+        Samples AV from model prior
 
         Parameters
         ----------
-        N
+        N: int
+            Number of objects to sample for
 
         Returns
         -------
+        AV: array-like
+            Sampled AV values
 
         """
         AV = np.random.exponential(self.tauA, N)
@@ -1574,13 +1693,17 @@ class SEDmodel(object):
 
     def sample_theta(self, N):
         """
+        Samples theta from model prior
 
         Parameters
         ----------
-        N
+        N: int
+            Number of objects to sample for
 
         Returns
         -------
+        theta: array-like
+            Sampled theta values
 
         """
         theta = np.random.normal(0, 1, N)
@@ -1588,14 +1711,17 @@ class SEDmodel(object):
 
     def sample_epsilon(self, N):
         """
+        Samples epsilon from model prior
 
         Parameters
         ----------
-        N
+        N: int
+            Number of objects to sample for
 
         Returns
         -------
-
+        eps_full: array-like
+            Sampled epsilon values
         """
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
         eps_mu = jnp.zeros(N_knots_sig)
@@ -1607,13 +1733,7 @@ class SEDmodel(object):
 
     def plot_hubble_diagram(self, model):
         """
-
-        Parameters
-        ----------
-        model
-
-        Returns
-        -------
+        Quick function to make Hubble diagrams and save data, need to implement in a nicer way
 
         """
         with open(os.path.join('results', model, 'chains.pkl'), 'rb') as file:
