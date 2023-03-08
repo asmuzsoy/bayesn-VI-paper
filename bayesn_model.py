@@ -1,5 +1,5 @@
 """
-BayeSN SED Model. Defines a class which allows one to fit or simulate from the
+BayeSN SED Model. Defines a class which allows you to fit or simulate from the
 BayeSN Optical+NIR SED model.
 """
 
@@ -37,87 +37,78 @@ rc('font', **{'family': 'serif', 'serif': ['cmr10']})
 mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
-# mpl.use('macosx')
 
-#jax.config.update('jax_platform_name', 'cpu')
+# jax.config.update('jax_platform_name', 'cpu')
 
 
 class SEDmodel(object):
     """
-    	BayeSN-SED Model
+    BayeSN-SED Model
 
-    	Class which imports a BayeSN model, and allows one to fit or simulate
-    	Type Ia supernovae based on this model.
+    Class which imports a BayeSN model, and allows one to fit or simulate
+    Type Ia supernovae based on this model.
 
-    	Parameters
-    	----------
-    	model : str, optional
-    		Can be either a pre-defined BayeSN model name (see table below), or
-    		a path to directory containing a set of .txt files from which a
-    		valid model can be constructed. Currently implemented default models
-    		are listed below - default is M20. See README in `BayeSNmodel/model_files`
-    		for more info.
-    		  ``'M20'`` | Mandel+20 BayeSN model (arXiv:2008.07538). Covers
-    		            |   rest wavelength range of 3000-18500A (BVRIYJH). No
-    		            |   treatment of host mass effects. Global RV assumed.
-    		            |   Trained on low-z Avelino+19 (ApJ, 887, 106)
-    		            |   compilation of CfA, CSP and others.
-    		  ``'T21'`` | Thorp+21 No-Split BayeSN model (arXiv:2102:05678). Covers
-    		            |   rest wavelength range of 3500-9500A (griz). No
-    		            |   treatment of host mass effects. Global RV assumed.
-    		            |   Trained on Foundation DR1 (Foley+18, Jones+19).
-    	fiducial_cosmology :  dict, optional
-    		Dictionary containg kwargs ``{H0, Om0}`` for initialising a
-    		:py:class:`astropy.cosmology.FlatLambdaCDM` instance. Defaults to
-    		Riess+16 (ApJ, 826, 56) cosmology ``{H0:73.24, "Om0":0.28}``.
-    	compile : bool, optional
-    		Decides whether to precompile Stan code necessary for fitting.
-    		If False, Stan code can be compiled later with a call to
-    		`compile_stan_model`. If True, compiles Stan model (takes around
-    		30 seconds)
-    	fix_tmax : bool, optional
-    		If precompiling Stan model, decides whether to load model where tmax
-    		is fixed (defaults to True).
-    	fix_RV : bool, optional
-    		If precompiling Stan model, decides whether to load model where RV
-    		is fixed (defaults to True).
+    Parameters
+    ----------
+    model : str, optional
+        Can be either a pre-defined BayeSN model name (see table below), or
+        a path to directory containing a set of .txt files from which a
+        valid model can be constructed. Currently implemented default models
+        are listed below - default is M20. See README in `BayeSNmodel/model_files`
+        for more info.
+          ``'M20'`` | Mandel+20 BayeSN model (arXiv:2008.07538). Covers
+                    |   rest wavelength range of 3000-18500A (BVRIYJH). No
+                    |   treatment of host mass effects. Global RV assumed.
+                    |   Trained on low-z Avelino+19 (ApJ, 887, 106)
+                    |   compilation of CfA, CSP and others.
+          ``'T21'`` | Thorp+21 No-Split BayeSN model (arXiv:2102:05678). Covers
+                    |   rest wavelength range of 3500-9500A (griz). No
+                    |   treatment of host mass effects. Global RV assumed.
+                    |   Trained on Foundation DR1 (Foley+18, Jones+19).
+    fiducial_cosmology :  dict, optional
+        Dictionary containg kwargs ``{H0, Om0}`` for initialising a
+        :py:class:`astropy.cosmology.FlatLambdaCDM` instance. Defaults to
+        Riess+16 (ApJ, 826, 56) cosmology ``{H0:73.24, "Om0":0.28}``.
 
-    	Attributes
-    	----------
-    	params : dict
-    		Dictionary containing BayeSN model parameters.
-    	zpt : float
-    		SNANA zero point which is to be assumed
-    	t_k : :py:class:`numpy.array`
-    		Array of time knots which the model is defined at
-    	l_k : :py:class:`numpy.array`
-    		Array of wavelength knots which the model is defined at
-    	knots : :py:class:`numpy.array`
-    		Cartesian product of t_k and l_k
-    	dl_int : float
-    		Wavelength pacing of the Hsiao template (defaults to 10A)
-    	hsiao : dict
-    		Dictionary containing specification of the Hsiao template from
-    		Hsiao+07 (ApJ, 663, 1187)
-    	passbands : dict
-    		Dictionary of all passbands with available specification. Indexed
-    		by filter name.
-    	cosmo : :py:class:`astropy.cosmology.FlatLambdaCDM`
-    		:py:class:`astropy.cosmology.FlatLambdaCDM` instance defining the
-    		fiducial cosmology which the model was trained using.
-    	stan_model : None or :py:class:`cmdstanpy.CmdStanModel`
-    		Compiled Stan model for fitting the BayeSN photometric distance
-    		model to a supernova.
-    	fixed_tmax : bool
-    		Indicates whether the currently compiled Stan model assumes a fixed
-    		time of maximum.
-    	fixed_RV : bool
-    		Indicates whether the currently compiled Stan model assumes a fixed RV
+    Attributes
+    ----------
+    params : dict
+        Dictionary containing BayeSN model parameters.
+    zpt : float
+        SNANA zero point which is to be assumed
+    t_k : :py:class:`numpy.array`
+        Array of time knots which the model is defined at
+    l_k : :py:class:`numpy.array`
+        Array of wavelength knots which the model is defined at
+    knots : :py:class:`numpy.array`
+        Cartesian product of t_k and l_k
+    dl_int : float
+        Wavelength pacing of the Hsiao template (defaults to 10A)
+    hsiao : dict
+        Dictionary containing specification of the Hsiao template from
+        Hsiao+07 (ApJ, 663, 1187)
+    passbands : dict
+        Dictionary of all passbands with available specification. Indexed
+        by filter name.
+    cosmo : :py:class:`astropy.cosmology.FlatLambdaCDM`
+        :py:class:`astropy.cosmology.FlatLambdaCDM` instance defining the
+        fiducial cosmology which the model was trained using.
+    stan_model : None or :py:class:`cmdstanpy.CmdStanModel`
+        Compiled Stan model for fitting the BayeSN photometric distance
+        model to a supernova.
+    fixed_tmax : bool
+        Indicates whether the currently compiled Stan model assumes a fixed
+        time of maximum.
+    fixed_RV : bool
+        Indicates whether the currently compiled Stan model assumes a fixed RV
+    scale: float
+        Scaling factor used when training/fitting in flux space to ensure that flux values are of order unity
 
-    	Returns
-    	-------
-    	out : :py:class:`bayesn_model.SEDmodel` instance
+    Returns
+    -------
+    out : :py:class:`bayesn_model.SEDmodel` instance
     	"""
+
     def __init__(self, num_devices=8, enable_x64=True, load_model='T21_model',
                  fiducial_cosmology={"H0": 73.24, "Om0": 0.28}, obsmodel_file='data/SNmodel_pb_obsmode_map.txt'):
         """
@@ -144,18 +135,18 @@ class SEDmodel(object):
         self.device_scale = device_put(jnp.array(self.scale))
         self.sigma_pec = device_put(jnp.array(150 / 3e5))
 
-        #try:
-        self.l_knots = np.genfromtxt(f'model_files/{load_model}/l_knots.txt')
-        self.tau_knots = np.genfromtxt(f'model_files/{load_model}/tau_knots.txt')
-        self.W0 = np.genfromtxt(f'model_files/{load_model}/W0.txt')
-        self.W1 = np.genfromtxt(f'model_files/{load_model}/W1.txt')
-        self.L_Sigma = np.genfromtxt(f'model_files/{load_model}/L_Sigma_epsilon.txt')
-        model_params = np.genfromtxt(f'model_files/{load_model}/M0_sigma0_RV_tauA.txt')
-        self.sigma0 = device_put(model_params[1])
-        self.Rv = device_put(model_params[2])
-        self.tauA = device_put(model_params[3])
-        #except:
-        #    raise ValueError('Must select one of M20_model, T21_model, T21_partial-split_model and W22_model')
+        try:
+            self.l_knots = np.genfromtxt(f'model_files/{load_model}/l_knots.txt')
+            self.tau_knots = np.genfromtxt(f'model_files/{load_model}/tau_knots.txt')
+            self.W0 = np.genfromtxt(f'model_files/{load_model}/W0.txt')
+            self.W1 = np.genfromtxt(f'model_files/{load_model}/W1.txt')
+            self.L_Sigma = np.genfromtxt(f'model_files/{load_model}/L_Sigma_epsilon.txt')
+            model_params = np.genfromtxt(f'model_files/{load_model}/M0_sigma0_RV_tauA.txt')
+            self.sigma0 = device_put(model_params[1])
+            self.Rv = device_put(model_params[2])
+            self.tauA = device_put(model_params[3])
+        except:
+            raise ValueError('Must select one of M20_model, T21_model, T21_partial-split_model and W22_model')
 
         self.l_knots = device_put(self.l_knots)
         self.tau_knots = device_put(self.tau_knots)
@@ -190,9 +181,9 @@ class SEDmodel(object):
 
     def load_hsiao_template(self):
         """
+        Loads the Hsiao template from the internal HDF5 file.
 
-        Returns
-        -------
+        Stores the template as an attribute of `SEDmodel`.
 
         """
         with h5py.File(os.path.join('data', 'hsiao.h5'), 'r') as file:
@@ -214,12 +205,10 @@ class SEDmodel(object):
 
     def _setup_band_weights(self):
         """
-
-        Returns
-        -------
-
+        Sets up the interpolation for the band weights used for photometry as well as calculating the zero points for
+        each band. This code is partly based off ParSNiP from
+        Boone+21
         """
-        """Setup the interpolation for the band weights used for photometry"""
         # Build the model in log wavelength
         model_log_wave = np.linspace(np.log10(self.min_wave),
                                      np.log10(self.max_wave),
@@ -315,31 +304,21 @@ class SEDmodel(object):
 
     def _calculate_band_weights(self, redshifts, ebv):
         """
+        Calculates the observer-frame band weights, including the effect of Milky Way extinction, for each SN
 
         Parameters
         ----------
-        redshifts
-        ebv
+        redshifts: array-like
+            Array of redshifts for each SN
+        ebv: array-like
+            Array of Milky Way E(B-V) values for each SN
 
         Returns
         -------
 
-        """
-        """Calculate the band weights for a given set of redshifts
+        weights: array-like
+            Array containing observer-frame band weights
 
-        We have precomputed the weights for each bandpass, so we simply interpolate
-        those weights at the desired redshifts. We are working in log-wavelength, so a
-        change in redshift just gives us a shift in indices.
-
-        Parameters
-        ----------
-        redshifts : List[float]
-            Redshifts to calculate the band weights at
-
-        Returns
-        -------
-        `~numpy.ndarray`
-            Band weights for each redshift/band combination
         """
         # Figure out the locations to sample at for each redshift.
         locs = (
@@ -357,58 +336,57 @@ class SEDmodel(object):
         end = self.band_interpolate_weights[..., int_locs + 1]
 
         flat_result = remainders * end + (1 - remainders) * start
-        result = flat_result.reshape((-1,) + locs.shape).transpose(1, 2, 0)
-
-        """# We need an extra term of 1 + z from the filter contraction.
-        result /= (1 + redshifts)[:, None, None]
-
-        # Apply MW extinction
-        abv = self.RV_MW * ebv
-        mw_array = jnp.zeros((result.shape[0], result.shape[1]))
-        for i, val in enumerate(abv):
-            mw = jnp.power(10, -0.4 * extinction.fitzpatrick99(self.model_wave, val, self.RV_MW))
-            mw_array = mw_array.at[i, :].set(mw)
-
-        result = result * mw_array[..., None]
-
-        # Hack fix maybe
-        sum = jnp.sum(result, axis=1)
-        result /= sum[:, None, :]"""
+        weights = flat_result.reshape((-1,) + locs.shape).transpose(1, 2, 0)
 
         # Normalise so max transmission = 1
-        sum = jnp.sum(result, axis=1)
-        result /= sum[:, None, :]
+        sum = jnp.sum(weights, axis=1)
+        weights /= sum[:, None, :]
 
         # Apply MW extinction
         abv = self.RV_MW * ebv
-        mw_array = jnp.zeros((result.shape[0], result.shape[1]))
+        mw_array = jnp.zeros((weights.shape[0], weights.shape[1]))
         for i, val in enumerate(abv):
-            mw = jnp.power(10, -0.4 * extinction.fitzpatrick99(self.model_wave * (1 + np.array(redshifts[i])), val, self.RV_MW))
+            mw = jnp.power(10, -0.4 * extinction.fitzpatrick99(self.model_wave * (1 + np.array(redshifts[i])), val,
+                                                               self.RV_MW))
             mw_array = mw_array.at[i, :].set(mw)
 
-        result = result * mw_array[..., None]
+        weights = weights * mw_array[..., None]
 
         # We need an extra term of 1 + z from the filter contraction.
-        result /= (1 + redshifts)[:, None, None]
+        weights /= (1 + redshifts)[:, None, None]
 
-        return result
+        return weights
 
     def get_spectra(self, theta, Av, W0, W1, eps, Rv, J_t, hsiao_interp):
         """
+        Calculates rest-frame spectra for given parameter values
 
         Parameters
         ----------
-        theta
-        Av
-        W0
-        W1
-        eps
-        Rv
-        J_t
-        hsiao_interp
+        theta: array-like
+            Set of theta values for each SN
+        Av: array-like
+            Set of host extinction values for each SN
+        W0: array-like
+            Global W0 matrix
+        W1: array-like
+            Global W1 matrix
+        eps: array-like
+            Set of epsilon values for each SN, describing residual colour variation
+        Rv: float
+            Global R_V value for host extinction (need to allow this to be variable in future)
+        J_t: array-like
+            Matrix for cubic spline interpolation in time axis for each SN
+        hsiao_interp: array-like
+            Array containing Hsiao template spectra for each t value, comprising model for previous day, next day and
+            t % 1 to allow for linear interpolation
+
 
         Returns
         -------
+
+        model_spectra: array-like
+            Matrix containing model spectra for all SNe at all time-steps
 
         """
         num_batch = theta.shape[0]
@@ -454,26 +432,43 @@ class SEDmodel(object):
 
         return model_spectra
 
-    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, hsiao_interp, weights):
+    def get_flux_batch(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, mask, J_t, hsiao_interp, weights):
         """
+        Calculates observer-frame fluxes for given parameter values
 
         Parameters
         ----------
-        theta
-        Av
-        W0
-        W1
-        eps
-        Ds
-        Rv
-        band_indices
-        flag
-        J_t
-        hsiao_interp
-        weights
+        theta: array-like
+            Set of theta values for each SN
+        Av: array-like
+            Set of host extinction values for each SN
+        W0: array-like
+            Global W0 matrix
+        W1: array-like
+            Global W1 matrix
+        eps: array-like
+            Set of epsilon values for each SN, describing residual colour variation
+        Ds: array-like
+            Set of distance moduli for each SN
+        Rv: float
+            Global R_V value for host extinction (need to allow this to be variable in future)
+        band_indices: array-like
+            Array containing indices describing which filter each observation is in
+        mask: array-like
+            Array containing mask describing whether observations should contribute to the posterior
+        J_t: array-like
+            Matrix for cubic spline interpolation in time axis for each SN
+        hsiao_interp: array-like
+            Array containing Hsiao template spectra for each t value, comprising model for previous day, next day and
+            t % 1 to allow for linear interpolation
+        weights: array_like
+            Array containing band weights to use for photometry
 
         Returns
         -------
+
+        model_flux: array-like
+            Matrix containing model fluxes for all SNe at all time-steps
 
         """
         num_batch = theta.shape[0]
@@ -495,53 +490,76 @@ class SEDmodel(object):
         model_flux = jnp.sum(model_spectra * obs_band_weights, axis=1).T
         model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
         model_flux *= self.device_scale
-        model_flux *= flag
+        model_flux *= mask
         return model_flux
 
-    def get_mag_batch(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, hsiao_interp, weights):
+    def get_mag_batch(self, theta, Av, W0, W1, eps, Ds, Rv, band_indices, mask, J_t, hsiao_interp, weights):
         """
+        Calculates observer-frame magnitudes for given parameter values
 
         Parameters
         ----------
-        theta
-        Av
-        W0
-        W1
-        eps
-        Ds
-        Rv
-        band_indices
-        flag
-        J_t
-        hsiao_interp
-        weights
+        theta: array-like
+            Set of theta values for each SN
+        Av: array-like
+            Set of host extinction values for each SN
+        W0: array-like
+            Global W0 matrix
+        W1: array-like
+            Global W1 matrix
+        eps: array-like
+            Set of epsilon values for each SN, describing residual colour variation
+        Ds: array-like
+            Set of distance moduli for each SN
+        Rv: float
+            Global R_V value for host extinction (need to allow this to be variable in future)
+        band_indices: array-like
+            Array containing indices describing which filter each observation is in
+        mask: array-like
+            Array containing mask describing whether observations should contribute to the posterior
+        J_t: array-like
+            Matrix for cubic spline interpolation in time axis for each SN
+        hsiao_interp: array-like
+            Array containing Hsiao template spectra for each t value, comprising model for previous day, next day and
+            t % 1 to allow for linear interpolation
+        weights: array_like
+            Array containing band weights to use for photometry
 
         Returns
         -------
 
+        model_mag: array-like
+            Matrix containing model magnitudes for all SNe at all time-steps
         """
-        model_flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, band_indices, flag, J_t, hsiao_interp, weights)
+        model_flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, band_indices, mask, J_t, hsiao_interp, weights)
         model_flux = model_flux / self.device_scale
-        model_flux = model_flux + (1 - flag) * 0.01
+        model_flux = model_flux + (1 - mask) * 0.01
         zps = self.zps[band_indices]
 
-        model_mag = - 2.5 * jnp.log10(model_flux) + zps # self.M0 + Ds
-        model_mag *= flag
+        model_mag = - 2.5 * jnp.log10(model_flux) + zps  # self.M0 + Ds
+        model_mag *= mask
 
         return model_mag
 
     @staticmethod
     def spline_coeffs_irr_step(x_now, x, invkd):
         """
+        Vectorized version of cubic spline coefficient calculator found in spline_utils
 
         Parameters
         ----------
-        x_now
-        x
-        invkd
+        x_now: array-like
+            Current x location to calculate spline knots for
+        x: array-like
+            Numpy array containing the locations of the spline knots.
+        invkd: array-like
+            Precomputed matrix for generating second derivatives. Can be obtained
+            from the output of ``spline_utils.invKD_irr``.
 
         Returns
         -------
+
+        X: Set of spline coefficients for each x knot
 
         """
         X = jnp.zeros_like(x)
@@ -604,7 +622,8 @@ class SEDmodel(object):
             hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
             keep_shape = t.shape
             t = t.flatten(order='F')
-            J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1, 2, 0)
+            J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
+                                                                     order='F').transpose(1, 2, 0)
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
             eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
@@ -614,20 +633,21 @@ class SEDmodel(object):
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
-            #eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            # eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             band_indices = obs[-6, :, sn_index].astype(int).T
             muhat = obs[-3, 0, sn_index]
             mask = obs[-1, :, sn_index].T.astype(bool)
             muhat_err = 10
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
-            Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err)) # Ds_err
+            Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))  # Ds_err
             flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, Rv, band_indices, mask,
                                        J_t, hsiao_interp, weights)
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
                                obs=obs[1, :, sn_index].T)  # _{sn_index}
 
-    def fit(self, num_samples, num_warmup, num_chains, output, result_path, chain_method='parallel', init_strategy='median'):
+    def fit(self, num_samples, num_warmup, num_chains, output, result_path, chain_method='parallel',
+            init_strategy='median'):
         """
 
         Parameters
@@ -661,15 +681,15 @@ class SEDmodel(object):
             self.W1 = device_put(
                 np.reshape(np.mean(result['W1'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
                            order='F'))
-            #sigmaepsilon = np.mean(result['sigmaepsilon'], axis=(0, 1))
-            #L_Omega = np.mean(result['L_Omega'], axis=(0, 1))
-            #self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
+            # sigmaepsilon = np.mean(result['sigmaepsilon'], axis=(0, 1))
+            # L_Omega = np.mean(result['L_Omega'], axis=(0, 1))
+            # self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
             self.Rv = device_put(np.mean(result['Rv'], axis=(0, 1)))
             self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
-        #self.data = self.data[..., 41:42]
-        #self.band_weights = self.band_weights[41:42, ...]
+        # self.data = self.data[..., 41:42]
+        # self.band_weights = self.band_weights[41:42, ...]
 
         rng = PRNGKey(321)
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
@@ -717,7 +737,7 @@ class SEDmodel(object):
         samples = mcmc.get_samples(group_by_chain=True)
         end = timeit.default_timer()
         print('original: ', end - start)
-        #self.fit_postprocess(samples, output)
+        # self.fit_postprocess(samples, output)
 
     def fit_postprocess(self, samples, output):
         """
@@ -770,7 +790,8 @@ class SEDmodel(object):
         W1 = jnp.reshape(W1, (self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
 
         # sigmaepsilon = numpyro.sample('sigmaepsilon', dist.HalfNormal(1 * jnp.ones(N_knots_sig)))
-        sigmaepsilon_tform = numpyro.sample('sigmaepsilon_tform', dist.Uniform(0, (jnp.pi / 2.) * jnp.ones(N_knots_sig)))
+        sigmaepsilon_tform = numpyro.sample('sigmaepsilon_tform',
+                                            dist.Uniform(0, (jnp.pi / 2.) * jnp.ones(N_knots_sig)))
         sigmaepsilon = numpyro.deterministic('sigmaepsilon', 1. * jnp.tan(sigmaepsilon_tform))
         L_Omega = numpyro.sample('L_Omega', dist.LKJCholesky(N_knots_sig))
         L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon), L_Omega)
@@ -778,7 +799,7 @@ class SEDmodel(object):
         # sigma0 = numpyro.sample('sigma0', dist.HalfCauchy(0.1))
         sigma0_tform = numpyro.sample('sigma0_tform', dist.Uniform(0, jnp.pi / 2.))
         sigma0 = numpyro.deterministic('sigma0', 0.1 * jnp.tan(sigma0_tform))
-        
+
         Rv = numpyro.sample('Rv', dist.Uniform(1, 5))
         # tauA = numpyro.sample('tauA', dist.HalfCauchy())
         tauA_tform = numpyro.sample('tauA_tform', dist.Uniform(0, jnp.pi / 2.))
@@ -797,7 +818,7 @@ class SEDmodel(object):
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
-            #eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            # eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
 
             band_indices = obs[-6, :, sn_index].astype(int).T
             redshift = obs[-5, 0, sn_index]
@@ -805,11 +826,12 @@ class SEDmodel(object):
             muhat = obs[-3, 0, sn_index]
             ebv = obs[-2, 0, sn_index]
             mask = obs[-1, :, sn_index].T.astype(bool)
-            muhat_err = 5 / (redshift * jnp.log(10)) * jnp.sqrt(jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))
+            muhat_err = 5 / (redshift * jnp.log(10)) * jnp.sqrt(
+                jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))
             Ds_err = jnp.sqrt(muhat_err * muhat_err + sigma0 * sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))
             flux = self.get_mag_batch(theta, Av, W0, W1, eps, Ds, Rv, band_indices, mask, self.J_t, self.hsiao_interp,
-                                       self.band_weights)
+                                      self.band_weights)
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)
 
@@ -829,7 +851,7 @@ class SEDmodel(object):
         W0_init = np.loadtxt(f'{param_root}/W0.txt')
         l_knots = np.loadtxt(f'{param_root}/l_knots.txt')
         n_lknots, n_tauknots = W0_init.shape
-        #W0_init = W0_init.flatten(order='F')
+        # W0_init = W0_init.flatten(order='F')
         W1_init = np.loadtxt(f'{param_root}/W1.txt')
         RV_init, tauA_init = np.loadtxt(f'{param_root}/M0_sigma0_RV_tauA.txt')[[2, 3]]
 
@@ -866,8 +888,8 @@ class SEDmodel(object):
         param_init['Av'] = jnp.array(np.random.exponential(tauA_, n_sne))
         L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon_init), L_Omega_init)
 
-        #param_init['theta'] = device_put(chains['theta'].mean(axis=(0, 1)))
-        #param_init['Av'] = device_put(chains['AV'].mean(axis=(0, 1)))
+        # param_init['theta'] = device_put(chains['theta'].mean(axis=(0, 1)))
+        # param_init['Av'] = device_put(chains['AV'].mean(axis=(0, 1)))
 
         param_init['epsilon_tform'] = jnp.matmul(np.linalg.inv(L_Sigma), np.random.normal(0, 1, (n_eps, n_sne)))
         param_init['epsilon'] = np.random.normal(0, 1, (n_sne, n_eps))
@@ -896,20 +918,22 @@ class SEDmodel(object):
         param_init = {}
 
         param_init['theta'] = params['theta_auto_loc']
-        #sample_size = theta.shape[0]
+        # sample_size = theta.shape[0]
         param_init['Av'] = params['AV_auto_loc']
-        param_init['W0'] = params['W0_auto_loc']#.reshape((self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
-        param_init['W1'] = params['W1_auto_loc']#.reshape((self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
+        param_init['W0'] = params[
+            'W0_auto_loc']  # .reshape((self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
+        param_init['W1'] = params[
+            'W1_auto_loc']  # .reshape((self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
         param_init['eps_tform'] = params['eps_tform_auto_loc']
         param_init['sigmaepsilon_tform'] = params['sigmaepsilon_tform_auto_loc']
-        #sigmaepsilon = 1 * jnp.tan(sigmaepsilon_tform)
+        # sigmaepsilon = 1 * jnp.tan(sigmaepsilon_tform)
         param_init['L_Omega'] = params['L_Omega_auto_loc']
-        #L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon), L_Omega)
-        #eps = jnp.matmul(L_Sigma, eps_tform)
-        #eps = eps.T
-        #eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
-        #eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
-        #eps = eps_full.at[:, 1:-1, :].set(eps)
+        # L_Sigma = jnp.matmul(jnp.diag(sigmaepsilon), L_Omega)
+        # eps = jnp.matmul(L_Sigma, eps_tform)
+        # eps = eps.T
+        # eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+        # eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+        # eps = eps_full.at[:, 1:-1, :].set(eps)
         param_init['Ds'] = params['Ds_auto_loc']
         param_init['Rv'] = params['Rv_auto_loc']
 
@@ -927,7 +951,8 @@ class SEDmodel(object):
             plt.scatter(self.data[0, :, i], test[:, i])
             plt.show()
 
-    def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median', mode='flux',
+    def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median',
+              mode='flux',
               l_knots=None):
         """
 
@@ -968,7 +993,7 @@ class SEDmodel(object):
         self.hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
         rng = PRNGKey(321)
         # rng = jnp.array([PRNGKey(11), PRNGKey(22), PRNGKey(33), PRNGKey(44)])
-        #rng = PRNGKey(101)
+        # rng = PRNGKey(101)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy,
                            dense_mass=False, find_heuristic_step_size=False, regularize_mass_matrix=False, step_size=10)
@@ -1001,13 +1026,15 @@ class SEDmodel(object):
         J_R = spline_utils.spline_coeffs_irr([6200.0], self.l_knots, spline_utils.invKD_irr(self.l_knots))
         J_10 = spline_utils.spline_coeffs_irr([10.0], self.tau_knots, spline_utils.invKD_irr(self.tau_knots))
         J_0 = spline_utils.spline_coeffs_irr([0.0], self.tau_knots, spline_utils.invKD_irr(self.tau_knots))
-        W1 = np.reshape(samples['W1'], (samples['W1'].shape[0], samples['W1'].shape[1], self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
+        W1 = np.reshape(samples['W1'], (
+            samples['W1'].shape[0], samples['W1'].shape[1], self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
         N_chains = W1.shape[0]
         sign = np.zeros(N_chains)
         for chain in range(N_chains):
             chain_W1 = np.mean(W1[chain, ...], axis=0)
             chain_sign = np.sign(
-                np.squeeze(np.matmul(J_R, np.matmul(chain_W1, J_10.T))) - np.squeeze(np.matmul(J_R, np.matmul(chain_W1, J_0.T))))
+                np.squeeze(np.matmul(J_R, np.matmul(chain_W1, J_10.T))) - np.squeeze(
+                    np.matmul(J_R, np.matmul(chain_W1, J_0.T))))
             sign[chain] = chain_sign
         samples["W1"] = samples["W1"] * sign[:, None, None]
         samples["theta"] = samples["theta"] * sign[:, None, None]
@@ -1023,11 +1050,11 @@ class SEDmodel(object):
         # Save best fit global params to files for easy inspection and reading in------
         W0 = np.mean(samples['W0'], axis=[0, 1]).reshape((self.l_knots.shape[0], self.tau_knots.shape[0]), order='F')
         W1 = np.mean(samples['W1'], axis=[0, 1]).reshape((self.l_knots.shape[0], self.tau_knots.shape[0]),
-                                                              order='F')
+                                                         order='F')
 
-        #sigmaepsilon = np.mean(samples['sigmaepsilon'], axis=[0, 1])
-        #L_Omega = np.mean(samples['L_Omega'], axis=[0, 1])
-        #L_Sigma = np.matmul(np.diag(np.mean(samples['sigmaepsilon'], axis=[0, 1])), np.mean(samples['L_Omega'], axis=[0, 1]))
+        # sigmaepsilon = np.mean(samples['sigmaepsilon'], axis=[0, 1])
+        # L_Omega = np.mean(samples['L_Omega'], axis=[0, 1])
+        # L_Sigma = np.matmul(np.diag(np.mean(samples['sigmaepsilon'], axis=[0, 1])), np.mean(samples['L_Omega'], axis=[0, 1]))
         sigma0 = np.mean(samples['sigma0'])
 
         Rv = np.mean(samples['Rv'])
@@ -1035,10 +1062,11 @@ class SEDmodel(object):
         M0_sigma0_RV_tauA = np.array([self.M0, sigma0, Rv, tauA])
         np.savetxt(os.path.join('results', output, 'W0.txt'), W0, delimiter="\t", fmt="%.3f")
         np.savetxt(os.path.join('results', output, 'W1.txt'), W1, delimiter="\t", fmt="%.3f")
-        #np.savetxt(os.path.join('results', output, 'sigmaepsilon.txt'), sigmaepsilon, delimiter="\t", fmt="%.3f")
-        #np.savetxt(os.path.join('results', output, 'L_Omega.txt'), L_Omega, delimiter="\t", fmt="%.3f")
-        #np.savetxt(os.path.join('results', output, 'L_Sigma.txt'), L_Sigma, delimiter="\t", fmt="%.3f")
-        np.savetxt(os.path.join('results', output, 'M0_sigma0_RV_tauA.txt'), M0_sigma0_RV_tauA, delimiter="\t", fmt="%.3f")
+        # np.savetxt(os.path.join('results', output, 'sigmaepsilon.txt'), sigmaepsilon, delimiter="\t", fmt="%.3f")
+        # np.savetxt(os.path.join('results', output, 'L_Omega.txt'), L_Omega, delimiter="\t", fmt="%.3f")
+        # np.savetxt(os.path.join('results', output, 'L_Sigma.txt'), L_Sigma, delimiter="\t", fmt="%.3f")
+        np.savetxt(os.path.join('results', output, 'M0_sigma0_RV_tauA.txt'), M0_sigma0_RV_tauA, delimiter="\t",
+                   fmt="%.3f")
         np.savetxt(os.path.join('results', output, 'l_knots.txt'), self.l_knots, delimiter="\t", fmt="%.3f")
         np.savetxt(os.path.join('results', output, 'tau_knots.txt'), self.tau_knots, delimiter="\t", fmt="%.3f")
 
@@ -1115,13 +1143,14 @@ class SEDmodel(object):
             data['redshift_error'] = row.REDSHIFT_CMB_ERR
             data['MWEBV'] = meta['MWEBV']
             data['dist_mod'] = self.cosmo.distmod(row.REDSHIFT_CMB)
-            data['flag'] = 1
+            data['mask'] = 1
             if data_mode == 'flux':
-                lc = data[['t', 'flux', 'flux_err', 'band_indices', 'redshift', 'redshift_error', 'dist_mod', 'MWEBV', 'flag']]
+                lc = data[['t', 'flux', 'flux_err', 'band_indices', 'redshift', 'redshift_error', 'dist_mod', 'MWEBV',
+                           'mask']]
                 lc = lc.dropna(subset=['flux', 'flux_err'])
             else:
                 lc = data[['t', 'MAG', 'MAGERR', 'band_indices', 'redshift', 'redshift_error', 'dist_mod', 'MWEBV',
-                           'flag']]
+                           'mask']]
                 lc = lc.dropna(subset=['MAG', 'MAGERR'])
             lc = lc[(lc['t'] > -10) & (lc['t'] < 40)]
             t_ranges.append((lc['t'].min(), lc['t'].max()))
@@ -1171,15 +1200,15 @@ class SEDmodel(object):
         band_indices = self.data[-4, :, :].astype(int)
         fit_band_indices = np.tile(np.arange(4), (band_indices.shape[-1], int(N_fit / len(self.band_dict.keys())))).T
         redshift = self.data[-3, 0, :]
-        flag = self.data[-1, ...]
-        fit_flag = np.ones_like(fit_band_indices)
-        model_flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, redshift, fit_band_indices, fit_flag)
+        mask = self.data[-1, ...]
+        fit_mask = np.ones_like(fit_band_indices)
+        model_flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, redshift, fit_band_indices, fit_mask)
         ts = np.linspace(-10, 40, 50)
         for _ in range(10):
             plt.figure()
             for i in range(4):
-                inds = (band_indices[:, _] == i) & (flag[:, _] == 1)
-                fit_inds = (fit_band_indices[:, _] == i) & (fit_flag[:, _] == 1)
+                inds = (band_indices[:, _] == i) & (mask[:, _] == 1)
+                fit_inds = (fit_band_indices[:, _] == i) & (fit_mask[:, _] == 1)
                 plt.errorbar(self.data[0, inds, _], self.data[1, inds, _], yerr=self.data[2, inds, _], fmt='x')
                 plt.plot(ts, model_flux[fit_inds, _], ls='--')
         plt.show()
@@ -1208,12 +1237,14 @@ class SEDmodel(object):
         keep_shape = t.shape
         t = t.flatten(order='F')
         map = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))
-        J_t = map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1, 2, 0)
+        J_t = map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1,
+                                                                                                                     2,
+                                                                                                                     0)
         J_t_hsiao = map(t, self.hsiao_t, self.KD_t_hsiao).reshape((*keep_shape, self.hsiao_t.shape[0]),
                                                                   order='F').transpose(1, 2, 0)
         t = t.reshape(keep_shape, order='F')
         band_indices = jnp.tile(np.array([[i] * 12 for i in range(4)]).flatten()[..., None], (1, sample_size))
-        flag = jnp.ones_like(band_indices)
+        mask = jnp.ones_like(band_indices)
 
         eps = chains['eps']
         eps = np.reshape(chains['eps'], (eps.shape[0], self.l_knots.shape[0] - 2, self.tau_knots.shape[0], sample_size),
@@ -1227,9 +1258,9 @@ class SEDmodel(object):
 
         jit_flux_batch = jax.jit(self.get_flux_batch)
         jit_flux_batch(theta[0, ...], Av[0, ...], self.W0, self.W1, eps[0, ...], Ds[0, ...], Rv, band_indices,
-                            flag, J_t, J_t_hsiao)
+                       mask, J_t, J_t_hsiao)
         map = jax.vmap(jit_flux_batch, in_axes=(0, 0, None, None, 0, 0, None, None, None, None, None))
-        flux = map(theta, Av, self.W0, self.W1, eps, Ds, Rv, band_indices, flag, J_t, J_t_hsiao) / self.device_scale
+        flux = map(theta, Av, self.W0, self.W1, eps, Ds, Rv, band_indices, mask, J_t, J_t_hsiao) / self.device_scale
         flux_bands = np.zeros((flux.shape[0], int(flux.shape[1] / steps_per_band), steps_per_band, flux.shape[-1]))
         for i in range(int(flux.shape[1] / steps_per_band)):
             flux_bands[:, i, ...] = flux[:, i * steps_per_band: (i + 1) * steps_per_band, ...]
@@ -1240,7 +1271,7 @@ class SEDmodel(object):
 
         eps = eps * 0
 
-        flux = map(theta, Av, self.W0, self.W1, eps, Ds, Rv, band_indices, flag, J_t, J_t_hsiao) / self.device_scale
+        flux = map(theta, Av, self.W0, self.W1, eps, Ds, Rv, band_indices, mask, J_t, J_t_hsiao) / self.device_scale
         flux_bands = np.zeros((flux.shape[0], int(flux.shape[1] / steps_per_band), steps_per_band, flux.shape[-1]))
         for i in range(int(flux.shape[1] / steps_per_band)):
             flux_bands[:, i, ...] = flux[:, i * steps_per_band: (i + 1) * steps_per_band, ...]
@@ -1249,7 +1280,8 @@ class SEDmodel(object):
         mag_bands = -2.5 * np.log10(flux_bands / self.zp[None, :, None, None])
         np.save(os.path.join('results', model, 'rf_mags_eps0'), mag_bands)
 
-    def simulate_spectrum(self, t, N, dl=10, z=0, mu=0, ebv_mw=0, Rv=None, logM=None, del_M=None, AV=None, theta=None, eps=None):
+    def simulate_spectrum(self, t, N, dl=10, z=0, mu=0, ebv_mw=0, Rv=None, logM=None, del_M=None, AV=None, theta=None,
+                          eps=None):
         """
 
         Parameters
@@ -1305,32 +1337,38 @@ class SEDmodel(object):
             if eps == 0:
                 eps = np.zeros((N, self.l_knots.shape[0], self.tau_knots.shape[0]))
             else:
-                raise ValueError('For epsilon, please pass an array-like object of shape (N, l_knots, tau_knots). The only scalar '
-                                 'value accepted is 0, which will effectively remove the effect of epsilon')
-        elif len(eps.shape) != 3 or eps.shape[0] != N or eps.shape[1] != self.l_knots.shape[0] or eps.shape[2] != self.tau_knots.shape[0]:
+                raise ValueError(
+                    'For epsilon, please pass an array-like object of shape (N, l_knots, tau_knots). The only scalar '
+                    'value accepted is 0, which will effectively remove the effect of epsilon')
+        elif len(eps.shape) != 3 or eps.shape[0] != N or eps.shape[1] != self.l_knots.shape[0] or eps.shape[2] != \
+                self.tau_knots.shape[0]:
             raise ValueError('For epsilon, please pass an array-like object of shape (N, l_knots, tau_knots)')
         ebv_mw = np.array(ebv_mw)
         if len(ebv_mw.shape) == 0:
             ebv_mw = ebv_mw.repeat(N)
         elif ebv_mw.shape[0] != N:
-            raise ValueError('For ebv_mw, either pass a single scalar value or an array of values for each of the N simulated objects')
+            raise ValueError(
+                'For ebv_mw, either pass a single scalar value or an array of values for each of the N simulated objects')
         if Rv is None:
             Rv = self.Rv
         Rv = np.array(Rv)
         if len(Rv.shape) == 0:
             Rv = Rv.repeat(N)
         elif Rv.shape[0] != N:
-            raise ValueError('For Rv, either pass a single scalar value or an array of values for each of the N simulated objects')
+            raise ValueError(
+                'For Rv, either pass a single scalar value or an array of values for each of the N simulated objects')
         z = np.array(z)
         if len(z.shape) == 0:
             z = z.repeat(N)
         elif z.shape[0] != N:
-            raise ValueError('For z, either pass a single scalar value or an array of values for each of the N simulated objects')
+            raise ValueError(
+                'For z, either pass a single scalar value or an array of values for each of the N simulated objects')
         mu = np.array(mu)
         if len(mu.shape) == 0:
             mu = mu.repeat(N)
         elif mu.shape[0] != N:
-            raise ValueError('For mu, either pass a single scalar value or an array of values for each of the N simulated objects')
+            raise ValueError(
+                'For mu, either pass a single scalar value or an array of values for each of the N simulated objects')
         param_dict = {
             'del_M': del_M,
             'AV': AV,
@@ -1357,7 +1395,9 @@ class SEDmodel(object):
         keep_shape = t.shape
         t = t.flatten(order='F')
         map = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))
-        J_t = map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1, 2, 0)
+        J_t = map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1,
+                                                                                                                     2,
+                                                                                                                     0)
         spectra = self.get_spectra(theta, AV, self.W0, self.W1, eps, Rv, J_t, hsiao_interp)
 
         # Host extinction
@@ -1372,7 +1412,8 @@ class SEDmodel(object):
 
         return l_o, spectra, param_dict
 
-    def simulate_light_curve(self, t, N, bands, z=0, mu=0, ebv_mw=0, Rv=None, logM=None, del_M=None, AV=None, theta=None, eps=None):
+    def simulate_light_curve(self, t, N, bands, z=0, mu=0, ebv_mw=0, Rv=None, logM=None, del_M=None, AV=None,
+                             theta=None, eps=None):
         """
 
         Parameters
@@ -1428,27 +1469,32 @@ class SEDmodel(object):
             if eps == 0:
                 eps = np.zeros((N, self.l_knots.shape[0], self.tau_knots.shape[0]))
             else:
-                raise ValueError('For epsilon, please pass an array-like object of shape (N, l_knots, tau_knots). The only scalar '
-                                 'value accepted is 0, which will effectively remove the effect of epsilon')
-        elif len(eps.shape) != 3 or eps.shape[0] != N or eps.shape[1] != self.l_knots.shape[0] or eps.shape[2] != self.tau_knots.shape[0]:
+                raise ValueError(
+                    'For epsilon, please pass an array-like object of shape (N, l_knots, tau_knots). The only scalar '
+                    'value accepted is 0, which will effectively remove the effect of epsilon')
+        elif len(eps.shape) != 3 or eps.shape[0] != N or eps.shape[1] != self.l_knots.shape[0] or eps.shape[2] != \
+                self.tau_knots.shape[0]:
             raise ValueError('For epsilon, please pass an array-like object of shape (N, l_knots, tau_knots)')
         ebv_mw = np.array(ebv_mw)
         if len(ebv_mw.shape) == 0:
             ebv_mw = ebv_mw.repeat(N)
         elif ebv_mw.shape[0] != N:
-            raise ValueError('For ebv_mw, either pass a single scalar value or an array of values for each of the N simulated objects')
+            raise ValueError(
+                'For ebv_mw, either pass a single scalar value or an array of values for each of the N simulated objects')
         if Rv is None:
             Rv = self.Rv
         Rv = np.array(Rv)
         if len(Rv.shape) == 0:
             Rv = Rv.repeat(N)
         elif Rv.shape[0] != N:
-            raise ValueError('For Rv, either pass a single scalar value or an array of values for each of the N simulated objects')
+            raise ValueError(
+                'For Rv, either pass a single scalar value or an array of values for each of the N simulated objects')
         z = np.array(z)
         if len(z.shape) == 0:
             z = z.repeat(N)
         elif z.shape[0] != N:
-            raise ValueError('For z, either pass a single scalar value or an array of values for each of the N simulated objects')
+            raise ValueError(
+                'For z, either pass a single scalar value or an array of values for each of the N simulated objects')
         if mu == 'z':
             mu = self.cosmo.distmod(z).value
         else:
@@ -1456,7 +1502,8 @@ class SEDmodel(object):
             if len(mu.shape) == 0:
                 mu = mu.repeat(N)
             elif mu.shape[0] != N:
-                raise ValueError('For mu, either pass a single scalar value or an array of values for each of the N simulated objects')
+                raise ValueError(
+                    'For mu, either pass a single scalar value or an array of values for each of the N simulated objects')
         param_dict = {
             'del_M': del_M,
             'AV': AV,
@@ -1478,7 +1525,7 @@ class SEDmodel(object):
                 raise ValueError(f'{band} is not included in current model')
             band_indices[i * num_per_band: (i + 1) * num_per_band] = self.band_dict[band]
         band_indices = band_indices[:, None].repeat(N, axis=1).astype(int)
-        flag = np.ones_like(band_indices)
+        mask = np.ones_like(band_indices)
         band_weights = self._calculate_band_weights(z, ebv_mw)
 
         t = jnp.repeat(t[..., None], N, axis=1)
@@ -1486,9 +1533,12 @@ class SEDmodel(object):
         keep_shape = t.shape
         t = t.flatten(order='F')
         map = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))
-        J_t = map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1, 2, 0)
+        J_t = map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]), order='F').transpose(1,
+                                                                                                                     2,
+                                                                                                                     0)
         t = t.reshape(keep_shape, order='F')
-        flux = self.get_mag_batch(theta, AV, self.W0, self.W1, eps, mu + del_M, Rv, band_indices, flag, J_t, hsiao_interp, band_weights)
+        flux = self.get_mag_batch(theta, AV, self.W0, self.W1, eps, mu + del_M, Rv, band_indices, mask, J_t,
+                                  hsiao_interp, band_weights)
         plt.scatter(t[:, 0], flux[:, 0])
         plt.show()
 
@@ -1549,7 +1599,7 @@ class SEDmodel(object):
         """
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
         eps_mu = jnp.zeros(N_knots_sig)
-        eps = np.random.multivariate_normal(eps_mu, np.matmul(self.L_Sigma.T, self.L_Sigma), N )
+        eps = np.random.multivariate_normal(eps_mu, np.matmul(self.L_Sigma.T, self.L_Sigma), N)
         eps = np.reshape(eps, (N, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
         eps_full = np.zeros((N, self.l_knots.shape[0], self.tau_knots.shape[0]))
         eps_full[:, 1:-1, :] = eps
