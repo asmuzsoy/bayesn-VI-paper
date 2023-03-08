@@ -10,7 +10,7 @@
 
 #! sbatch directives begin here ###############################
 #! Name of the job:
-#SBATCH -J parsnip_train
+#SBATCH -J bayesn_train
 #! Which project should be charged (NB Wilkes2 projects end in '-GPU'):
 #SBATCH -A ASTRONOMY-SL3-GPU
 #! How many whole nodes should be allocated?
@@ -22,7 +22,7 @@
 #! Note that the job submission script will enforce no more than 32 cpus per GPU.
 #SBATCH --gres=gpu:1
 #! How much wallclock time will be required?
-#SBATCH --time=02:30:00
+#SBATCH --time=01:00:00
 #! What types of email messages do you wish to receive?
 #SBATCH --mail-type=ALL
 #! Uncomment this to prevent the job from being requeued (e.g. if
@@ -57,7 +57,7 @@ module load cuda/11.2 cudnn/8.1_cuda-11.2
 conda activate jaxtest
 
 #! Full path to application executable: 
-application="python model_foundation.py"
+application="python train.py"
 
 #! Run options for the application:
 options=""

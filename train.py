@@ -1,29 +1,10 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import lcdata
-import pandas as pd
-import parsnip
-from model import Model
-import pickle
+from bayesn_model import SEDmodel
 
-dataset_path = 'data/bayesn_sim_test_z0_noext_25000.h5'
-dataset = lcdata.read_hdf5(dataset_path)[:500]
-bands = parsnip.get_bands(dataset)
-
-param_path = 'data/bayesn_sim_test_z0_noext_25000_params.pkl'
-params = pickle.load(open(param_path, 'rb'))
-del params['epsilon']
-params = pd.DataFrame(params)
-
-pd_dataset = dataset.meta.to_pandas()
-pd_dataset = pd_dataset.astype({'object_id': int})
-params = pd_dataset.merge(params, on='object_id')
-print('Actual:', params.theta.values)
-
-model = Model(bands, device='cpu')
-# model.compare_gen_theta(dataset, params)
-result = model.fit(dataset)
-# print(np.mean(result['theta'].cpu().numpy(), axis=0), np.std(result['theta'].numpy(), axis=0))
-# print(np.mean(result['theta_1'].numpy(), axis=0), np.std(result['theta_1'].numpy(), axis=0))
-# plt.scatter(params.theta.values, result['theta'][0, :])
-# plt.show()
+model = SEDmodel()
+filt_map_dict = {'g': 'g_PS1', 'r': 'r_PS1', 'i': 'i_PS1', 'z': 'z_PS1'}
+#model.process_dataset('foundation', 'data/LCs/foundation/Foundation_DR1', 'data/LCs/meta/T21_training_set_meta.txt',
+#                      filt_map_dict, sn_list='data/LCs/foundation/Foundation_DR1/Foundation_DR1.LIST', data_mode='mag')
+model.process_dataset('ztf', 'data/LCs/ZTF', 'data/LCs/meta/ztf_dr1_training.txt',
+                      map_dict=None, data_mode='mag')
+model.train(2000, 2000, 4, 'ztf_train_2000', chain_method='vectorized', init_strategy='value',
+            l_knots=[4150, 4760, 6390, 7930, 9000])
