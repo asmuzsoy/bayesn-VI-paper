@@ -1,0 +1,74 @@
+#      sn2008gb 
+# Andy Friedman's Wstd file converted to SNANA-like format. 
+# Source file: sn2008gb__J_19_H_14_K_12__CfAIR2_friedman15.Wstd.dat 
+# Metadata information from: carrick_Flow_corrections_snnames_v1.txt 
+# Photometry and metadata compiled by Andrew S. Friedman (UCSD).
+# write_all_filters = True. 
+# Zeropoint of the converted SNANA file: 27.5 mag
+#------------------------------------------------------------
+# Data table created by: Arturo_Avelino
+# On date: 2019.07.16 (yyyy.mm.dd); 14:32 hrs (ET). 
+# Script used: 03_WstdAndy_to_SNANA.ipynb 
+# Script version: 0.1.9 
+#------------------------------------------------------------
+SURVEY: LOWZ 
+SNID: 2008gb 
+IAUC: 2008gb 
+RA: 44.48792 deg 
+DECL: 46.86583 deg 
+MWEBV: 0.1711 MW E(B-V) 
+REDSHIFT_HELIO: 0.03700 +- 0.000167 (HEL)
+REDSHIFT_CMB: 0.03812 +- 0.000500 (CMB)
+REDSHIFT_FINAL: 0.03812 +- 0.000500 (CMB)
+SEARCH_PEAKMJD: 54748.220 
+FILTERS: JHK 
+#------------------------------------------------------------
+NOBS: 45 
+NVAR: 7 
+VARLIST:  MJD  FLT           FIELD       FLUXCAL         FLUXCALERR  MAG  MAGERR  
+OBS: 54747.361  J            NULL        7656.8810        695.0850    0     0 
+OBS: 54748.343  J            NULL        7741.0550       1452.6230    0     0 
+OBS: 54754.382  J            NULL        4914.7590        640.8530    0     0 
+OBS: 54755.280  J            NULL        4286.1320        778.9310    0     0 
+OBS: 54757.310  J            NULL        2866.5890        456.0380    0     0 
+OBS: 54761.335  J            NULL        3373.4710        637.0790    0     0 
+OBS: 54768.188  J            NULL        4052.7990        886.3390    0     0 
+OBS: 54775.366  J            NULL        4566.2470        749.1940    0     0 
+OBS: 54776.288  J            NULL        4751.8580        408.4690    0     0 
+OBS: 54779.245  J            NULL        4773.4460        762.7940    0     0 
+OBS: 54781.255  J            NULL        5162.6600        476.7750    0     0 
+OBS: 54783.243  J            NULL        5114.4560        622.7290    0     0 
+OBS: 54784.232  J            NULL        4718.6560         81.9850    0     0 
+OBS: 54785.245  J            NULL        3983.6010        392.7920    0     0 
+OBS: 54786.224  J            NULL        3736.9510        597.1630    0     0 
+OBS: 54787.212  J            NULL        1855.6210        493.9450    0     0 
+OBS: 54788.267  J            NULL        3089.9660        178.2240    0     0 
+OBS: 54789.241  J            NULL        2782.7700        566.8200    0     0 
+OBS: 54791.262  J            NULL        2584.5300        701.0740    0     0 
+OBS: 54748.369  H            NULL        8156.8480       1071.7170    0     0 
+OBS: 54754.382  H            NULL        6888.6070       1782.5160    0     0 
+OBS: 54761.335  H            NULL        7869.3370       1065.0760    0     0 
+OBS: 54768.188  H            NULL        7615.5360        791.3440    0     0 
+OBS: 54772.296  H            NULL        6711.5920        859.0290    0     0 
+OBS: 54775.366  H            NULL        6373.1060        749.6510    0     0 
+OBS: 54776.288  H            NULL        7177.4950       1241.7650    0     0 
+OBS: 54779.245  H            NULL        8553.1620       1935.3550    0     0 
+OBS: 54781.255  H            NULL        8199.9710       1992.3270    0     0 
+OBS: 54783.243  H            NULL        7283.4810       1497.0360    0     0 
+OBS: 54785.245  H            NULL        5959.4190       1108.4770    0     0 
+OBS: 54786.224  H            NULL        4794.7010       1084.9140    0     0 
+OBS: 54788.267  H            NULL        4593.2910        808.1330    0     0 
+OBS: 54791.262  H            NULL        3062.0010        489.3060    0     0 
+OBS: 54747.388  K            NULL        7846.8650       1686.0350    0     0 
+OBS: 54755.280  K            NULL        4484.8380       1062.6210    0     0 
+OBS: 54757.310  K            NULL        8628.4820       2695.4720    0     0 
+OBS: 54761.335  K            NULL       13311.2610       3405.9760    0     0 
+OBS: 54768.188  K            NULL        8946.4660       1799.9100    0     0 
+OBS: 54772.296  K            NULL        8937.4900       2483.7270    0     0 
+OBS: 54775.366  K            NULL       12599.4770       3578.8400    0     0 
+OBS: 54776.288  K            NULL       11942.3770       1297.2570    0     0 
+OBS: 54781.255  K            NULL       10829.2780       1730.5140    0     0 
+OBS: 54783.243  K            NULL       13240.9230       2172.0660    0     0 
+OBS: 54785.245  K            NULL        8610.1100       1967.9320    0     0 
+OBS: 54786.224  K            NULL       10814.7180       2187.8790    0     0 
+END:

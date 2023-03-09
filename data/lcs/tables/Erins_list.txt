@@ -1,0 +1,19 @@
+# 15 CSP SNe from Erin's list
+#
+#SN_name  #source	#Files
+#-------------------------
+SN2005kc  CSP       sn2005kc__u_CSP_9_B_CSP_13_g_CSP_13_V_CSP_13_r_CSP_12_i_CSP_13_Y_RC_18_J_RC1_18_H_RC_16__CSP3_krisciunas17.Wstd_snana.dat
+SN2005A   CSPDR3    CSPDR3_2005A.PKMJD.DAT
+SN2007ca  CSP       sn2007ca__u_CSP_8_B_CSP_12_g_CSP_12_V_CSP_12_r_CSP_12_i_CSP_12_Y_WIRC_8_H_WIRC_4_H_RC_10_J_RC1_11_J_WIRC_4_Y_RC_12__CSP3_krisciunas17.Wstd_snana.dat
+SN2009ag  CSP       sn2009ag__u_CSP_19_B_CSP_19_g_CSP_19_V_CSP_19_r_CSP_19_i_CSP_19_Y_WIRC_4_H_WIRC_3_H_RC_28_J_RC2_30_J_WIRC_3_Y_RC_32__CSP3_krisciunas17.Wstd_snana.dat
+SN2007so  CSP       sn2007so__u_CSP_4_B_CSP_7_g_CSP_8_V_CSP_8_r_CSP_8_i_CSP_8_Y_WIRC_5_H_WIRC_1_H_RC_5_J_RC1_2_J_WIRC_2_Y_RC_8__CSP3_krisciunas17.Wstd_snana.dat
+SN2007bm  CSP       sn2007bm__u_CSP_7_B_CSP_10_g_CSP_8_V_CSP_10_r_CSP_7_i_CSP_10_H_WIRC_4_H_RC_10_J_RC1_12_J_WIRC_4_Y_RC_3__CSP3_krisciunas17.Wstd_snana.dat
+SN2007le  CSP       sn2007le__u_CSP_21_B_CSP_25_g_CSP_23_V_CSP_25_r_CSP_25_i_CSP_25_Y_WIRC_8_H_WIRC_8_H_RC_24_J_RC1_25_J_WIRC_8_Y_RC_25__CSP3_krisciunas17.Wstd_snana.dat
+SN2008fp  CSP       sn2008fp__u_CSP_27_B_CSP_29_g_CSP_29_V_CSP_30_r_CSP_28_i_CSP_29_Y_WIRC_19_H_WIRC_20_H_RC_22_J_RC1_22_J_WIRC_19_Y_RC_26__CSP3_krisciunas17.Wstd_snana.dat
+SN2007cg  CSPDR3    CSPDR3_2007cg.PKMJD.DAT
+SN2006X   CSP       sn2006X__u_CSP_19_B_CSP_35_g_CSP_34_V_CSP_36_r_CSP_33_i_CSP_34_Y_WIRC_16_H_WIRC_18_H_RC_24_J_RC1_25_J_WIRC_15_Y_RC_23__CSP3_krisciunas17.Wstd_snana.dat
+SN2006br  CSPDR3    CSPDR3_2006br.PKMJD.DAT
+SN2009P   CSP       sn2009P__u_CSP_10_B_CSP_15_g_CSP_14_V_CSP_14_r_CSP_15_i_CSP_14_Y_RC_11_J_RC2_6__CSP3_krisciunas17.Wstd_snana.dat
+SN2006os  CSP       sn2006os__u_CSP_4_B_CSP_9_g_CSP_13_V_CSP_14_r_CSP_16_i_CSP_15_Y_WIRC_4_H_WIRC_4_H_RC_3_J_RC1_5_J_WIRC_4_Y_RC_15__CSP3_krisciunas17.Wstd_snana.dat
+SN2005bo  CSP       sn2005bo__u_CSP_8_B_CSP_9_g_CSP_9_V_CSP_10_r_CSP_9_i_CSP_9__CSP3_krisciunas17.Wstd_snana.dat
+SN2009I   CSP       sn2009I__u_CSP_3_B_CSP_5_g_CSP_5_V_CSP_5_r_CSP_5_i_CSP_5_Y_RC_10_J_RC2_10_H_RC_7__CSP3_krisciunas17.Wstd_snana.dat

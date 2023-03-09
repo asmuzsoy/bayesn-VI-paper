@@ -1,0 +1,60 @@
+#      sn2010dw 
+# Andy Friedman's Wstd file converted to SNANA-like format. 
+# Source file: sn2010dw__B_7_V_8_r_prime_8_i_prime_8__CfA4_hicken12.Wstd.dat 
+# Metadata information from: carrick_Flow_corrections_snnames_v1.txt 
+# Photometry and metadata compiled by Andrew S. Friedman (UCSD).
+# write_all_filters = True. 
+# Zeropoint of the converted SNANA file: 27.5 mag
+#------------------------------------------------------------
+# Data table created by: Arturo_Avelino
+# On date: 2019.07.16 (yyyy.mm.dd); 14:32 hrs (ET). 
+# Script used: 03_WstdAndy_to_SNANA.ipynb 
+# Script version: 0.1.9 
+#------------------------------------------------------------
+SURVEY: LOWZ 
+SNID: 2010dw 
+IAUC: 2010dw 
+RA: 230.66792 deg 
+DECL: -5.92111 deg 
+MWEBV: 0.0799 MW E(B-V) 
+REDSHIFT_HELIO: 0.03812 +- 0.000150 (HEL)
+REDSHIFT_CMB: 0.03922 +- 0.000500 (CMB)
+REDSHIFT_FINAL: 0.03922 +- 0.000500 (CMB)
+SEARCH_PEAKMJD: 55358.247 
+FILTERS: BVr_primei_prime 
+#------------------------------------------------------------
+NOBS: 31 
+NVAR: 7 
+VARLIST:  MJD  FLT           FIELD       FLUXCAL         FLUXCALERR  MAG  MAGERR  
+OBS: 55355.278  B            NULL        9766.9730        330.7110    0     0 
+OBS: 55356.184  B            NULL       10219.7440        340.5840    0     0 
+OBS: 55359.178  B            NULL        9807.5380        305.8670    0     0 
+OBS: 55361.222  B            NULL        8919.0790        368.4120    0     0 
+OBS: 55363.219  B            NULL        8436.4550        394.5300    0     0 
+OBS: 55376.172  B            NULL        2737.2850        312.2390    0     0 
+OBS: 55385.239  B            NULL        1045.7790        277.9230    0     0 
+OBS: 55355.275  V            NULL       11225.3530        331.0360    0     0 
+OBS: 55356.180  V            NULL       11513.3050        346.7290    0     0 
+OBS: 55359.174  V            NULL       12155.1410        337.7940    0     0 
+OBS: 55361.225  V            NULL       11888.3070        388.7790    0     0 
+OBS: 55363.215  V            NULL       11185.1030        356.8100    0     0 
+OBS: 55376.169  V            NULL        6171.6320        385.8770    0     0 
+OBS: 55385.236  V            NULL        4197.9760        347.4510    0     0 
+OBS: 55393.183  V            NULL        2311.2130        301.9350    0     0 
+OBS: 55355.272  r_prime      NULL       11398.2980        246.1120    0     0 
+OBS: 55356.177  r_prime      NULL       11648.7680        259.9150    0     0 
+OBS: 55359.171  r_prime      NULL       12149.5450        279.8380    0     0 
+OBS: 55361.221  r_prime      NULL       12306.0880        281.2280    0     0 
+OBS: 55363.212  r_prime      NULL       11862.0570        250.7790    0     0 
+OBS: 55376.166  r_prime      NULL        7007.4500        216.6650    0     0 
+OBS: 55385.232  r_prime      NULL        5826.9330        224.7150    0     0 
+OBS: 55393.180  r_prime      NULL        4120.5960        298.6900    0     0 
+OBS: 55355.269  i_prime      NULL        8287.0510        282.8130    0     0 
+OBS: 55356.174  i_prime      NULL        8279.4220        256.7320    0     0 
+OBS: 55359.168  i_prime      NULL        7783.9490        298.8080    0     0 
+OBS: 55361.219  i_prime      NULL        7568.3290        290.5310    0     0 
+OBS: 55363.209  i_prime      NULL        7154.8410        243.5370    0     0 
+OBS: 55376.163  i_prime      NULL        4828.3640        196.0290    0     0 
+OBS: 55385.228  i_prime      NULL        5147.5430        299.1260    0     0 
+OBS: 55393.176  i_prime      NULL        4187.9360        246.2680    0     0 
+END:
