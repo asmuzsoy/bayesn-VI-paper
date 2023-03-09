@@ -31,6 +31,7 @@ import arviz
 import extinction
 import timeit
 from astropy.io import fits
+import ruamel.yaml as yaml
 
 # Make plots look pretty
 rc('font', **{'family': 'serif', 'serif': ['cmr10']})
@@ -145,24 +146,37 @@ class SEDmodel(object):
         self.sigma_pec = device_put(jnp.array(150 / 3e5))
 
         try:
-            self.l_knots = np.genfromtxt(f'model_files/{load_model}/l_knots.txt')
-            self.tau_knots = np.genfromtxt(f'model_files/{load_model}/tau_knots.txt')
-            self.W0 = np.genfromtxt(f'model_files/{load_model}/W0.txt')
-            self.W1 = np.genfromtxt(f'model_files/{load_model}/W1.txt')
-            self.L_Sigma = np.genfromtxt(f'model_files/{load_model}/L_Sigma_epsilon.txt')
-            model_params = np.genfromtxt(f'model_files/{load_model}/M0_sigma0_RV_tauA.txt')
-            self.M0 = device_put(model_params[0])
-            self.sigma0 = device_put(model_params[1])
-            self.Rv = device_put(model_params[2])
-            self.tauA = device_put(model_params[3])
+            if os.path.exists(f'model_files/{load_model}/BAYESN.YAML'):
+                with open(f'model_files/{load_model}/BAYESN.YAML', 'r') as file:
+                    params = yaml.load(file, Loader=yaml.Loader)
+                self.l_knots = jnp.array(params['L_KNOTS'])
+                self.tau_knots = jnp.array(params['TAU_KNOTS'])
+                self.W0 = jnp.array(params['W0'])
+                self.W1 = jnp.array(params['W1'])
+                self.L_Sigma = jnp.array(params['L_SIGMA_EPSILON'])
+                self.M0 = jnp.array(params['M0'])
+                self.sigma0 = jnp.array(params['SIGMA0'])
+                self.Rv = jnp.array(params['RV'])
+                self.tauA = jnp.array(params['TAUA'])
+                raise ValueError('Nope')
+            else:
+                self.l_knots = np.genfromtxt(f'model_files/{load_model}/l_knots.txt')
+                self.tau_knots = np.genfromtxt(f'model_files/{load_model}/tau_knots.txt')
+                self.W0 = np.genfromtxt(f'model_files/{load_model}/W0.txt')
+                self.W1 = np.genfromtxt(f'model_files/{load_model}/W1.txt')
+                self.L_Sigma = np.genfromtxt(f'model_files/{load_model}/L_Sigma_epsilon.txt')
+                model_params = np.genfromtxt(f'model_files/{load_model}/M0_sigma0_RV_tauA.txt')
+                self.M0 = device_put(model_params[0])
+                self.sigma0 = device_put(model_params[1])
+                self.Rv = device_put(model_params[2])
+                self.tauA = device_put(model_params[3])
+                self.l_knots = device_put(self.l_knots)
+                self.tau_knots = device_put(self.tau_knots)
+                self.W0 = device_put(self.W0)
+                self.W1 = device_put(self.W1)
+                self.L_Sigma = device_put(self.L_Sigma)
         except:
             raise ValueError('Must select one of M20_model, T21_model, T21_partial-split_model and W22_model')
-
-        self.l_knots = device_put(self.l_knots)
-        self.tau_knots = device_put(self.tau_knots)
-        self.W0 = device_put(self.W0)
-        self.W1 = device_put(self.W1)
-        self.L_Sigma = device_put(self.L_Sigma)
 
         # Initialise arrays and values for band responses - these are based on ParSNiP as presented in Boone+22
         self.min_wave = self.l_knots[0]
@@ -1100,9 +1114,9 @@ class SEDmodel(object):
         W1 = np.mean(samples['W1'], axis=[0, 1]).reshape((self.l_knots.shape[0], self.tau_knots.shape[0]),
                                                          order='F')
 
-        # sigmaepsilon = np.mean(samples['sigmaepsilon'], axis=[0, 1])
-        # L_Omega = np.mean(samples['L_Omega'], axis=[0, 1])
-        # L_Sigma = np.matmul(np.diag(np.mean(samples['sigmaepsilon'], axis=[0, 1])), np.mean(samples['L_Omega'], axis=[0, 1]))
+        sigmaepsilon = np.mean(samples['sigmaepsilon'], axis=[0, 1])
+        L_Omega = np.mean(samples['L_Omega'], axis=[0, 1])
+        L_Sigma = np.matmul(np.diag(np.mean(samples['sigmaepsilon'], axis=[0, 1])), np.mean(samples['L_Omega'], axis=[0, 1]))
         sigma0 = np.mean(samples['sigma0'])
 
         Rv = np.mean(samples['Rv'])
@@ -1110,9 +1124,9 @@ class SEDmodel(object):
         M0_sigma0_RV_tauA = np.array([self.M0, sigma0, Rv, tauA])
         np.savetxt(os.path.join('results', output, 'W0.txt'), W0, delimiter="\t", fmt="%.3f")
         np.savetxt(os.path.join('results', output, 'W1.txt'), W1, delimiter="\t", fmt="%.3f")
-        # np.savetxt(os.path.join('results', output, 'sigmaepsilon.txt'), sigmaepsilon, delimiter="\t", fmt="%.3f")
-        # np.savetxt(os.path.join('results', output, 'L_Omega.txt'), L_Omega, delimiter="\t", fmt="%.3f")
-        # np.savetxt(os.path.join('results', output, 'L_Sigma.txt'), L_Sigma, delimiter="\t", fmt="%.3f")
+        np.savetxt(os.path.join('results', output, 'sigmaepsilon.txt'), sigmaepsilon, delimiter="\t", fmt="%.3f")
+        np.savetxt(os.path.join('results', output, 'L_Omega.txt'), L_Omega, delimiter="\t", fmt="%.3f")
+        np.savetxt(os.path.join('results', output, 'L_Sigma.txt'), L_Sigma, delimiter="\t", fmt="%.3f")
         np.savetxt(os.path.join('results', output, 'M0_sigma0_RV_tauA.txt'), M0_sigma0_RV_tauA, delimiter="\t",
                    fmt="%.3f")
         np.savetxt(os.path.join('results', output, 'l_knots.txt'), self.l_knots, delimiter="\t", fmt="%.3f")
@@ -1121,6 +1135,21 @@ class SEDmodel(object):
         # Save extra fields
         potentials = extras['potential_energy']
         np.savetxt(os.path.join('results', output, 'potentials.txt'), potentials)
+
+        yaml_data = {
+            'MO': float(self.M0),
+            'SIGMA0': float(sigma0),
+            'RV': float(Rv),
+            'TAUA': float(tauA),
+            'TAU_KNOTS': self.tau_knots.tolist(),
+            'L_KNOTS': self.l_knots.tolist(),
+            'W0': W0.tolist(),
+            'W1': W1.tolist(),
+            'L_SIGMA_EPSILON': L_Sigma.tolist()
+        }
+
+        with open(os.path.join('results', output, 'BAYESN.YAML'), 'w') as file:
+            yaml.dump(yaml_data, file)
 
         """global_param_dict = {
             'W0': repr(np.round(np.mean(samples['W0'], axis=[0, 1]).reshape((self.l_knots.shape[0], self.tau_knots.shape[0]), order='F'), 3).tolist()),
