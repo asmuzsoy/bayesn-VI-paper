@@ -1,0 +1,139 @@
+#      sn2007bd 
+# Andy Friedman's Wstd file converted to SNANA-like format. 
+# Source file: sn2007bd__u_CSP_8_B_CSP_12_g_CSP_12_V_CSP_12_r_CSP_12_i_CSP_12_Y_WIRC_3_H_WIRC_3_H_RC_6_J_RC1_8_J_WIRC_2_Y_RC_20__CSP3_krisciunas17.Wstd.dat 
+# Metadata information from: carrick_Flow_corrections_snnames_v1.txt 
+# Photometry and metadata compiled by Andrew S. Friedman (UCSD).
+# write_all_filters = True. 
+# Zeropoint of the converted SNANA file: 27.5 mag
+#------------------------------------------------------------
+# Data table created by: Arturo_Avelino
+# On date: 2019.07.16 (yyyy.mm.dd); 14:32 hrs (ET). 
+# Script used: 03_WstdAndy_to_SNANA.ipynb 
+# Script version: 0.1.9 
+#------------------------------------------------------------
+SURVEY: LOWZ 
+SNID: 2007bd 
+IAUC: 2007bd 
+RA: 127.88867 deg 
+DECL: -1.19944 deg 
+MWEBV: 0.0289 MW E(B-V) 
+REDSHIFT_HELIO: 0.03044 +- 0.000100 (HEL)
+REDSHIFT_CMB: 0.03108 +- 0.000500 (CMB)
+REDSHIFT_FINAL: 0.03108 +- 0.000500 (CMB)
+SEARCH_PEAKMJD: 54207.433 
+FILTERS: u_CSPg_CSPr_CSPi_CSPB_CSPV_CSPY_RCJ_RC1H_RCY_WIRCJ_WIRCH_WIRC 
+#------------------------------------------------------------
+NOBS: 110 
+NVAR: 7 
+VARLIST:  MJD  FLT           FIELD       FLUXCAL         FLUXCALERR  MAG  MAGERR  
+OBS: 54197.030  u_CSP        NULL        4888.7700        108.0700    0     0 
+OBS: 54199.040  u_CSP        NULL        8379.1500        138.9100    0     0 
+OBS: 54206.110  u_CSP        NULL       12067.0200        611.2800    0     0 
+OBS: 54207.050  u_CSP        NULL       12450.8800       1089.4300    0     0 
+OBS: 54213.000  u_CSP        NULL        7351.9100        155.7400    0     0 
+OBS: 54218.030  u_CSP        NULL        4111.5000        117.3900    0     0 
+OBS: 54224.000  u_CSP        NULL        1798.0400        105.9900    0     0 
+OBS: 54234.990  u_CSP        NULL         714.5000         59.2300    0     0 
+OBS: 54197.030  g_CSP        NULL        8838.9400         65.1300    0     0 
+OBS: 54199.040  g_CSP        NULL       14138.3900        117.2000    0     0 
+OBS: 54206.110  g_CSP        NULL       22845.4600       1536.0300    0     0 
+OBS: 54207.050  g_CSP        NULL       24121.2600        177.7300    0     0 
+OBS: 54213.000  g_CSP        NULL       19248.6400         88.6400    0     0 
+OBS: 54218.030  g_CSP        NULL       13677.2900         88.1800    0     0 
+OBS: 54224.000  g_CSP        NULL        7812.6800         64.7600    0     0 
+OBS: 54227.060  g_CSP        NULL        5834.4500         59.1100    0     0 
+OBS: 54234.990  g_CSP        NULL        2779.7100         35.8400    0     0 
+OBS: 54238.990  g_CSP        NULL        2139.9300         29.5600    0     0 
+OBS: 54244.990  g_CSP        NULL        1781.5600         50.8700    0     0 
+OBS: 54258.960  g_CSP        NULL        1287.0600         64.0100    0     0 
+OBS: 54197.030  r_CSP        NULL        8433.3500         69.9100    0     0 
+OBS: 54199.040  r_CSP        NULL       13415.2900        135.9200    0     0 
+OBS: 54206.110  r_CSP        NULL       21697.0200        319.7400    0     0 
+OBS: 54207.050  r_CSP        NULL       22428.4900        123.9400    0     0 
+OBS: 54213.000  r_CSP        NULL       18932.1500        104.6200    0     0 
+OBS: 54218.030  r_CSP        NULL       12894.3700         83.1300    0     0 
+OBS: 54224.000  r_CSP        NULL       10764.6500         89.2300    0     0 
+OBS: 54227.060  r_CSP        NULL       10480.9300         86.8800    0     0 
+OBS: 54234.990  r_CSP        NULL        7191.1800         79.4800    0     0 
+OBS: 54238.990  r_CSP        NULL        5500.4700         55.7300    0     0 
+OBS: 54244.990  r_CSP        NULL        4234.4800         62.4000    0     0 
+OBS: 54258.960  r_CSP        NULL        2644.8400         60.9000    0     0 
+OBS: 54197.030  i_CSP        NULL        7592.7700        104.9000    0     0 
+OBS: 54199.040  i_CSP        NULL       11199.5400        195.9900    0     0 
+OBS: 54206.110  i_CSP        NULL       12624.0900        546.4800    0     0 
+OBS: 54207.050  i_CSP        NULL       12427.9600        160.2500    0     0 
+OBS: 54213.000  i_CSP        NULL       10083.2400        102.1600    0     0 
+OBS: 54218.030  i_CSP        NULL        6098.1800        106.7200    0     0 
+OBS: 54224.000  i_CSP        NULL        6183.0100         91.1200    0     0 
+OBS: 54227.060  i_CSP        NULL        7251.0300        100.1800    0     0 
+OBS: 54234.990  i_CSP        NULL        6692.6800         92.4600    0     0 
+OBS: 54238.990  i_CSP        NULL        5190.3900        105.1700    0     0 
+OBS: 54244.990  i_CSP        NULL        3767.0400         90.2100    0     0 
+OBS: 54258.960  i_CSP        NULL        1995.2600         86.3700    0     0 
+OBS: 54197.030  B_CSP        NULL        7994.6600         73.6300    0     0 
+OBS: 54199.040  B_CSP        NULL       12764.3900        105.8100    0     0 
+OBS: 54206.110  B_CSP        NULL       21857.4800        422.7600    0     0 
+OBS: 54207.050  B_CSP        NULL       21857.4800        140.9200    0     0 
+OBS: 54213.000  B_CSP        NULL       16534.8400        106.6000    0     0 
+OBS: 54218.030  B_CSP        NULL       10804.3800         99.5100    0     0 
+OBS: 54224.000  B_CSP        NULL        5425.0000         74.9500    0     0 
+OBS: 54227.060  B_CSP        NULL        4017.9100         74.0100    0     0 
+OBS: 54234.990  B_CSP        NULL        1907.2200         38.6500    0     0 
+OBS: 54238.990  B_CSP        NULL        1454.7900         44.2200    0     0 
+OBS: 54244.990  B_CSP        NULL        1138.6800         65.0200    0     0 
+OBS: 54258.960  B_CSP        NULL         901.1600         40.6700    0     0 
+OBS: 54197.030  V_CSP        NULL        8180.8800         75.3500    0     0 
+OBS: 54199.040  V_CSP        NULL       12612.4700        104.5500    0     0 
+OBS: 54206.110  V_CSP        NULL       21697.0200        219.8200    0     0 
+OBS: 54207.050  V_CSP        NULL       22677.7500        250.6400    0     0 
+OBS: 54213.000  V_CSP        NULL       18897.3100        104.4300    0     0 
+OBS: 54218.030  V_CSP        NULL       14295.5200        118.5000    0     0 
+OBS: 54224.000  V_CSP        NULL       10195.3000         93.9000    0     0 
+OBS: 54227.060  V_CSP        NULL        8822.6700         81.2600    0     0 
+OBS: 54234.990  V_CSP        NULL        4821.7000         53.2900    0     0 
+OBS: 54238.990  V_CSP        NULL        3597.4900         66.2700    0     0 
+OBS: 54244.990  V_CSP        NULL        2779.7100         79.3700    0     0 
+OBS: 54258.960  V_CSP        NULL        1898.4500         47.2100    0     0 
+OBS: 54198.050  Y_RC         NULL       10695.4700        354.6300    0     0 
+OBS: 54198.060  Y_RC         NULL       11901.4500        394.6200    0     0 
+OBS: 54201.060  Y_RC         NULL       15289.7400        422.4700    0     0 
+OBS: 54201.070  Y_RC         NULL       14615.0400        498.0600    0     0 
+OBS: 54205.090  Y_RC         NULL       13551.8900        436.8600    0     0 
+OBS: 54205.100  Y_RC         NULL       13765.7500        532.5100    0     0 
+OBS: 54207.980  Y_RC         NULL       11025.5400        375.7300    0     0 
+OBS: 54207.970  Y_RC         NULL       10794.4400        526.9300    0     0 
+OBS: 54216.970  Y_RC         NULL        6338.7000        309.4200    0     0 
+OBS: 54216.980  Y_RC         NULL        6729.7700        415.2900    0     0 
+OBS: 54220.020  Y_RC         NULL        6420.9600        378.4900    0     0 
+OBS: 54220.010  Y_RC         NULL        6767.0600        442.5200    0     0 
+OBS: 54227.990  Y_RC         NULL       10636.5300        509.4200    0     0 
+OBS: 54227.980  Y_RC         NULL       10375.2800        430.0200    0     0 
+OBS: 54233.990  Y_RC         NULL       14547.8900        468.9700    0     0 
+OBS: 54233.990  Y_RC         NULL       15559.6600        501.5800    0     0 
+OBS: 54243.970  Y_RC         NULL        8838.9400        390.7700    0     0 
+OBS: 54243.980  Y_RC         NULL        9647.1700        408.7300    0     0 
+OBS: 54246.980  Y_RC         NULL        7433.6100        465.5700    0     0 
+OBS: 54246.990  Y_RC         NULL        8806.4300        494.7700    0     0 
+OBS: 54198.050  J_RC1        NULL       11587.7700        736.4200    0     0 
+OBS: 54198.060  J_RC1        NULL       10346.6600        657.5400    0     0 
+OBS: 54201.060  J_RC1        NULL       15417.0000        922.9700    0     0 
+OBS: 54201.070  J_RC1        NULL       15445.4300        739.7400    0     0 
+OBS: 54205.090  J_RC1        NULL       13601.9100        726.6100    0     0 
+OBS: 54205.100  J_RC1        NULL       14321.8800        659.5500    0     0 
+OBS: 54207.980  J_RC1        NULL       12280.0500        678.6200    0     0 
+OBS: 54227.990  J_RC1        NULL        3879.7200        575.3100    0     0 
+OBS: 54198.050  H_RC         NULL       11879.5500       1422.3900    0     0 
+OBS: 54198.060  H_RC         NULL        9019.8600       1370.7500    0     0 
+OBS: 54201.060  H_RC         NULL       15289.7400       1760.3000    0     0 
+OBS: 54201.070  H_RC         NULL       12508.3500       1843.3000    0     0 
+OBS: 54220.020  H_RC         NULL        6613.0200       1078.0700    0     0 
+OBS: 54233.990  H_RC         NULL        8782.1300       1447.8700    0     0 
+OBS: 54222.980  Y_WIRC       NULL        6717.3800        179.4200    0     0 
+OBS: 54224.970  Y_WIRC       NULL        7705.4900        283.8800    0     0 
+OBS: 54224.980  Y_WIRC       NULL        8653.6600        215.2000    0     0 
+OBS: 54222.980  J_WIRC       NULL        3326.6000        291.0700    0     0 
+OBS: 54224.970  J_WIRC       NULL        3302.1700        215.9400    0     0 
+OBS: 54222.980  H_WIRC       NULL        7231.0300        359.6400    0     0 
+OBS: 54224.970  H_WIRC       NULL        6723.5700        396.3300    0     0 
+OBS: 54224.980  H_WIRC       NULL        7972.6000        462.6100    0     0 
+END:
