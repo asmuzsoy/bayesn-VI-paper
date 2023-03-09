@@ -141,42 +141,41 @@ class SEDmodel(object):
         self.hsiao_interp = None
         self.RV_MW = device_put(jnp.array(3.1))
 
-        self.scale = 1e16
+        self.scale = 1e18
         self.device_scale = device_put(jnp.array(self.scale))
         self.sigma_pec = device_put(jnp.array(150 / 3e5))
 
-        try:
-            if os.path.exists(f'model_files/{load_model}/BAYESN.YAML'):
-                with open(f'model_files/{load_model}/BAYESN.YAML', 'r') as file:
-                    params = yaml.load(file, Loader=yaml.Loader)
-                self.l_knots = jnp.array(params['L_KNOTS'])
-                self.tau_knots = jnp.array(params['TAU_KNOTS'])
-                self.W0 = jnp.array(params['W0'])
-                self.W1 = jnp.array(params['W1'])
-                self.L_Sigma = jnp.array(params['L_SIGMA_EPSILON'])
-                self.M0 = jnp.array(params['M0'])
-                self.sigma0 = jnp.array(params['SIGMA0'])
-                self.Rv = jnp.array(params['RV'])
-                self.tauA = jnp.array(params['TAUA'])
-                raise ValueError('Nope')
-            else:
-                self.l_knots = np.genfromtxt(f'model_files/{load_model}/l_knots.txt')
-                self.tau_knots = np.genfromtxt(f'model_files/{load_model}/tau_knots.txt')
-                self.W0 = np.genfromtxt(f'model_files/{load_model}/W0.txt')
-                self.W1 = np.genfromtxt(f'model_files/{load_model}/W1.txt')
-                self.L_Sigma = np.genfromtxt(f'model_files/{load_model}/L_Sigma_epsilon.txt')
-                model_params = np.genfromtxt(f'model_files/{load_model}/M0_sigma0_RV_tauA.txt')
-                self.M0 = device_put(model_params[0])
-                self.sigma0 = device_put(model_params[1])
-                self.Rv = device_put(model_params[2])
-                self.tauA = device_put(model_params[3])
-                self.l_knots = device_put(self.l_knots)
-                self.tau_knots = device_put(self.tau_knots)
-                self.W0 = device_put(self.W0)
-                self.W1 = device_put(self.W1)
-                self.L_Sigma = device_put(self.L_Sigma)
-        except:
-            raise ValueError('Must select one of M20_model, T21_model, T21_partial-split_model and W22_model')
+        #try:
+        if os.path.exists(f'model_files/{load_model}/BAYESN.YAML'):
+            with open(f'model_files/{load_model}/BAYESN.YAML', 'r') as file:
+                params = yaml.load(file, Loader=yaml.Loader)
+            self.l_knots = jnp.array(params['L_KNOTS'])
+            self.tau_knots = jnp.array(params['TAU_KNOTS'])
+            self.W0 = jnp.array(params['W0'])
+            self.W1 = jnp.array(params['W1'])
+            self.L_Sigma = jnp.array(params['L_SIGMA_EPSILON'])
+            self.M0 = jnp.array(params['M0'])
+            self.sigma0 = jnp.array(params['SIGMA0'])
+            self.Rv = jnp.array(params['RV'])
+            self.tauA = jnp.array(params['TAUA'])
+        else:
+            self.l_knots = np.genfromtxt(f'model_files/{load_model}/l_knots.txt')
+            self.tau_knots = np.genfromtxt(f'model_files/{load_model}/tau_knots.txt')
+            self.W0 = np.genfromtxt(f'model_files/{load_model}/W0.txt')
+            self.W1 = np.genfromtxt(f'model_files/{load_model}/W1.txt')
+            self.L_Sigma = np.genfromtxt(f'model_files/{load_model}/L_Sigma_epsilon.txt')
+            model_params = np.genfromtxt(f'model_files/{load_model}/M0_sigma0_RV_tauA.txt')
+            self.M0 = device_put(model_params[0])
+            self.sigma0 = device_put(model_params[1])
+            self.Rv = device_put(model_params[2])
+            self.tauA = device_put(model_params[3])
+            self.l_knots = device_put(self.l_knots)
+            self.tau_knots = device_put(self.tau_knots)
+            self.W0 = device_put(self.W0)
+            self.W1 = device_put(self.W1)
+            self.L_Sigma = device_put(self.L_Sigma)
+        #except:
+        #    raise ValueError('Must select one of M20_model, T21_model, T21_partial-split_model and W22_model')
 
         # Initialise arrays and values for band responses - these are based on ParSNiP as presented in Boone+22
         self.min_wave = self.l_knots[0]
@@ -641,7 +640,7 @@ class SEDmodel(object):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
-            Rv = numpyro.sample('Rv', dist.Uniform(1, 6))
+            #Rv = numpyro.sample('Rv', dist.Uniform(1, 6))
             tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))
             t = obs[0, ...] - tmax[None, sn_index]
             hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
@@ -665,7 +664,7 @@ class SEDmodel(object):
             muhat_err = 10
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))  # Ds_err
-            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, Rv, band_indices, mask,
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
                                        J_t, hsiao_interp, weights)
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
@@ -730,10 +729,10 @@ class SEDmodel(object):
             self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
-        # self.data = self.data[..., 41:42] # Just to subsample the data, for testing
-        # self.band_weights = self.band_weights[41:42, ...] # Just to subsample the data, for testing
+        self.data = self.data[..., 41:42]  # Just to subsample the data, for testing
+        self.band_weights = self.band_weights[41:42, ...]  # Just to subsample the data, for testing
 
-        rng = PRNGKey(321)
+        rng = PRNGKey(123)
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
 
         self.J_t_map = jax.jit(jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None)))
@@ -765,18 +764,18 @@ class SEDmodel(object):
             mcmc.run(rng_key, data[..., None], weights[None, ...])
             return {**mcmc.get_samples(group_by_chain=True), **mcmc.get_extra_fields(group_by_chain=True)}
 
-        map = jax.vmap(do_mcmc, in_axes=(2, 0))
-        start = timeit.default_timer()
-        samples = map(self.data, self.band_weights)
-        for key, val in samples.items():
-            val = np.squeeze(val)
-            if len(val.shape) == 4:
-                samples[key] = val.transpose(1, 2, 0, 3)
-            else:
-                samples[key] = val.transpose(1, 2, 0)
-        end = timeit.default_timer()
-        print('vmap: ', end - start)
-        self.fit_postprocess(samples, output)
+        #map = jax.vmap(do_mcmc, in_axes=(2, 0))
+        #start = timeit.default_timer()
+        #samples = map(self.data, self.band_weights)
+        #for key, val in samples.items():
+        #    val = np.squeeze(val)
+        #    if len(val.shape) == 4:
+        #        samples[key] = val.transpose(1, 2, 0, 3)
+        #    else:
+        #        samples[key] = val.transpose(1, 2, 0)
+        #end = timeit.default_timer()
+        #print('vmap: ', end - start)
+        #self.fit_postprocess(samples, output)
 
         start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
