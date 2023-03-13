@@ -8,5 +8,5 @@ model.process_dataset('M20', 'data/lcs/tables/M20_training_set.txt', 'data/LCs/m
                       data_mode='mag')
 #model.process_dataset('ztf', 'data/LCs/ZTF', 'data/LCs/meta/ztf_dr1_training.txt',
 #                      map_dict=None, data_mode='mag')
-model.train(30, 30, 4, 'output_testing', chain_method='sequential', init_strategy='value')
+model.train(500, 500, 4, 'M20_train', chain_method='vectorized', init_strategy='value')
 #            l_knots=[4150, 4760, 6390, 7930, 9000])
