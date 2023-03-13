@@ -62,7 +62,7 @@ ASASSN-17at    Foundation_DR1    Foundation_DR1/Foundation_DR1_ASASSN-17at.txt
 ASASSN-17bs    Foundation_DR1    Foundation_DR1/Foundation_DR1_ASASSN-17bs.txt
 ASASSN-17co    Foundation_DR1    Foundation_DR1/Foundation_DR1_ASASSN-17co.txt
 ASASSN-17eb    Foundation_DR1    Foundation_DR1/Foundation_DR1_ASASSN-17eb.txt
-AT2016aj       Foundation_DR1    Foundation_DR1/Foundation_DR1_AT2016ajl.txt
+AT2016ajl      Foundation_DR1    Foundation_DR1/Foundation_DR1_AT2016ajl.txt
 AT2016bln      Foundation_DR1    Foundation_DR1/Foundation_DR1_AT2016bln.txt
 AT2016cor      Foundation_DR1    Foundation_DR1/Foundation_DR1_AT2016cor.txt
 AT2016cvv      Foundation_DR1    Foundation_DR1/Foundation_DR1_AT2016cvv.txt
