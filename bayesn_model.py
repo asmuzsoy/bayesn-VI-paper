@@ -885,7 +885,7 @@ class SEDmodel(object):
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)
 
-    def initial_guess(self, reference_model='T21'):
+    def initial_guess(self, reference_model='M20'):
         """
         Function to set initialisation for training chains, using some global parameter values from previous models as a
         reference. W0 and W1 matrices are interpolated to match wavelength knots of new model. Note that unlike Stan,
@@ -933,7 +933,7 @@ class SEDmodel(object):
         sigma0_ = sigma0_init + np.random.normal(0, 0.01)
         param_init['W0'] = jnp.array(W0_init + np.random.normal(0, 0.01, W0_init.shape[0]))
         param_init['W1'] = jnp.array(W1_init + np.random.normal(0, 0.01, W1_init.shape[0]))
-        param_init['Rv'] = jnp.array(3)
+        param_init['Rv'] = jnp.array(3.1)
         param_init['tauA_tform'] = jnp.arctan(tauA_ / 1.)
         # param_init['tauA'] = tauA_
         param_init['sigma0_tform'] = jnp.arctan(sigma0_ / 0.1)
@@ -1049,7 +1049,7 @@ class SEDmodel(object):
             raise ValueError('Invalid init strategy, must be one of value, median and sample')
         t = self.data[0, ...]
         self.hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
-        rng = PRNGKey(321)
+        rng = PRNGKey(0)
         # rng = jnp.array([PRNGKey(11), PRNGKey(22), PRNGKey(33), PRNGKey(44)])
         # rng = PRNGKey(101)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
@@ -1240,8 +1240,6 @@ class SEDmodel(object):
                 if (data['MAG'] == 0).sum() > 0:
                     data['MAG'] = 27.5 - 2.5 * np.log10(data['FLUXCAL'])
                     data['MAGERR'] = (2.5 / np.log(10)) * data['FLUXCALERR'] / data['FLUXCAL']
-                    if data['MAGERR'].min() < 0 or data['MAGERR'].max() > 1:
-                        print(data['MAGERR'].describe())
                 data['flux'] = np.power(10, -0.4 * (data['MAG'] - data['zp'])) * self.scale
                 data['flux_err'] = (np.log(10) / 2.5) * data['flux'] * data['MAGERR']
                 data['redshift'] = row.REDSHIFT_CMB
