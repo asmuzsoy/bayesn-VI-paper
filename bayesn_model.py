@@ -885,7 +885,7 @@ class SEDmodel(object):
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)
 
-    def initial_guess(self, reference_model='M20'):
+    def initial_guess(self, reference_model='T21'):
         """
         Function to set initialisation for training chains, using some global parameter values from previous models as a
         reference. W0 and W1 matrices are interpolated to match wavelength knots of new model. Note that unlike Stan,
