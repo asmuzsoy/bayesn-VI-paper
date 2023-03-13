@@ -1199,12 +1199,12 @@ class SEDmodel(object):
             multiplied by SEDmodel.scale to ensure that values are of order unity, to assist in HMC processes.
 
         """
-        if not os.path.exists(os.path.join('data', 'LCs', 'pickles', sample_name)):
-            os.mkdir(os.path.join('data', 'LCs', 'pickles', sample_name))
-        if os.path.exists(os.path.join('data', 'LCs', 'pickles', sample_name, f'dataset_{data_mode}.pkl')):
-            with open(os.path.join('data', 'LCs', 'pickles', sample_name, f'dataset_{data_mode}.pkl'), 'rb') as file:
+        if not os.path.exists(os.path.join('data', 'lcs', 'pickles', sample_name)):
+            os.mkdir(os.path.join('data', 'lcs', 'pickles', sample_name))
+        if os.path.exists(os.path.join('data', 'lcs', 'pickles', sample_name, f'dataset_{data_mode}.pkl')):
+            with open(os.path.join('data', 'lcs', 'pickles', sample_name, f'dataset_{data_mode}.pkl'), 'rb') as file:
                 all_data = pickle.load(file)
-            with open(os.path.join('data', 'LCs', 'pickles', sample_name, 'J_t.pkl'), 'rb') as file:
+            with open(os.path.join('data', 'lcs', 'pickles', sample_name, 'J_t.pkl'), 'rb') as file:
                 all_J_t = pickle.load(file)
             self.data = device_put(all_data.T)
             self.J_t = device_put(all_J_t)
@@ -1223,7 +1223,7 @@ class SEDmodel(object):
             sn_files = row.files.split(',')
             sn_lc = None
             for file in sn_files:
-                meta, lcdata = sncosmo.read_snana_ascii(os.path.join('data', 'LCs', row.source, file), default_tablename='OBS')
+                meta, lcdata = sncosmo.read_snana_ascii(os.path.join('data', 'lcs', row.source, file), default_tablename='OBS')
                 data = lcdata['OBS'].to_pandas()
                 if 'SEARCH_PEAKMJD' in sn_list.columns:
                     peak_mjd = row.SEARCH_PEAKMJD
@@ -1274,9 +1274,9 @@ class SEDmodel(object):
             all_data[i, :lc.shape[0], :] = lc.values
             all_data[i, lc.shape[0]:, 2] = 1 / jnp.sqrt(2 * np.pi)
             all_J_t[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.tau_knots, self.KD_t).T
-        with open(os.path.join('data', 'LCs', 'pickles', sample_name, f'dataset_{data_mode}.pkl'), 'wb') as file:
+        with open(os.path.join('data', 'lcs', 'pickles', sample_name, f'dataset_{data_mode}.pkl'), 'wb') as file:
             pickle.dump(all_data, file)
-        with open(os.path.join('data', 'LCs', 'pickles', sample_name, 'J_t.pkl'), 'wb') as file:
+        with open(os.path.join('data', 'lcs', 'pickles', sample_name, 'J_t.pkl'), 'wb') as file:
             pickle.dump(all_J_t, file)
         self.data = device_put(all_data.T)
         self.J_t = device_put(all_J_t)
