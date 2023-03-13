@@ -729,8 +729,8 @@ class SEDmodel(object):
             self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
-        self.data = self.data[..., 41:42]  # Just to subsample the data, for testing
-        self.band_weights = self.band_weights[41:42, ...]  # Just to subsample the data, for testing
+        self.data = self.data[..., 41:43]  # Just to subsample the data, for testing
+        self.band_weights = self.band_weights[41:43, ...]  # Just to subsample the data, for testing
 
         rng = PRNGKey(123)
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
@@ -885,7 +885,7 @@ class SEDmodel(object):
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T), obs=obs[1, :, sn_index].T)
 
-    def initial_guess(self, reference_model="T21"):
+    def initial_guess(self, reference_model='M20'):
         """
         Function to set initialisation for training chains, using some global parameter values from previous models as a
         reference. W0 and W1 matrices are interpolated to match wavelength knots of new model. Note that unlike Stan,
@@ -998,8 +998,7 @@ class SEDmodel(object):
         return param_init
 
     def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median',
-              mode='flux',
-              l_knots=None):
+              mode='flux', l_knots=None):
         """
         Function to run training process and save chains and fit statistics.
 
@@ -1160,7 +1159,7 @@ class SEDmodel(object):
             'sigma0': np.mean(samples['sigma0'])
         }"""
 
-    def process_dataset(self, sample_name, lc_dir, meta_file, map_dict=None, sn_list=None, data_mode='flux'):
+    def process_dataset(self, sample_name, sample_file, meta_file, map_dict=None, sn_list=None, data_mode='flux'):
         """
         Function to process a data set to be used by the numpyro model. Currently, this is set up just to read in SNANA
         format files, there is more to be added. This will read through all light curves and work out the maximum number
@@ -1211,16 +1210,9 @@ class SEDmodel(object):
             self.J_t = device_put(all_J_t)
             self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
             return
-        if sn_list is not None and sample_name.lower() == 'foundation':
-            sn_list = pd.read_csv(sn_list, names=['file'])
-            sn_list['sn'] = sn_list.file.apply(lambda x: x[x.rfind('_') + 1: x.rfind('.')])
-        elif sn_list is not None:
-            sn_list = pd.read_csv(sn_list, names=['file'])
-            sn_list['sn'] = sn_list.file.apply(lambda x: x[:x.find('.')])
-        else:
-            sn_list = pd.DataFrame(os.listdir(lc_dir), columns=['file'])
-            sn_list['sn'] = sn_list.file.apply(lambda x: x[:x.find('.')])
-
+        if not os.path.exists(sample_file):
+            raise FileNotFoundError(f'No file found at {sample_file}')
+        sn_list = pd.read_csv(sample_file, comment='#', delim_whitespace=True, names=['sn', 'source', 'files'])
         meta_file = pd.read_csv(meta_file, delim_whitespace=True)
         sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')
         n_obs = []
@@ -1228,34 +1220,51 @@ class SEDmodel(object):
         all_lcs = []
         t_ranges = []
         for i, row in sn_list.iterrows():
-            meta, lcdata = sncosmo.read_snana_ascii(os.path.join(lc_dir, row.file), default_tablename='OBS')
-            data = lcdata['OBS'].to_pandas()
-            data['t'] = (data.MJD - row.SEARCH_PEAKMJD) / (1 + row.REDSHIFT_CMB)
-            if map_dict is not None:
-                data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[map_dict[x]])
-                data['zp'] = data.FLT.apply(lambda x: self.zp_dict[map_dict[x]])
-            else:
-                data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[x])
-                data['zp'] = data.FLT.apply(lambda x: self.zp_dict[x])
-            data['flux'] = np.power(10, -0.4 * (data['MAG'] - data['zp'])) * self.scale
-            data['flux_err'] = (np.log(10) / 2.5) * data['flux'] * data['MAGERR']
-            data['redshift'] = row.REDSHIFT_CMB
-            data['redshift_error'] = row.REDSHIFT_CMB_ERR
-            data['MWEBV'] = meta['MWEBV']
-            data['dist_mod'] = self.cosmo.distmod(row.REDSHIFT_CMB)
-            data['mask'] = 1
-            if data_mode == 'flux':
-                lc = data[['t', 'flux', 'flux_err', 'band_indices', 'redshift', 'redshift_error', 'dist_mod', 'MWEBV',
-                           'mask']]
-                lc = lc.dropna(subset=['flux', 'flux_err'])
-            else:
-                lc = data[['t', 'MAG', 'MAGERR', 'band_indices', 'redshift', 'redshift_error', 'dist_mod', 'MWEBV',
-                           'mask']]
-                lc = lc.dropna(subset=['MAG', 'MAGERR'])
-            lc = lc[(lc['t'] > -10) & (lc['t'] < 40)]
+            sn_files = row.files.split(',')
+            sn_lc = None
+            for file in sn_files:
+                meta, lcdata = sncosmo.read_snana_ascii(os.path.join('data', 'LCs', row.source, file), default_tablename='OBS')
+                data = lcdata['OBS'].to_pandas()
+                if 'SEARCH_PEAKMJD' in sn_list.columns:
+                    peak_mjd = row.SEARCH_PEAKMJD
+                else:
+                    peak_mjd = meta['SEARCH_PEAKMJD']
+                data = data[~data.FLT.isin(['K', 'K_AND', 'K_P', 'U'])]  # Skip certain bands
+                data['t'] = (data.MJD - peak_mjd) / (1 + row.REDSHIFT_CMB)
+                if map_dict is not None:
+                    data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[map_dict[x]])
+                    data['zp'] = data.FLT.apply(lambda x: self.zp_dict[map_dict[x]])
+                else:
+                    data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[x])
+                    data['zp'] = data.FLT.apply(lambda x: self.zp_dict[x])
+                if (data['MAG'] == 0).sum() > 0:
+                    data['MAG'] = 27.5 - 2.5 * np.log10(data['FLUXCAL'])
+                    data['MAGERR'] = (2.5 / np.log(10)) * data['FLUXCALERR'] / data['FLUXCAL']
+                    if data['MAGERR'].min() < 0 or data['MAGERR'].max() > 1:
+                        print(data['MAGERR'].describe())
+                data['flux'] = np.power(10, -0.4 * (data['MAG'] - data['zp'])) * self.scale
+                data['flux_err'] = (np.log(10) / 2.5) * data['flux'] * data['MAGERR']
+                data['redshift'] = row.REDSHIFT_CMB
+                data['redshift_error'] = row.REDSHIFT_CMB_ERR
+                data['MWEBV'] = meta['MWEBV']
+                data['dist_mod'] = self.cosmo.distmod(row.REDSHIFT_CMB)
+                data['mask'] = 1
+                if data_mode == 'flux':
+                    lc = data[['t', 'flux', 'flux_err', 'band_indices', 'redshift', 'redshift_error', 'dist_mod', 'MWEBV',
+                               'mask']]
+                    lc = lc.dropna(subset=['flux', 'flux_err'])
+                else:
+                    lc = data[['t', 'MAG', 'MAGERR', 'band_indices', 'redshift', 'redshift_error', 'dist_mod', 'MWEBV',
+                               'mask']]
+                    lc = lc.dropna(subset=['MAG', 'MAGERR'])
+                lc = lc[(lc['t'] > -10) & (lc['t'] < 40)]
+                if sn_lc is None:
+                    sn_lc = lc.copy()
+                else:
+                    sn_lc = pd.concat([sn_lc, lc])
             t_ranges.append((lc['t'].min(), lc['t'].max()))
             n_obs.append(lc.shape[0])
-            all_lcs.append(lc)
+            all_lcs.append(sn_lc)
         N_sn = sn_list.shape[0]
         N_obs = np.max(n_obs)
         N_col = lc.shape[1]
