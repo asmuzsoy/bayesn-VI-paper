@@ -1229,7 +1229,7 @@ class SEDmodel(object):
                     peak_mjd = row.SEARCH_PEAKMJD
                 else:
                     peak_mjd = meta['SEARCH_PEAKMJD']
-                data = data[~data.FLT.isin(['K', 'K_AND', 'K_P', 'U'])]  # Skip certain bands
+                data = data[~data.FLT.isin(['K', 'K_AND', 'K_P', 'U', 'u_CSP', 'g_CSP'])]  # Skip certain bands
                 data['t'] = (data.MJD - peak_mjd) / (1 + row.REDSHIFT_CMB)
                 if map_dict is not None:
                     data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[map_dict[x]])
