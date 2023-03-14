@@ -24,6 +24,7 @@ from jax import device_put
 import jax.numpy as jnp
 from jax.random import PRNGKey
 from astropy.cosmology import FlatLambdaCDM
+import astropy.table as at
 import astropy.constants as const
 import matplotlib as mpl
 from matplotlib import rc
@@ -32,6 +33,7 @@ import extinction
 import timeit
 from astropy.io import fits
 import ruamel.yaml as yaml
+import time
 
 # Make plots look pretty
 rc('font', **{'family': 'serif', 'serif': ['cmr10']})
@@ -310,6 +312,7 @@ class SEDmodel(object):
             band_ind += 1
 
         self.zps = jnp.array(zps)
+        self.inv_band_dict = {val: key for key, val in self.band_dict.items()}
 
         # Get the locations that should be sampled at redshift 0. We can scale these to
         # get the locations at any redshift.
@@ -1037,8 +1040,10 @@ class SEDmodel(object):
         self.hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
 
         # -------------------------
-        if init_strategy == 'value':
-            init_strategy = init_to_value(values=self.initial_guess())
+        if init_strategy == 'T21':
+            init_strategy = init_to_value(values=self.initial_guess(reference_model='T21'))
+        elif init_strategy == 'M20':
+            init_strategy = init_to_value(values=self.initial_guess(reference_model='M20'))
         elif init_strategy == 'map':
             init_strategy = init_to_value(values=self.map_initial_guess())
         elif init_strategy == 'median':
@@ -1520,7 +1525,7 @@ class SEDmodel(object):
         return l_o, spectra, param_dict
 
     def simulate_light_curve(self, t, N, bands, z=0, mu=0, ebv_mw=0, Rv=None, logM=None, del_M=None, AV=None,
-                             theta=None, eps=None, mag=True):
+                             theta=None, eps=None, mag=True, write_to_files=True, sim_name=None):
         """
 
         Parameters
@@ -1688,6 +1693,38 @@ class SEDmodel(object):
         else:
             data = self.get_flux_batch(theta, AV, self.W0, self.W1, eps, mu + del_M, Rv, band_indices, mask, J_t,
                                     hsiao_interp, band_weights)
+
+        if write_to_files and mag:
+            if sim_name is None:
+                raise ValueError('If writing to SNANA files, please provide name for simulated sample')
+            output_dir = os.path.join('data', 'lcs', sim_name)
+            mag_err, z_err = 0.05, 1e-3
+            if not os.path.exists(output_dir):
+                os.mkdir(output_dir)
+            sn_names, sn_files = [], []
+            for i in range(N):
+                sn_name = f'{i}'
+                sn_t, sn_mag, sn_z, sn_ebv_mw = t[:, i], data[:, i], z[i], ebv_mw[i]
+                sn_z_err = z_err
+                sn_mag_err = mag_err * np.ones_like(sn_mag)
+                sn_t = sn_t * (1 + sn_z)
+                sn_tmax = 0
+                sn_flt = [self.inv_band_dict[f] for f in band_indices[:, i]]
+                sn_file = write_snana_lcfile(output_dir, sn_name, sn_t, sn_flt, sn_mag, sn_mag_err, sn_tmax, sn_z, sn_z, sn_z_err,
+                                   sn_ebv_mw)
+                sn_names.append(sn_name)
+                sn_files.append(sn_file)
+            # Prepare sample files
+            sample_file = os.path.join('data', 'lcs', 'tables', f'{sim_name}.txt')
+            meta_file = os.path.join('data', 'lcs', 'meta', f'{sim_name}_meta.txt')
+            sources = np.array([sim_name] * N)
+            sample_df = pd.DataFrame(np.array([sn_names, sources, sn_files]).T)
+            meta_df = pd.DataFrame(np.array([sn_names, np.zeros_like(z), z, z_err * np.ones_like(z)]).T,
+                                   columns=['SNID', 'SEARCH_PEAKMJD', 'REDSHIFT_CMB', 'REDSHIFT_CMB_ERR'])
+            sample_df.to_csv(sample_file, header=False, sep='\t', index=False)
+            meta_df.to_csv(meta_file, sep='\t', index=False)
+        elif write_to_files:
+            raise ValueError('If writing to SNANA files, please generate mags')
         return data, param_dict
 
     def sample_del_M(self, N):
@@ -1787,3 +1824,121 @@ class SEDmodel(object):
         plt.show()
         save_data = np.array([redshifts, hres, hres_err, theta, theta_err, Av, Av_err])
         np.save(os.path.join('results', model, 'hres'), save_data)
+
+
+def write_snana_lcfile(output_dir, snname, mjd, flt, mag, magerr, tmax, z_helio, z_cmb, z_cmb_err, ebv_mw, ra=None, dec=None, author="anonymous", survey=None, paper=None, filename=None):
+    '''
+    Write user data to an SNANA-like light curve file
+
+    Parameters
+    ----------
+    output_dir : str
+        Path to a directory where the file will be written. A default filename
+        will be used, but you can specify your own with the `filename` argument.
+        Default name format is `snname[_survey][_paper].snana.dat`, with the
+        survey and/or paper being appended to the name if provided.
+    snname : str
+        Name of the supernova
+    mjd : list or :py:class:`numpy.array`
+        Modified Julian Dates of observations
+    flt : list or :py:class:`numpy.array` of str
+        Filter idenitifiers of observations
+    mag : list or :py:class:`numpy.array`
+        Magnitudes of observations
+    magerr : list or :py:class:`numpy.array`
+        Magnitude errors of observations
+    tmax : float
+        Estimated time of maximum
+    z_helio : float
+        Heliocentric redshift
+    z_cmb : float
+        CMB-frame redshift
+    z_cmb_err : float
+        Error on CMB-frame redshift (excluding peculiar velocity uncertainty contribution)
+    ebv_mv : float
+        E(B-V) reddening due to the Milky Way
+    ra : float, optional
+        Right Ascension, to be writen to the header if desired
+    dec :  float, optional
+        Declination, to be written into the header if desired
+    author : str, optional
+        Who is creating this file? Will be printed into the header's
+        preamble, if desired
+    survey : str, optional
+        Optional argumanet specifying the survey the data came from. Will be
+        written into the header and filename if provided.
+    paper : str, optional
+        Optional argument specifying the paper the data came from. Will be
+        written into the filename if provided.
+    filename : str, optional
+        Custom filename to save as within `output_dir`. If not provided,
+        a default format will be used. Do not provide an extension, as
+        this will be added automatically.
+
+    Returns
+    -------
+    path : str
+        Full path to the generated light curve file.
+
+    Notes
+    -----
+    This will write a user's data to the SNANA-like file format readable by
+    out I/O routines. It will write the provided metadata into the file
+    header, so this will be read in and used correctly by BayeSN. All vital
+    metadata are required as inputs to this function.
+    '''
+    if not (len(mjd) == len(flt) == len(mag) == len(magerr)):
+        raise ValueError("Provided columns are not the same length!")
+
+    if not os.path.exists(output_dir):
+        raise ValueError("Requested output directory does not exist!")
+
+    tab = at.Table([mjd, flt, mag, magerr], names=["MJD", "FLT", "MAG", "MAGERR"])
+    #Compute fluxcal and fluxcalerr
+    tab["FLUXCAL"] = 10**((27.5 - tab["MAG"])/2.5)
+    tab["FLUXCALERR"] = tab["FLUXCAL"]*tab["MAGERR"]*np.log(10)/2.5
+    #Column which designates observations
+    tab["VARLIST:"] = ["OBS:"]*len(tab)
+    #Round fluxes and flux errors
+    tab["FLUXCAL"] = np.round(tab["FLUXCAL"],4)
+    tab["FLUXCALERR"] = np.round(tab["FLUXCALERR"],4)
+    #Reorder columns
+    tab = tab["VARLIST:", "MJD", "FLT", "FLUXCAL", "FLUXCALERR", "MAG", "MAGERR"]
+
+    #Divider for the header
+    divider = "-"*59
+
+    #Write a preamble to the metadata dictionary
+    datestamp = time.strftime("%Y.%m.%d",time.localtime())
+    timestamp = time.strftime("%H.%M hrs (%Z)",time.localtime())
+    preamble = ("\n# SNANA-like file generated from user-provided data\n" +
+        "# Zeropoint of the converted SNANA file: 27.5 mag\n" +
+        "# {}\n".format(divider) +
+        "# Data table created by: {}\n".format(author) +
+        "# On date: {} (yyyy.mm.dd); {}.\n".format(datestamp, timestamp) +
+        "# Script used: BayeSNmodel.io.write_snana_lcfile.py\n" +
+        "# {}".format(divider))
+    tab.meta = {"# {}".format(snname): preamble}
+
+    #Add metadata
+    tab.meta["SNID:"] = snname
+    if survey is not None:
+        tab.meta["SOURCE:"] = survey
+    if ra is not None:
+        tab.meta["RA:"] = ra
+    if dec is not None:
+        tab.meta["DEC:"] = dec
+    filters = ",".join(at.unique(tab, keys="FLT")["FLT"])
+    tab.meta.update({"MWEBV:": ebv_mw, "REDSHIFT_HELIO:": z_helio, "REDSHIFT_CMB:": z_cmb, "REDSHIFT_CMB_ERR:": z_cmb_err, "PEAKMJD:": tmax, "FILTERS:": filters, "#": divider, "NOBS:": len(tab), "NVAR:": 6})
+
+    #Write to file
+    if filename is None:
+        filename = snname + (survey is not None)*"_{}".format(survey) + (paper is not None)*"_{}".format(paper) + ".snana.dat"
+    sncosmo.write_lc(tab, os.path.join(output_dir, filename), fmt="salt2", metachar="")
+
+    #Write terminating line
+    with open(os.path.join(output_dir, filename), "a") as f:
+        f.write("END:")
+
+    #Return filename
+    return filename

@@ -2,8 +2,7 @@ import numpy as np
 from timeit import default_timer
 from bayesn_model import SEDmodel
 
-model = SEDmodel()
-start = default_timer()
-model.simulate_spectrum(np.arange(-8, 40, 4), 100, mu='z', z=np.random.uniform(0, 0.1, 100), eps=np.random.normal(0, 1, (6, 6)))
-end = default_timer()
-print(end - start)
+model = SEDmodel(load_model='T21_model')
+N = 1000
+lc, params = model.simulate_light_curve(np.arange(-8, 40, 4), N, ['g_PS1', 'r_PS1', 'i_PS1', 'z_PS1'],
+                                        z=np.random.uniform(0, 0.1, N), mu='z', sim_name='T21_sim_1000')
