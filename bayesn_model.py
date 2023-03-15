@@ -873,7 +873,7 @@ class SEDmodel(object):
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
-            eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            #eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
 
             band_indices = obs[-6, :, sn_index].astype(int).T
             redshift = obs[-5, 0, sn_index]
