@@ -34,6 +34,7 @@ import timeit
 from astropy.io import fits
 import ruamel.yaml as yaml
 import time
+from tqdm import tqdm
 
 # Make plots look pretty
 rc('font', **{'family': 'serif', 'serif': ['cmr10']})
@@ -1224,7 +1225,9 @@ class SEDmodel(object):
 
         all_lcs = []
         t_ranges = []
-        for i, row in sn_list.iterrows():
+        print('Reading light curves...')
+        for i in tqdm(range(sn_list.shape[0])):
+            row = sn_list.iloc[i]
             sn_files = row.files.split(',')
             sn_lc = None
             for file in sn_files:
@@ -1273,7 +1276,9 @@ class SEDmodel(object):
         N_col = lc.shape[1]
         all_data = np.zeros((N_sn, N_obs, N_col))
         all_J_t = np.zeros((N_sn, self.tau_knots.shape[0], N_obs))
-        for i, lc in enumerate(all_lcs):
+        print('Saving light curves to standard grid...')
+        for i in tqdm(range(len(all_lcs))):
+            lc = all_lcs[i]
             all_data[i, :lc.shape[0], :] = lc.values
             all_data[i, lc.shape[0]:, 2] = 1 / jnp.sqrt(2 * np.pi)
             all_J_t[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.tau_knots, self.KD_t).T
@@ -1707,6 +1712,7 @@ class SEDmodel(object):
                 sn_t, sn_mag, sn_z, sn_ebv_mw = t[:, i], data[:, i], z[i], ebv_mw[i]
                 sn_z_err = z_err
                 sn_mag_err = mag_err * np.ones_like(sn_mag)
+                sn_mag = np.random.normal(sn_mag, sn_mag_err)
                 sn_t = sn_t * (1 + sn_z)
                 sn_tmax = 0
                 sn_flt = [self.inv_band_dict[f] for f in band_indices[:, i]]
