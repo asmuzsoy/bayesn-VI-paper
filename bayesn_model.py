@@ -1066,7 +1066,10 @@ class SEDmodel(object):
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
         jax.profiler.save_device_memory_profile('memory.prof')
+        start = timeit.default_timer()
         mcmc.run(rng, self.data, extra_fields=('potential_energy',))
+        end = timeit.default_timer()
+        print(f'Total training time: {end - start} seconds')
         mcmc.print_summary()
         samples = mcmc.get_samples(group_by_chain=True)
         extras = mcmc.get_extra_fields(group_by_chain=True)
