@@ -137,7 +137,7 @@ class SEDmodel(object):
         # Settings for jax/numpyro
         numpyro.set_host_device_count(num_devices)
         jax.config.update('jax_enable_x64', enable_x64)
-        os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
+        #os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
         print('Current devices:', jax.devices())
 
         self.cosmo = FlatLambdaCDM(**fiducial_cosmology)
