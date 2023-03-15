@@ -136,7 +136,8 @@ class SEDmodel(object):
                  fiducial_cosmology={"H0": 73.24, "Om0": 0.28}, obsmodel_file='data/SNmodel_pb_obsmode_map.txt'):
         # Settings for jax/numpyro
         numpyro.set_host_device_count(num_devices)
-        jax.config.update('jax_enable_x64', enable_x64)
+        jax.config.update('XLA_PYTHON_CLIENT_MEM_FRACTION=.XX')
+        os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
         print('Current devices:', jax.devices())
 
         self.cosmo = FlatLambdaCDM(**fiducial_cosmology)
@@ -1063,6 +1064,7 @@ class SEDmodel(object):
                            dense_mass=False, find_heuristic_step_size=False, regularize_mass_matrix=False, step_size=10)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
+        jax.profiler.save_device_memory_profile('memory.prof')
         mcmc.run(rng, self.data, extra_fields=('potential_energy',))
         mcmc.print_summary()
         samples = mcmc.get_samples(group_by_chain=True)
