@@ -15,5 +15,5 @@ model.process_dataset('T21_sim_10000', 'data/lcs/tables/T21_sim_10000.txt', 'dat
 #model.process_dataset('ztf', 'data/LCs/ZTF', 'data/LCs/meta/ztf_dr1_training.txt',#            l_knots=[4150, 4760, 6390, 7930, 9000])
 #                      map_dict=None, data_mode='mag')
 
-model.train(500, 500, 1, 'T21_sim_10000_train', chain_method='sequential', init_strategy='T21')
+model.train(500, 500, 4, 'T21_sim_10000_train', chain_method='parallel', init_strategy='T21')
 
