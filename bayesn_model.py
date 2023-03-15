@@ -136,7 +136,7 @@ class SEDmodel(object):
                  fiducial_cosmology={"H0": 73.24, "Om0": 0.28}, obsmodel_file='data/SNmodel_pb_obsmode_map.txt'):
         # Settings for jax/numpyro
         numpyro.set_host_device_count(num_devices)
-        jax.config.update('XLA_PYTHON_CLIENT_MEM_FRACTION=.XX')
+        jax.config.update('jax_enable_x64', enable_x64)
         os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
         print('Current devices:', jax.devices())
 
