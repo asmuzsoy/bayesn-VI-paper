@@ -734,8 +734,8 @@ class SEDmodel(object):
             self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
-        self.data = self.data[..., 41:43]  # Just to subsample the data, for testing
-        self.band_weights = self.band_weights[41:43, ...]  # Just to subsample the data, for testing
+        #self.data = self.data[..., 41:43]  # Just to subsample the data, for testing
+        #self.band_weights = self.band_weights[41:43, ...]  # Just to subsample the data, for testing
 
         rng = PRNGKey(123)
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
@@ -769,18 +769,18 @@ class SEDmodel(object):
             mcmc.run(rng_key, data[..., None], weights[None, ...])
             return {**mcmc.get_samples(group_by_chain=True), **mcmc.get_extra_fields(group_by_chain=True)}
 
-        #map = jax.vmap(do_mcmc, in_axes=(2, 0))
-        #start = timeit.default_timer()
-        #samples = map(self.data, self.band_weights)
-        #for key, val in samples.items():
-        #    val = np.squeeze(val)
-        #    if len(val.shape) == 4:
-        #        samples[key] = val.transpose(1, 2, 0, 3)
-        #    else:
-        #        samples[key] = val.transpose(1, 2, 0)
-        #end = timeit.default_timer()
-        #print('vmap: ', end - start)
-        #self.fit_postprocess(samples, output)
+        map = jax.vmap(do_mcmc, in_axes=(2, 0))
+        start = timeit.default_timer()
+        samples = map(self.data, self.band_weights)
+        for key, val in samples.items():
+            val = np.squeeze(val)
+            if len(val.shape) == 4:
+                samples[key] = val.transpose(1, 2, 0, 3)
+            else:
+                samples[key] = val.transpose(1, 2, 0)
+        end = timeit.default_timer()
+        print('vmap: ', end - start)
+        self.fit_postprocess(samples, output)
 
         start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
