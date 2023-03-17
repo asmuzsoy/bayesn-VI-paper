@@ -44,6 +44,8 @@ plt.rcParams.update({'font.size': 22})
 
 # jax.config.update('jax_platform_name', 'cpu')
 
+print(f'Currently working in {os.getcwd()}')
+
 
 class SEDmodel(object):
     """
