@@ -977,7 +977,7 @@ class SEDmodel(object):
             Dictionary containing initial values to be used
 
         """
-        optimizer = Adam(0.02)
+        optimizer = Adam(0.1)
         if mode == 'train':
             guide = AutoDelta(self.train_model)
             svi = SVI(self.train_model, guide, optimizer, loss=Trace_ELBO())
@@ -985,7 +985,7 @@ class SEDmodel(object):
         else:
             guide = AutoDelta(self.fit_model)
             svi = SVI(self.fit_model, guide, optimizer, loss=Trace_ELBO())
-            svi_result = svi.run(PRNGKey(123), 100, self.data, self.band_weights)
+            svi_result = svi.run(PRNGKey(123), 1000, self.data, self.band_weights)
         params, losses = svi_result.params, svi_result.losses
 
         print(params)
