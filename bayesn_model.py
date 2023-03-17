@@ -771,18 +771,18 @@ class SEDmodel(object):
             mcmc.run(rng_key, data[..., None], weights[None, ...])
             return {**mcmc.get_samples(group_by_chain=True), **mcmc.get_extra_fields(group_by_chain=True)}
 
-        map = jax.vmap(do_mcmc, in_axes=(2, 0))
-        start = timeit.default_timer()
-        samples = map(self.data, self.band_weights)
-        for key, val in samples.items():
-            val = np.squeeze(val)
-            if len(val.shape) == 4:
-                samples[key] = val.transpose(1, 2, 0, 3)
-            else:
-                samples[key] = val.transpose(1, 2, 0)
-        end = timeit.default_timer()
-        print('vmap: ', end - start)
-        self.fit_postprocess(samples, output)
+        #map = jax.vmap(do_mcmc, in_axes=(2, 0))
+        #start = timeit.default_timer()
+        #samples = map(self.data, self.band_weights)
+        #for key, val in samples.items():
+        #    val = np.squeeze(val)
+        #    if len(val.shape) == 4:
+        #        samples[key] = val.transpose(1, 2, 0, 3)
+        #    else:
+        #        samples[key] = val.transpose(1, 2, 0)
+        #end = timeit.default_timer()
+        #print('vmap: ', end - start)
+        #self.fit_postprocess(samples, output)
 
         start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
@@ -792,7 +792,7 @@ class SEDmodel(object):
         samples = mcmc.get_samples(group_by_chain=True)
         end = timeit.default_timer()
         print('original: ', end - start)
-        # self.fit_postprocess(samples, output)
+        self.fit_postprocess(samples, output)
 
     def fit_postprocess(self, samples, output):
         """
