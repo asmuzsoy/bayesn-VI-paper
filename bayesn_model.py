@@ -671,7 +671,7 @@ class SEDmodel(object):
             muhat_err = 10
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))  # Ds_err
-            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
+            flux = self.get_mag_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
                                        J_t, hsiao_interp, weights)
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
@@ -736,8 +736,8 @@ class SEDmodel(object):
             self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
-        #self.data = self.data[..., 41:43]  # Just to subsample the data, for testing
-        #self.band_weights = self.band_weights[41:43, ...]  # Just to subsample the data, for testing
+        #self.data = self.data[..., 41:42]  # Just to subsample the data, for testing
+        #self.band_weights = self.band_weights[41:42, ...]  # Just to subsample the data, for testing
 
         rng = PRNGKey(123)
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
