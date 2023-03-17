@@ -671,7 +671,7 @@ class SEDmodel(object):
             muhat_err = 10
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))  # Ds_err
-            flux = self.get_mag_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
                                        J_t, hsiao_interp, weights)
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
@@ -714,8 +714,13 @@ class SEDmodel(object):
             ``'sample'`` | Chains are initialised to a random sample from the priors
 
         """
+
+        self.J_t_map = jax.jit(jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None)))
+
         if init_strategy == 'median':
             init_strategy = init_to_median()
+        elif init_strategy == 'map':
+            init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
         elif init_strategy == 'sample':
             init_strategy = init_to_sample()
         else:
@@ -741,8 +746,6 @@ class SEDmodel(object):
 
         rng = PRNGKey(123)
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
-
-        self.J_t_map = jax.jit(jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None)))
 
         def do_mcmc(data, weights):
             """
@@ -963,7 +966,7 @@ class SEDmodel(object):
 
         return param_init
 
-    def map_initial_guess(self):
+    def map_initial_guess(self, mode='fit'):
         """
         This is just experimental and doesn't seem to help, I was testing using a MAP estimate to initialise the HMC
         but it didn't seem to help much
@@ -975,10 +978,18 @@ class SEDmodel(object):
 
         """
         optimizer = Adam(0.02)
-        guide = AutoDelta(self.train_model)
-        svi = SVI(self.train_model, guide, optimizer, loss=Trace_ELBO())
-        svi_result = svi.run(PRNGKey(123), 5000, self.data)
+        if mode == 'train':
+            guide = AutoDelta(self.train_model)
+            svi = SVI(self.train_model, guide, optimizer, loss=Trace_ELBO())
+            svi_result = svi.run(PRNGKey(123), 5000, self.data)
+        else:
+            guide = AutoDelta(self.fit_model)
+            svi = SVI(self.fit_model, guide, optimizer, loss=Trace_ELBO())
+            svi_result = svi.run(PRNGKey(123), 100, self.data, self.band_weights)
         params, losses = svi_result.params, svi_result.losses
+
+        print(params)
+        raise ValueError('Nope')
 
         param_init = {}
 

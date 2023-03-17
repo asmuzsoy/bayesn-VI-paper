@@ -9,4 +9,4 @@ model = SEDmodel()
 model.process_dataset('T21_sim_1000', 'data/lcs/tables/T21_sim_1000.txt', 'data/lcs/meta/T21_sim_1000_meta.txt',
                       data_mode='flux')
 
-model.fit(250, 250, 4, 'T21_sim_1000_fit', chain_method='parallel')
+model.fit(250, 250, 4, 'T21_sim_1000_fit', chain_method='parallel', init_strategy='median')
