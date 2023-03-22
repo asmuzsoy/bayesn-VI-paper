@@ -15,5 +15,5 @@ model.process_dataset('M20', 'data/lcs/tables/M20_training_set.txt', 'data/lcs/m
 #model.process_dataset('ztf', 'data/lcs/ZTF', 'data/lcs/meta/ztf_dr1_training.txt',#            l_knots=[4150, 4760, 6390, 7930, 9000])
 #                      map_dict=None, data_mode='mag')
 
-model.train(300, 200, 4, 'M20_train_300_200', chain_method='parallel', init_strategy='M20')
+model.train(500, 500, 4, 'M20_train_500_12', chain_method='parallel', init_strategy='M20', max_tree_depth=12)
 
