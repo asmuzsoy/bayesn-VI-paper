@@ -1074,8 +1074,8 @@ class SEDmodel(object):
         # rng = PRNGKey(101)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy,
-                           dense_mass=False, find_heuristic_step_size=False, regularize_mass_matrix=False, step_size=0.1,
-                           max_tree_depth=max_tree_depth)
+                           dense_mass=False, find_heuristic_step_size=False, regularize_mass_matrix=False, step_size=0.1)
+                           #max_tree_depth=max_tree_depth)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
         jax.profiler.save_device_memory_profile('memory.prof')
