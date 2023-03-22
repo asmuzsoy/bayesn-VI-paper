@@ -407,12 +407,12 @@ Ia_snid_list = [full_snid_list[i] for i in Ia_inds]
 Ia_meta_list = [full_meta_list[i] for i in Ia_inds]
 Ia_df_list = [full_df_list[i] for i in Ia_inds]
 
-print(len(Ia_snid_list))
-
-print(Ia_meta_list[0])
-
-
 for i in range(len(Ia_snid_list)):
-    df = Ia_df_list[i]
-    print(df)
+    sn, meta, df = Ia_snid_list[i], Ia_meta_list[i], Ia_df_list[i]
+    FLT = df.PASSBAND.apply(lambda flt: filt_map[flt])
+    z_helio, z_helio_err = meta['redshift'], meta['redshift_err']
+    write_snana_lcfile('data/lcs/YSE_DR1', sn, df.MJD, FLT, df.MAG, df.MAGERR, meta['peakmjd'], z_helio, z_helio,
+                       z_helio_err, meta['mwebv'], ra=meta['ra'], dec=meta['dec'])
     break
+
+#output_dir, snname, mjd, flt, mag, magerr, tmax, z_helio, z_cmb, z_cmb_err, ebv_mw, ra=None, dec=None, author="anonymous", survey=None, paper=None, filename=None
