@@ -1,0 +1,28 @@
+# 2021xmq 
+# SNANA-like file generated from user-provided data
+# Zeropoint of the converted SNANA file: 27.5 mag
+# -----------------------------------------------------------
+# Data table created by: anonymous
+# On date: 2023.03.22 (yyyy.mm.dd); 23.40 hrs (GMT).
+# Script used: BayeSNmodel.io.write_snana_lcfile.py
+# -----------------------------------------------------------
+SNID: 2021xmq
+RA: 49.207292
+DEC: 3.660367
+MWEBV: 0.106
+REDSHIFT_HELIO: 0.04
+REDSHIFT_CMB: 0.04111512130137185
+REDSHIFT_CMB_ERR: 0.005
+PEAKMJD: 59458.57
+FILTERS: i_PS1,r_PS1,z_PS1
+# -----------------------------------------------------------
+NOBS: 6
+NVAR: 6
+VARLIST: MJD FLT FLUXCAL FLUXCALERR MAG MAGERR
+OBS: 59458.57 z_PS1 2625.4273 212.7935 18.952 0.088
+OBS: 59476.63 r_PS1 658.8704 136.5395 20.453 0.225
+OBS: 59476.63 z_PS1 2051.1622 402.3975 19.22 0.213
+OBS: 59485.56 i_PS1 824.8975 83.5735 20.209 0.11
+OBS: 59488.6 r_PS1 440.9608 100.3166 20.889 0.247
+OBS: 59491.5 i_PS1 345.1437 79.7902 21.155 0.251
+END:

@@ -1,0 +1,28 @@
+# 2021aaxi 
+# SNANA-like file generated from user-provided data
+# Zeropoint of the converted SNANA file: 27.5 mag
+# -----------------------------------------------------------
+# Data table created by: anonymous
+# On date: 2023.03.22 (yyyy.mm.dd); 23.40 hrs (GMT).
+# Script used: BayeSNmodel.io.write_snana_lcfile.py
+# -----------------------------------------------------------
+SNID: 2021aaxi
+RA: 34.991346
+DEC: -3.223703
+MWEBV: 0.018
+REDSHIFT_HELIO: 0.18
+REDSHIFT_CMB: 0.17906855700136526
+REDSHIFT_CMB_ERR: 0.005
+PEAKMJD: 59513.48
+FILTERS: g_PS1,i_PS1,r_PS1
+# -----------------------------------------------------------
+NOBS: 6
+NVAR: 6
+VARLIST: MJD FLT FLUXCAL FLUXCALERR MAG MAGERR
+OBS: 59493.54 r_PS1 229.7206 46.7593 21.597 0.221
+OBS: 59500.51 g_PS1 664.9669 96.7682 20.443 0.158
+OBS: 59513.47 i_PS1 755.0922 72.3284 20.305 0.104
+OBS: 59513.48 r_PS1 893.717 65.8515 20.122 0.08
+OBS: 59524.43 g_PS1 556.1603 98.3506 20.637 0.192
+OBS: 59524.43 r_PS1 613.197 89.2345 20.531 0.158
+END:

@@ -1,0 +1,31 @@
+# 2020azs 
+# SNANA-like file generated from user-provided data
+# Zeropoint of the converted SNANA file: 27.5 mag
+# -----------------------------------------------------------
+# Data table created by: anonymous
+# On date: 2023.03.22 (yyyy.mm.dd); 23.40 hrs (GMT).
+# Script used: BayeSNmodel.io.write_snana_lcfile.py
+# -----------------------------------------------------------
+SNID: 2020azs
+RA: 143.439971
+DEC: 33.028124
+MWEBV: 0.017
+REDSHIFT_HELIO: 0.135
+REDSHIFT_CMB: 0.1342246953602737
+REDSHIFT_CMB_ERR: 0.005
+PEAKMJD: 58899.263
+FILTERS: g_PS1,i_PS1,p48g,p48r,r_PS1
+# -----------------------------------------------------------
+NOBS: 9
+NVAR: 6
+VARLIST: MJD FLT FLUXCAL FLUXCALERR MAG MAGERR
+OBS: 58874.58 g_PS1 632.7032 83.9147 20.497 0.144
+OBS: 58874.58 r_PS1 595.3879 54.8373 20.563 0.1
+OBS: 58877.47 g_PS1 1154.5161 71.2444 19.844 0.067
+OBS: 58877.47 i_PS1 758.5776 69.8676 20.3 0.1
+OBS: 58879.49 r_PS1 1223.4888 108.18 19.781 0.096
+OBS: 58898.241 p48g 893.717 62.5589 20.122 0.076
+OBS: 58899.263 p48r 1233.6728 89.7641 19.772 0.079
+OBS: 58900.241 p48r 1231.4024 93.0014 19.774 0.082
+OBS: 58903.308 p48g 542.0009 63.8978 20.665 0.128
+END:

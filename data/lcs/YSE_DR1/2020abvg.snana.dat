@@ -1,0 +1,29 @@
+# 2020abvg 
+# SNANA-like file generated from user-provided data
+# Zeropoint of the converted SNANA file: 27.5 mag
+# -----------------------------------------------------------
+# Data table created by: anonymous
+# On date: 2023.03.22 (yyyy.mm.dd); 23.40 hrs (GMT).
+# Script used: BayeSNmodel.io.write_snana_lcfile.py
+# -----------------------------------------------------------
+SNID: 2020abvg
+RA: 17.901071
+DEC: -15.214514
+MWEBV: 0.018
+REDSHIFT_HELIO: 0.043
+REDSHIFT_CMB: 0.0417706190824334
+REDSHIFT_CMB_ERR: 0.005
+PEAKMJD: 59182.29
+FILTERS: g_PS1,i_PS1,r_PS1
+# -----------------------------------------------------------
+NOBS: 7
+NVAR: 6
+VARLIST: MJD FLT FLUXCAL FLUXCALERR MAG MAGERR
+OBS: 59130.5 i_PS1 1540.2811 209.9604 19.531 0.148
+OBS: 59182.28 i_PS1 6842.2667 302.4941 17.912 0.048
+OBS: 59182.29 r_PS1 8986.695 281.4198 17.616 0.034
+OBS: 59189.32 r_PS1 6680.362 190.7381 17.938 0.031
+OBS: 59189.33 i_PS1 6798.2949 162.798 17.919 0.026
+OBS: 59191.23 g_PS1 4746.7898 161.7623 18.309 0.037
+OBS: 59191.24 i_PS1 5618.2363 181.1105 18.126 0.035
+END:

@@ -1,0 +1,35 @@
+# 2021xvu 
+# SNANA-like file generated from user-provided data
+# Zeropoint of the converted SNANA file: 27.5 mag
+# -----------------------------------------------------------
+# Data table created by: anonymous
+# On date: 2023.03.22 (yyyy.mm.dd); 23.40 hrs (GMT).
+# Script used: BayeSNmodel.io.write_snana_lcfile.py
+# -----------------------------------------------------------
+SNID: 2021xvu
+RA: 16.710189
+DEC: 0.046778
+MWEBV: 0.023
+REDSHIFT_HELIO: 0.103
+REDSHIFT_CMB: 0.10409368149029996
+REDSHIFT_CMB_ERR: 0.005
+PEAKMJD: 59457.42
+FILTERS: g_PS1,i_PS1,r_PS1,z_PS1
+# -----------------------------------------------------------
+NOBS: 13
+NVAR: 6
+VARLIST: MJD FLT FLUXCAL FLUXCALERR MAG MAGERR
+OBS: 59429.58 r_PS1 566.5001 60.5248 20.617 0.116
+OBS: 59445.53 r_PS1 866.1637 78.1811 20.156 0.098
+OBS: 59445.53 z_PS1 630.9573 134.2418 20.5 0.231
+OBS: 59457.42 g_PS1 1548.8166 102.7089 19.525 0.072
+OBS: 59457.42 z_PS1 964.7172 141.2774 20.039 0.159
+OBS: 59466.54 g_PS1 810.5877 73.1647 20.228 0.098
+OBS: 59466.55 i_PS1 901.156 91.2995 20.113 0.11
+OBS: 59468.45 g_PS1 854.2795 70.8138 20.171 0.09
+OBS: 59468.45 r_PS1 884.7081 96.1519 20.133 0.118
+OBS: 59483.39 i_PS1 796.5261 111.5114 20.247 0.152
+OBS: 59483.4 r_PS1 620.5832 85.1652 20.518 0.149
+OBS: 59485.52 i_PS1 1342.765 105.1222 19.68 0.085
+OBS: 59511.34 r_PS1 599.7911 147.4983 20.555 0.267
+END:
