@@ -1,8 +1,11 @@
 import os
+
+import matplotlib.pyplot as plt
 import sncosmo
 import glob
 import dataclasses
 import pandas as pd
+from astropy import constants
 from astropy.io import ascii
 from astropy.table import Table
 import numpy as np
@@ -396,6 +399,17 @@ def get_SNclass_param(meta_list, param, ifstr, ifprint=False):
     return all_list, snII_list, snIa_list, snIbc_list, other_list
 
 
+def zhel_to_zcmb(zhel, ra, dec):
+    vsun_max = 369.82
+    d1, d2 = 264.021, 48.253  # Dipole coordinates
+    alpha = np.sqrt(np.power(ra - d1, 2) + np.power(dec - d2, 2))
+    c = constants.c.value / 1e3
+    vsun = vsun_max * np.cos(alpha)
+    zsun = np.sqrt((1 - vsun / c) / (1 + vsun / c)) - 1
+    zcmb = ((1 + zhel) / (1 + zsun)) - 1
+    return zcmb
+
+
 # ----------------
 
 full_snid_list, full_meta_list, full_df_list = read_YSE_ZTF_snana_dir(dir_name='/Users/matt/Downloads/yse_dr1_zenodo_snr_geq_4')
@@ -407,12 +421,26 @@ Ia_snid_list = [full_snid_list[i] for i in Ia_inds]
 Ia_meta_list = [full_meta_list[i] for i in Ia_inds]
 Ia_df_list = [full_df_list[i] for i in Ia_inds]
 
+meta_list, table_list = [], []
+
 for i in range(len(Ia_snid_list)):
     sn, meta, df = Ia_snid_list[i], Ia_meta_list[i], Ia_df_list[i]
     FLT = df.PASSBAND.apply(lambda flt: filt_map[flt])
     z_helio, z_helio_err = meta['redshift'], meta['redshift_err']
-    write_snana_lcfile('data/lcs/YSE_DR1', sn, df.MJD, FLT, df.MAG, df.MAGERR, meta['peakmjd'], z_helio, z_helio,
-                       z_helio_err, meta['mwebv'], ra=meta['ra'], dec=meta['dec'])
+    z_cmb, z_cmb_err = zhel_to_zcmb(z_helio, meta['ra'], meta['dec']), z_helio_err
+    plt.errorbar(df.MJD, df.MAG, yerr=df.MAGERR, fmt='x')
+    plt.title(sn)
+    plt.show()
     break
+    write_snana_lcfile('data/lcs/YSE_DR1', sn, df.MJD, FLT, df.MAG, df.MAGERR, meta['peakmjd'], z_helio, z_cmb,
+                       z_cmb_err, meta['mwebv'], ra=meta['ra'], dec=meta['dec'])
+    meta_list.append([sn, meta['peakmjd'], z_cmb, z_cmb_err])
+    table_list.append([sn, 'YSE_DR1', f'{sn}.snana.dat'])
+
+meta_list, table_list = np.array(meta_list), np.array(table_list)
+meta = pd.DataFrame(meta_list, columns=['SNID', 'SEARCH_PEAKMJD', 'REDSHIFT_CMB', 'REDSHIFT_CMB_ERR'])
+table = pd.DataFrame(table_list)
+meta.to_csv('data/lcs/meta/YSE_DR1_meta.txt', sep='\t', index=False)
+table.to_csv('data/lcs/tables/YSE_DR1_table.txt', header=False, sep='\t', index=False)
 
 #output_dir, snname, mjd, flt, mag, magerr, tmax, z_helio, z_cmb, z_cmb_err, ebv_mw, ra=None, dec=None, author="anonymous", survey=None, paper=None, filename=None

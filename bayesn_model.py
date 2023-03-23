@@ -885,6 +885,7 @@ class SEDmodel(object):
             redshift_error = obs[-4, 0, sn_index]
             muhat = obs[-3, 0, sn_index]
             ebv = obs[-2, 0, sn_index]
+
             mask = obs[-1, :, sn_index].T.astype(bool)
             muhat_err = 5 / (redshift * jnp.log(10)) * jnp.sqrt(
                 jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))

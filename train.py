@@ -15,5 +15,7 @@ model.process_dataset('T21_sim_1000', 'data/lcs/tables/T21_sim_1000.txt', 'data/
 #model.process_dataset('ztf', 'data/lcs/ZTF', 'data/lcs/meta/ztf_dr1_training.txt',#            l_knots=[4150, 4760, 6390, 7930, 9000])
 #                      map_dict=None, data_mode='mag')
 
-model.train(500, 500, 4, 'T21_sim_1000_train', chain_method='sequential', init_strategy='T21', max_tree_depth=10)
+#model.process_dataset('YSE_DR1', 'data/lcs/tables/YSE_DR1_table.txt', 'data/lcs/meta/YSE_DR1_meta.txt', data_mode='mag')
+
+model.train(500, 500, 4, 'T21_train_1000_test', chain_method='parallel', init_strategy='T21', max_tree_depth=10)
 
