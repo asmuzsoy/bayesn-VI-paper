@@ -11,4 +11,4 @@ model = SEDmodel()
 
 model.process_dataset('YSE_DR1', 'data/lcs/tables/YSE_DR1_table.txt', 'data/lcs/meta/YSE_DR1_meta.txt', data_mode='flux')
 
-model.fit(250, 250, 4, 'YSE_fit', chain_method='parallel', init_strategy='median')
+model.fit(250, 250, 4, 'YSE_fit', chain_method='sequential', init_strategy='median')

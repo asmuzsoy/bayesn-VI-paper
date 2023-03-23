@@ -741,8 +741,8 @@ class SEDmodel(object):
             self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
-        self.data = self.data[..., 41:42]  # Just to subsample the data, for testing
-        self.band_weights = self.band_weights[41:42, ...]  # Just to subsample the data, for testing
+        #self.data = self.data[..., 41:42]  # Just to subsample the data, for testing
+        #self.band_weights = self.band_weights[41:42, ...]  # Just to subsample the data, for testing
 
         rng = PRNGKey(123)
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
