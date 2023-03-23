@@ -53,8 +53,7 @@ module load rhel8/default-amp              # REQUIRED - loads the basic environm
 
 #! Insert additional module load commands after this line if needed:
 source ~/.bashrc
-module load cuda/11.2 cudnn/8.1_cuda-11.2
-conda activate jaxtest
+conda activate numpyro
 
 #! Full path to application executable: 
 application="python train.py"
