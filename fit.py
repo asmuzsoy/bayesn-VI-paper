@@ -9,6 +9,6 @@ model = SEDmodel()
 #model.process_dataset('T21_sim_10000', 'data/lcs/tables/T21_sim_10000.txt', 'data/lcs/meta/T21_sim_10000_meta.txt',
 #                      data_mode='flux')
 
-model.process_dataset('YSE_DR1', 'data/lcs/tables/YSE_DR1_table.txt', 'data/lcs/meta/YSE_DR1_meta.txt', data_mode='flux')
+model.process_dataset('YSE_DR1', 'data/lcs/tables/YSE_DR1_table.txt', 'data/lcs/meta/YSE_DR1_meta.txt', data_mode='mag')
 
-model.fit(250, 250, 4, 'YSE_fit', chain_method='sequential', init_strategy='median')
+model.fit(250, 250, 4, 'YSE_fit', chain_method='parallel', init_strategy='median')

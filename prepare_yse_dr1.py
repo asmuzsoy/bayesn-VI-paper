@@ -9,6 +9,7 @@ from astropy import constants
 from astropy.io import ascii
 from astropy.table import Table
 import numpy as np
+from numpy import sin, cos, hypot, arctan2
 from bayesn_model import write_snana_lcfile
 
 filt_map = {'g': 'g_PS1', 'r': 'r_PS1', 'i': 'i_PS1', 'z': 'z_PS1', 'X': 'p48g', 'Y': 'p48r'}
@@ -399,15 +400,39 @@ def get_SNclass_param(meta_list, param, ifstr, ifprint=False):
     return all_list, snII_list, snIa_list, snIbc_list, other_list
 
 
-def zhel_to_zcmb(zhel, ra, dec):
-    vsun_max = 369.82
+def zhel_to_zcmb(zhel, RA, Dec):
+    c = 299792.458  # km/s
+    v_Sun_Planck = 369.82
     d1, d2 = 264.021, 48.253  # Dipole coordinates
-    alpha = np.sqrt(np.power(ra - d1, 2) + np.power(dec - d2, 2))
-    c = constants.c.value / 1e3
-    vsun = vsun_max * np.cos(alpha)
-    zsun = np.sqrt((1 - vsun / c) / (1 + vsun / c)) - 1
-    zcmb = ((1 + zhel) / (1 + zsun)) - 1
+    RA_Sun_Planck = 167.816710  # deg
+    Dec_Sun_Planck = -6.989510  # deg
+    rad = np.pi / 180.0
+    # using Vincenty formula because it is more accurate
+    alpha = arctan2(
+        hypot(
+            cos(Dec_Sun_Planck * rad) * sin(np.fabs(RA - RA_Sun_Planck) * rad),
+            cos(Dec * rad) * sin(Dec_Sun_Planck * rad)
+            - sin(Dec * rad)
+            * cos(Dec_Sun_Planck * rad)
+            * cos(np.fabs(RA - RA_Sun_Planck) * rad),
+        ),
+        sin(Dec * rad) * sin(Dec_Sun_Planck * rad)
+        + cos(Dec * rad)
+        * cos(Dec_Sun_Planck * rad)
+        * cos(np.fabs(RA - RA_Sun_Planck) * rad),
+    )
+    v_Sun_proj = v_Sun_Planck * np.cos(alpha)
+    z_Sun = np.sqrt((1.0 + (-v_Sun_proj) / c) / (1.0 - (-v_Sun_proj) / c)) - 1.0
+    # Full special rel. correction since it is a peculiar vel
+    min_z = 0.0
+    zcmb = np.where(zhel > min_z, (1 + zhel) / (1 + z_Sun) - 1, zhel)
     return zcmb
+    #alpha = np.sqrt(np.power(RA - d1, 2) + np.power(Dec - d2, 2))
+    #c = constants.c.value / 1e3
+    #vsun = v_Sun_Planck * np.cos(alpha)
+    #zsun = np.sqrt((1 - vsun / c) / (1 + vsun / c)) - 1
+    #zcmb2 = ((1 + zhel) / (1 + zsun)) - 1
+    #return zcmb
 
 
 # ----------------
@@ -423,19 +448,33 @@ Ia_df_list = [full_df_list[i] for i in Ia_inds]
 
 meta_list, table_list = [], []
 
+good = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 48, 49, 50, 51, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 97, 98, 99, 100, 102, 103, 104, 105, 106, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 119, 120, 122, 124, 125, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 142, 143, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 189, 190, 192, 193, 195, 196, 197, 198, 200, 201, 202, 204, 205, 206, 207, 209, 210, 212, 213, 215, 216, 217, 218, 219, 220, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 240, 241, 243, 244, 245, 246, 247, 248, 249, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288]
+bad = [47, 52, 63, 96, 101, 107, 118, 121, 123, 126, 127, 141, 144, 188, 191, 194, 199, 203, 208, 211, 214, 221, 238, 239, 242, 250, 251, 273]
+
 for i in range(len(Ia_snid_list)):
+    if i not in good:
+        continue
     sn, meta, df = Ia_snid_list[i], Ia_meta_list[i], Ia_df_list[i]
+    #df = df[df.PASSBAND.isin(['X', 'Y'])]
+    #if df.empty:
+    #    continue
     FLT = df.PASSBAND.apply(lambda flt: filt_map[flt])
+    colour_dict = {'X': 'g', 'Y': 'r', 'g': 'g', 'r': 'g', 'i': 'b', 'z': 'k'}
     z_helio, z_helio_err = meta['redshift'], meta['redshift_err']
     z_cmb, z_cmb_err = zhel_to_zcmb(z_helio, meta['ra'], meta['dec']), z_helio_err
-    plt.errorbar(df.MJD, df.MAG, yerr=df.MAGERR, fmt='x')
-    plt.title(sn)
-    plt.show()
-    break
+    #for filt in df.PASSBAND.unique():
+    #    filt_df = df[df.PASSBAND == filt]
+    #    plt.errorbar(filt_df.MJD, filt_df.MAG, yerr=filt_df.MAGERR, fmt='x', color=colour_dict[filt])
+    #plt.vlines(meta['peakmjd'], df.MAG.min(), df.MAG.max())
+    #plt.title(sn)
+    #plt.gca().invert_yaxis()
+    #plt.show()
+    #continue
     write_snana_lcfile('data/lcs/YSE_DR1', sn, df.MJD, FLT, df.MAG, df.MAGERR, meta['peakmjd'], z_helio, z_cmb,
                        z_cmb_err, meta['mwebv'], ra=meta['ra'], dec=meta['dec'])
     meta_list.append([sn, meta['peakmjd'], z_cmb, z_cmb_err])
     table_list.append([sn, 'YSE_DR1', f'{sn}.snana.dat'])
+
 
 meta_list, table_list = np.array(meta_list), np.array(table_list)
 meta = pd.DataFrame(meta_list, columns=['SNID', 'SEARCH_PEAKMJD', 'REDSHIFT_CMB', 'REDSHIFT_CMB_ERR'])
