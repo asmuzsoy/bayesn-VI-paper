@@ -436,7 +436,7 @@ def zhel_to_zcmb(zhel, RA, Dec):
 
 
 # ----------------
-
+c = 299792.458
 full_snid_list, full_meta_list, full_df_list = read_YSE_ZTF_snana_dir(dir_name='/Users/matt/Downloads/yse_dr1_zenodo_snr_geq_4')
 
 spec_type = np.array(get_param(meta_list=full_meta_list, param='transient_spec_class'))
@@ -450,18 +450,33 @@ meta_list, table_list = [], []
 
 good = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 48, 49, 50, 51, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 97, 98, 99, 100, 102, 103, 104, 105, 106, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 119, 120, 122, 124, 125, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 142, 143, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 189, 190, 192, 193, 195, 196, 197, 198, 200, 201, 202, 204, 205, 206, 207, 209, 210, 212, 213, 215, 216, 217, 218, 219, 220, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 240, 241, 243, 244, 245, 246, 247, 248, 249, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288]
 bad = [47, 52, 63, 96, 101, 107, 118, 121, 123, 126, 127, 141, 144, 188, 191, 194, 199, 203, 208, 211, 214, 221, 238, 239, 242, 250, 251, 273]
+zs = []
+
+vpec_table = pd.read_csv('YSE_DR1_vpec_output.txt', delim_whitespace=True)
+
+bad_names = ['2020tfy', '2021aaqi', '2021aaxi', '2021acza', '2021adnv', '2021ita', '2021jox', '2021kcc', '2021lfv']
 
 for i in range(len(Ia_snid_list)):
-    if i not in good:
-        continue
+    #if i in good:
+    #    continue
     sn, meta, df = Ia_snid_list[i], Ia_meta_list[i], Ia_df_list[i]
+    if sn in bad_names:
+        continue
     #df = df[df.PASSBAND.isin(['X', 'Y'])]
     #if df.empty:
     #    continue
     FLT = df.PASSBAND.apply(lambda flt: filt_map[flt])
     colour_dict = {'X': 'g', 'Y': 'r', 'g': 'g', 'r': 'g', 'i': 'b', 'z': 'k'}
     z_helio, z_helio_err = meta['redshift'], meta['redshift_err']
-    z_cmb, z_cmb_err = zhel_to_zcmb(z_helio, meta['ra'], meta['dec']), z_helio_err
+    z_cmb = zhel_to_zcmb(z_helio, meta['ra'], meta['dec'])
+    v_pec = vpec_table['v_pec'].values[i]
+    z_pec = np.sqrt((1 + v_pec / c) / (1 - v_pec / c)) - 1
+    z_hd, z_hd_err = (1 + z_cmb) / (1 + z_pec) - 1, z_helio_err
+
+    if z_hd < 0.015:  # Cut low redshift objects
+        continue
+
+    zs.append(z_cmb)
     #for filt in df.PASSBAND.unique():
     #    filt_df = df[df.PASSBAND == filt]
     #    plt.errorbar(filt_df.MJD, filt_df.MAG, yerr=filt_df.MAGERR, fmt='x', color=colour_dict[filt])
@@ -470,11 +485,10 @@ for i in range(len(Ia_snid_list)):
     #plt.gca().invert_yaxis()
     #plt.show()
     #continue
-    write_snana_lcfile('data/lcs/YSE_DR1', sn, df.MJD, FLT, df.MAG, df.MAGERR, meta['peakmjd'], z_helio, z_cmb,
-                       z_cmb_err, meta['mwebv'], ra=meta['ra'], dec=meta['dec'])
-    meta_list.append([sn, meta['peakmjd'], z_cmb, z_cmb_err])
+    write_snana_lcfile('data/lcs/YSE_DR1', sn, df.MJD, FLT, df.MAG, df.MAGERR, meta['peakmjd'], z_helio, z_hd,
+                       z_hd_err, meta['mwebv'], ra=meta['ra'], dec=meta['dec'])
+    meta_list.append([sn, meta['peakmjd'], z_cmb, z_hd_err])
     table_list.append([sn, 'YSE_DR1', f'{sn}.snana.dat'])
-
 
 meta_list, table_list = np.array(meta_list), np.array(table_list)
 meta = pd.DataFrame(meta_list, columns=['SNID', 'SEARCH_PEAKMJD', 'REDSHIFT_CMB', 'REDSHIFT_CMB_ERR'])

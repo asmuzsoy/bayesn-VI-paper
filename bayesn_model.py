@@ -9,7 +9,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 from scipy.integrate import simpson
 import numpyro
-from numpyro.infer import MCMC, NUTS, init_to_median, init_to_sample, init_to_value
+from numpyro.infer import MCMC, NUTS, init_to_median, init_to_sample, init_to_value, Predictive
 import numpyro.distributions as dist
 from numpyro.optim import Adam
 from numpyro.infer import SVI, Trace_ELBO
@@ -22,7 +22,7 @@ import pandas as pd
 import jax
 from jax import device_put
 import jax.numpy as jnp
-from jax.random import PRNGKey
+from jax.random import PRNGKey, split
 from astropy.cosmology import FlatLambdaCDM
 import astropy.table as at
 import astropy.constants as const
@@ -668,8 +668,9 @@ class SEDmodel(object):
             band_indices = obs[-6, :, sn_index].astype(int).T
             muhat = obs[-3, 0, sn_index]
             mask = obs[-1, :, sn_index].T.astype(bool)
-            muhat_err = 10
+            muhat_err = 5
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
+            #Ds = numpyro.sample('Ds', dist.ImproperUniform(dist.constraints.greater_than(0), (), event_shape=()))
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))  # Ds_err
             flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
                                        J_t, hsiao_interp, weights)
@@ -719,6 +720,8 @@ class SEDmodel(object):
 
         if init_strategy == 'median':
             init_strategy = init_to_median()
+        elif init_strategy == 'value':
+            init_strategy = init_to_value(values=self.fit_initial_guess())
         elif init_strategy == 'map':
             init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
         elif init_strategy == 'sample':
@@ -741,10 +744,8 @@ class SEDmodel(object):
             self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
-        #self.data = self.data[..., 41:42]  # Just to subsample the data, for testing
-        #self.band_weights = self.band_weights[41:42, ...]  # Just to subsample the data, for testing
-
-        rng = PRNGKey(123)
+        rng = PRNGKey(321)
+        rng, rng_ = split(rng)
         nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
 
         def do_mcmc(data, weights):
@@ -786,6 +787,76 @@ class SEDmodel(object):
         #end = timeit.default_timer()
         #print('vmap: ', end - start)
         #self.fit_postprocess(samples, output)
+
+
+        """good, bad = [], []
+        for i in tqdm(range(self.data.shape[2])):
+            print(i, self.sn_list[i])
+            #if i != 8:
+            #    continue
+            data = self.data[..., i:i+1]  # Just to subsample the data, for testing
+            band_weights = self.band_weights[i:i+1, ...]  # Just to subsample the data, for testing
+            #init_strategy = init_to_value(values=self.fit_initial_guess())
+            prior_predictive = Predictive(self.fit_model, num_samples=100)
+            redshift = data[-5, 0, 0]
+            redshift_error = data[-4, 0, 0]
+            muhat_err = 5 / (redshift * jnp.log(10)) * jnp.sqrt(
+                jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))
+            print(f'Muhat: {data[-3, 0, 0]}')
+            N = 100
+            t = np.arange(-10, 40, 1)
+            bands = ['p48g', 'p48r', 'g_PS1', 'r_PS1', 'i_PS1', 'z_PS1']
+            preds = self.simulate_light_curve(t, N, bands, z=data[-5, 0, 0],
+                                              mu=data[-3, 0, 0], write_to_files=False, mag=False)
+            num_bands = len(bands)
+            num_per_band = len(t)
+            t = t[:, None].repeat(num_bands, axis=1).flatten(order='F')
+            mean, std = np.mean(preds[0], axis=1),  np.std(preds[0], axis=1)
+            print(self.band_dict)
+            fig, axs = plt.subplots(2, 3, sharex=True, sharey=True, figsize=(16, 12))
+            colours = ['g', 'r', 'g', 'r', 'c', 'k']
+            band_inds = [87, 88, 40, 41, 42, 43]
+            for n in range(num_bands):
+                ax = axs.flatten()[n]
+                ax.plot(t[n * num_per_band: (n + 1) * num_per_band], mean[n * num_per_band: (n + 1) * num_per_band], c=colours[n], label=bands[n])
+                ax.fill_between(t[n * num_per_band: (n + 1) * num_per_band], mean[n * num_per_band: (n + 1) * num_per_band] - std[n * num_per_band: (n + 1) * num_per_band],
+                                 mean[n * num_per_band: (n + 1) * num_per_band] + std[n * num_per_band: (n + 1) * num_per_band], alpha=0.3, color=colours[n])
+                band_data = data[:, data[-6, :, 0] == band_inds[n]]
+                ax.errorbar(band_data[0, :, 0], band_data[1, :, 0], yerr=band_data[2, :, 0], fmt=f'{colours[n]}x')
+                ax.legend()
+            #ax.invert_yaxis()
+            plt.subplots_adjust(hspace=0, wspace=0)
+            #nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
+            mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
+                        chain_method=chain_method)
+            try:
+                mcmc.run(rng_, data, band_weights)
+                mcmc.print_summary()
+                samples = mcmc.get_samples(group_by_chain=True)
+                summary = arviz.summary(samples)
+                rhat = np.mean(summary.r_hat)
+                plt.suptitle(f'{self.sn_list[i]}: Mean rhat = {rhat}')
+                plt.savefig(f'plots/YSE_DR1_bad/{self.sn_list[i]}.png')
+                plt.show()
+                for j in range(4):
+                    plt.hist(samples['Ds'][j, :, 0], bins=np.linspace(np.min(samples['Ds'][j, ..., 0]), np.max(samples['Ds'][j, ..., 0]), 10), histtype='step')
+                plt.show()
+                if rhat > 1.05:
+                    bad.append(i)
+                else:
+                    good.append(i)
+                continue
+            except:
+                #raise ValueError('Nope')
+                bad.append(i)
+                continue
+        print(len(good), len(bad))
+        print(good)
+        print(bad)
+        print(repr(good))
+        print(repr(bad))
+
+        return"""
 
         start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
@@ -964,6 +1035,44 @@ class SEDmodel(object):
         param_init['L_Omega'] = jnp.array(L_Omega_init)
 
         param_init['Ds'] = jnp.array(np.random.normal(self.data[-3, 0, :], sigma0_))
+
+        return param_init
+
+    def fit_initial_guess(self):
+        """
+        Function to set initialisation for training chains, using some global parameter values from previous models as a
+        reference. W0 and W1 matrices are interpolated to match wavelength knots of new model. Note that unlike Stan,
+        in numpyro we cannot set each chain's initialisation separately.
+
+        Parameters
+        ----------
+        reference_model: str, optional
+            Previously-trained model to be used to set initialisation, defaults to T21.
+
+        Returns
+        -------
+        param_init: dict
+            Dictionary containing initial values to be used
+
+        """
+        # I should remove all of this hardcoding
+        n_eps = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
+
+        n_sne = self.data.shape[-1]
+
+        # Prepare initial guesses
+        # I should make the jittering more free for the user to control
+        param_init = {}
+        param_init['theta'] = jnp.array(np.random.normal(0, 1, n_sne))
+        param_init['Av'] = jnp.array(np.random.exponential(self.tauA, n_sne))
+
+        # param_init['theta'] = device_put(chains['theta'].mean(axis=(0, 1)))
+        # param_init['Av'] = device_put(chains['AV'].mean(axis=(0, 1)))
+
+        param_init['epsilon_tform'] = jnp.matmul(np.linalg.inv(self.L_Sigma), np.random.normal(0, 1, (n_eps, n_sne)))
+        param_init['epsilon'] = np.random.normal(0, 1, (n_sne, n_eps))
+        param_init['Ds'] = jnp.array(np.random.normal(self.data[-3, 0, :], self.sigma0))
+        param_init['tmax'] = jnp.zeros_like(param_init['Ds'])
 
         return param_init
 
@@ -1232,6 +1341,8 @@ class SEDmodel(object):
                 all_data = pickle.load(file)
             with open(os.path.join('data', 'lcs', 'pickles', sample_name, 'J_t.pkl'), 'rb') as file:
                 all_J_t = pickle.load(file)
+            sne = np.load(os.path.join('data', 'lcs', 'pickles', sample_name, 'sn_list.npy'), allow_pickle=True)
+            self.sn_list = sne
             self.data = device_put(all_data.T)
             self.J_t = device_put(all_J_t)
             self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
@@ -1250,6 +1361,7 @@ class SEDmodel(object):
             row = sn_list.iloc[i]
             sn_files = row.files.split(',')
             sn_lc = None
+            sn = row.sn
             for file in sn_files:
                 meta, lcdata = sncosmo.read_snana_ascii(os.path.join('data', 'lcs', row.source, file), default_tablename='OBS')
                 data = lcdata['OBS'].to_pandas()
@@ -1294,6 +1406,7 @@ class SEDmodel(object):
         N_sn = sn_list.shape[0]
         N_obs = np.max(n_obs)
         N_col = lc.shape[1]
+        sne = sn_list['sn'].values
         all_data = np.zeros((N_sn, N_obs, N_col))
         all_J_t = np.zeros((N_sn, self.tau_knots.shape[0], N_obs))
         print('Saving light curves to standard grid...')
@@ -1306,6 +1419,8 @@ class SEDmodel(object):
             pickle.dump(all_data, file)
         with open(os.path.join('data', 'lcs', 'pickles', sample_name, 'J_t.pkl'), 'wb') as file:
             pickle.dump(all_J_t, file)
+        np.save(os.path.join('data', 'lcs', 'pickles', sample_name, 'sn_list'), sne)
+        self.sn_list = sne
         self.data = device_put(all_data.T)
         self.J_t = device_put(all_J_t)
         self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
