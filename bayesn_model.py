@@ -139,7 +139,7 @@ class SEDmodel(object):
         # Settings for jax/numpyro
         numpyro.set_host_device_count(num_devices)
         jax.config.update('jax_enable_x64', enable_x64)
-        #os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
+        # os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
         print('Current devices:', jax.devices())
 
         self.cosmo = FlatLambdaCDM(**fiducial_cosmology)
@@ -151,7 +151,7 @@ class SEDmodel(object):
         self.device_scale = device_put(jnp.array(self.scale))
         self.sigma_pec = device_put(jnp.array(150 / 3e5))
 
-        #try:
+        # try:
         if os.path.exists(f'model_files/{load_model}/BAYESN.YAML'):
             with open(f'model_files/{load_model}/BAYESN.YAML', 'r') as file:
                 params = yaml.load(file, Loader=yaml.Loader)
@@ -180,7 +180,7 @@ class SEDmodel(object):
             self.W0 = device_put(self.W0)
             self.W1 = device_put(self.W1)
             self.L_Sigma = device_put(self.L_Sigma)
-        #except:
+        # except:
         #    raise ValueError('Must select one of M20_model, T21_model, T21_partial-split_model and W22_model')
 
         # Initialise arrays and values for band responses - these are based on ParSNiP as presented in Boone+22
@@ -207,6 +207,8 @@ class SEDmodel(object):
              1e4 / 2600.])
         KD_x = spline_utils.invKD_irr(self.xk)
         self.M_fitz_block = device_put(spline_utils.spline_coeffs_irr(1e4 / self.model_wave, self.xk, KD_x))
+
+        self.J_t_map = jax.jit(jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None)))
 
     def load_hsiao_template(self):
         """
@@ -647,12 +649,14 @@ class SEDmodel(object):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
-            #Rv = numpyro.sample('Rv', dist.Uniform(1, 6))
+            # Rv = numpyro.sample('Rv', dist.Uniform(1, 6))
             tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))
             t = obs[0, ...] - tmax[None, sn_index]
             hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
             keep_shape = t.shape
             t = t.flatten(order='F')
+            # J_t = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
+            #                                                         order='F').transpose(1, 2, 0)
             J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
                                                                      order='F').transpose(1, 2, 0)
             eps_mu = jnp.zeros(N_knots_sig)
@@ -670,7 +674,7 @@ class SEDmodel(object):
             mask = obs[-1, :, sn_index].T.astype(bool)
             muhat_err = 5
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
-            #Ds = numpyro.sample('Ds', dist.ImproperUniform(dist.constraints.greater_than(0), (), event_shape=()))
+            # Ds = numpyro.sample('Ds', dist.ImproperUniform(dist.constraints.greater_than(0), (), event_shape=()))
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))  # Ds_err
             flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
                                        J_t, hsiao_interp, weights)
@@ -715,8 +719,6 @@ class SEDmodel(object):
             ``'sample'`` | Chains are initialised to a random sample from the priors
 
         """
-
-        self.J_t_map = jax.jit(jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None)))
 
         if init_strategy == 'median':
             init_strategy = init_to_median()
@@ -775,19 +777,18 @@ class SEDmodel(object):
             mcmc.run(rng_key, data[..., None], weights[None, ...])
             return {**mcmc.get_samples(group_by_chain=True), **mcmc.get_extra_fields(group_by_chain=True)}
 
-        #map = jax.vmap(do_mcmc, in_axes=(2, 0))
-        #start = timeit.default_timer()
-        #samples = map(self.data, self.band_weights)
-        #for key, val in samples.items():
+        # map = jax.vmap(do_mcmc, in_axes=(2, 0))
+        # start = timeit.default_timer()
+        # samples = map(self.data, self.band_weights)
+        # for key, val in samples.items():
         #    val = np.squeeze(val)
         #    if len(val.shape) == 4:
         #        samples[key] = val.transpose(1, 2, 0, 3)
         #    else:
         #        samples[key] = val.transpose(1, 2, 0)
-        #end = timeit.default_timer()
-        #print('vmap: ', end - start)
-        #self.fit_postprocess(samples, output)
-
+        # end = timeit.default_timer()
+        # print('vmap: ', end - start)
+        # self.fit_postprocess(samples, output)
 
         """good, bad = [], []
         for i in tqdm(range(self.data.shape[2])):
@@ -949,7 +950,7 @@ class SEDmodel(object):
             eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
             eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
             eps = eps_full.at[:, 1:-1, :].set(eps)
-            #eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            # eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
 
             band_indices = obs[-6, :, sn_index].astype(int).T
             redshift = obs[-5, 0, sn_index]
@@ -1184,8 +1185,9 @@ class SEDmodel(object):
         # rng = PRNGKey(101)
         # numpyro.render_model(self.train_model, model_args=(self.data,), filename='train_model.pdf')
         nuts_kernel = NUTS(self.train_model, adapt_step_size=True, target_accept_prob=0.8, init_strategy=init_strategy,
-                           dense_mass=False, find_heuristic_step_size=False, regularize_mass_matrix=False, step_size=0.1)
-                           #max_tree_depth=max_tree_depth)
+                           dense_mass=False, find_heuristic_step_size=False, regularize_mass_matrix=False,
+                           step_size=0.1)
+        # max_tree_depth=max_tree_depth)
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                     chain_method=chain_method)
         jax.profiler.save_device_memory_profile('memory.prof')
@@ -1249,7 +1251,8 @@ class SEDmodel(object):
 
         sigmaepsilon = np.mean(samples['sigmaepsilon'], axis=[0, 1])
         L_Omega = np.mean(samples['L_Omega'], axis=[0, 1])
-        L_Sigma = np.matmul(np.diag(np.mean(samples['sigmaepsilon'], axis=[0, 1])), np.mean(samples['L_Omega'], axis=[0, 1]))
+        L_Sigma = np.matmul(np.diag(np.mean(samples['sigmaepsilon'], axis=[0, 1])),
+                            np.mean(samples['L_Omega'], axis=[0, 1]))
         sigma0 = np.mean(samples['sigma0'])
 
         Rv = np.mean(samples['Rv'])
@@ -1363,7 +1366,8 @@ class SEDmodel(object):
             sn_lc = None
             sn = row.sn
             for file in sn_files:
-                meta, lcdata = sncosmo.read_snana_ascii(os.path.join('data', 'lcs', row.source, file), default_tablename='OBS')
+                meta, lcdata = sncosmo.read_snana_ascii(os.path.join('data', 'lcs', row.source, file),
+                                                        default_tablename='OBS')
                 data = lcdata['OBS'].to_pandas()
                 if 'SEARCH_PEAKMJD' in sn_list.columns:
                     peak_mjd = row.SEARCH_PEAKMJD
@@ -1388,8 +1392,9 @@ class SEDmodel(object):
                 data['dist_mod'] = self.cosmo.distmod(row.REDSHIFT_CMB)
                 data['mask'] = 1
                 if data_mode == 'flux':
-                    lc = data[['t', 'flux', 'flux_err', 'band_indices', 'redshift', 'redshift_error', 'dist_mod', 'MWEBV',
-                               'mask']]
+                    lc = data[
+                        ['t', 'flux', 'flux_err', 'band_indices', 'redshift', 'redshift_error', 'dist_mod', 'MWEBV',
+                         'mask']]
                     lc = lc.dropna(subset=['flux', 'flux_err'])
                 else:
                     lc = data[['t', 'MAG', 'MAGERR', 'band_indices', 'redshift', 'redshift_error', 'dist_mod', 'MWEBV',
@@ -1590,7 +1595,8 @@ class SEDmodel(object):
                     raise ValueError(
                         'For epsilon, please pass an array-like object of shape (N, l_knots, tau_knots). The only scalar '
                         'value accepted is 0, which will effectively remove the effect of epsilon')
-            elif len(eps.shape) == 2 and eps.shape[0] == self.l_knots.shape[0] and eps.shape[1] == self.tau_knots.shape[0]:
+            elif len(eps.shape) == 2 and eps.shape[0] == self.l_knots.shape[0] and eps.shape[1] == self.tau_knots.shape[
+                0]:
                 eps = eps[None, ...].repeat(N, axis=0)
             elif len(eps.shape) != 3 or eps.shape[0] != N or eps.shape[1] != self.l_knots.shape[0] or eps.shape[2] != \
                     self.tau_knots.shape[0]:
@@ -1829,10 +1835,10 @@ class SEDmodel(object):
         t = t.reshape(keep_shape, order='F')
         if mag:
             data = self.get_mag_batch(theta, AV, self.W0, self.W1, eps, mu + del_M, Rv, band_indices, mask, J_t,
-                                       hsiao_interp, band_weights)
+                                      hsiao_interp, band_weights)
         else:
             data = self.get_flux_batch(theta, AV, self.W0, self.W1, eps, mu + del_M, Rv, band_indices, mask, J_t,
-                                    hsiao_interp, band_weights)
+                                       hsiao_interp, band_weights)
 
         if write_to_files and mag:
             if sim_name is None:
@@ -1851,8 +1857,9 @@ class SEDmodel(object):
                 sn_t = sn_t * (1 + sn_z)
                 sn_tmax = 0
                 sn_flt = [self.inv_band_dict[f] for f in band_indices[:, i]]
-                sn_file = write_snana_lcfile(output_dir, sn_name, sn_t, sn_flt, sn_mag, sn_mag_err, sn_tmax, sn_z, sn_z, sn_z_err,
-                                   sn_ebv_mw)
+                sn_file = write_snana_lcfile(output_dir, sn_name, sn_t, sn_flt, sn_mag, sn_mag_err, sn_tmax, sn_z, sn_z,
+                                             sn_z_err,
+                                             sn_ebv_mw)
                 sn_names.append(sn_name)
                 sn_files.append(sn_file)
             # Prepare sample files
@@ -1966,8 +1973,115 @@ class SEDmodel(object):
         save_data = np.array([redshifts, hres, hres_err, theta, theta_err, Av, Av_err])
         np.save(os.path.join('results', model, 'hres'), save_data)
 
+    def analyse_fit_sample(self, model):
+        with open(os.path.join('results', model, 'chains.pkl'), 'rb') as file:
+            chains = pickle.load(file)
+        # ------
+        with open(os.path.join('results', 'T21_fit', 'chains.pkl'), 'rb') as file:
+            T21_chains = pickle.load(file)
+        with open('data/lcs/pickles/foundation/dataset_mag.pkl', 'rb') as file:
+            T21_data = pickle.load(file).T
+        T21_redshifts = T21_data[-5, 0, :]
+        T21_mu_model = T21_data[-3, 0, :]
+        T21_mu, T21_mu_err = T21_chains['mu'].mean(axis=(0, 1)), T21_chains['mu'].std(axis=(0, 1))
+        T21_hres = T21_mu - T21_mu_model
+        print(np.std(T21_hres))
+        # ------
+        theta = np.mean(chains['theta'], axis=(0, 1))
+        Av = np.mean(chains['AV'], axis=(0, 1))
+        print(repr(self.sn_list[Av > 1]))
+        """plt.figure(figsize=(12, 8))
+        plt.hist(theta, bins=np.arange(-3.5, 4, 0.5), histtype='step')
+        plt.xlabel(r'$\theta$')
+        plt.vlines([-1.33, 2.8], 0, 60, ls='--', color='b')
+        plt.show()
+        plt.figure(figsize=(12, 8))
+        plt.hist(Av, histtype='step')
+        plt.xlabel(r'A$_V$')
+        plt.show()"""
 
-def write_snana_lcfile(output_dir, snname, mjd, flt, mag, magerr, tmax, z_helio, z_cmb, z_cmb_err, ebv_mw, ra=None, dec=None, author="anonymous", survey=None, paper=None, filename=None):
+        mu, mu_err = np.mean(chains['mu'], axis=(0, 1)), np.std(chains['mu'], axis=(0, 1))
+        hres = mu - self.data[-3, 0, :]
+        print(np.std(hres[hres < 2]))
+        fig, ax = plt.subplots(2, sharex=True, figsize=(7, 8))
+        ax[0].errorbar(self.data[-5, 0, :], mu, yerr=mu_err, fmt='bx', label='YSE')
+        ax[0].errorbar(T21_redshifts, T21_mu, yerr=T21_mu_err, fmt='rx', label='Foundation')
+        ax[1].errorbar(self.data[-5, 0, :], hres, yerr=mu_err, fmt='bx')
+        ax[1].errorbar(T21_redshifts, T21_hres, yerr=T21_mu_err, fmt='rx')
+        ax[0].legend()
+        model_x = np.linspace(self.data[-5, 0, :].min(), self.data[-5, 0, :].max(), 100)
+        model_y = np.array([self.cosmo.distmod(z).value for z in model_x])
+        ax[0].plot(model_x, model_y, ls='--', c='b')
+        ax[1].set_xlabel('Redshift')
+        ax[0].set_ylabel('Distance modulus')
+        ax[1].set_ylabel('Hubble residual')
+        plt.subplots_adjust(hspace=0, wspace=0)
+        plt.savefig('plots/YSE_Foundation_HD.png')
+        plt.show()
+        plt.figure(figsize=(12, 8))
+        plt.scatter(Av, hres)
+        plt.xlabel(r'A$_V$')
+        plt.ylabel('Hubble residual')
+        plt.savefig('plots/Av_vs_Hres.png')
+        plt.show()
+        plt.figure(figsize=(12, 8))
+        plt.errorbar(theta, hres, yerr=mu_err, fmt='bx')
+        plt.xlabel(r'$\theta$')
+        plt.ylabel('Hubble residual')
+        plt.savefig('plots/theta_vs_Hres.png')
+        plt.show()
+
+    def plot_fits(self, model):
+        with open(os.path.join('results', model, 'chains.pkl'), 'rb') as file:
+            chains = pickle.load(file)
+        print(chains.keys())
+        for key, val in chains.items():
+            chains[key] = np.reshape(val, (val.shape[0] * val.shape[1], *val.shape[2:]), order='F')
+        rng_key, rng_key_ = jax.random.split(PRNGKey(123))
+        # pred = Predictive(self.fit_model, chains)
+        # preds = pred(rng_key, self.data, self.band_weights)['obs']
+        bands = ['p48g', 'p48r', 'g_PS1', 'r_PS1', 'i_PS1', 'z_PS1']
+        band_inds = [self.band_dict[band] for band in bands]
+        t = np.arange(-10, 41, 1)
+        num_per_band = len(t)
+        num_bands = len(bands)
+        for i in range(chains['theta'].shape[-1]):
+            eps = chains['eps'][..., i].reshape((1000, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+            full_eps = np.zeros((1000, 6, 6))
+            full_eps[:, 1:-1, :] = eps
+            tmax = np.mean(chains['tmax'], axis=0)[i]
+            z = np.array(self.data[-5, 0, i])
+            hres = np.mean(chains['mu'], axis=0)[i] - self.cosmo.distmod(z).value
+            model_lc = self.simulate_light_curve(t, 1000, bands, z=self.data[-5, 0, i], write_to_files=False, mag=True,
+                                                 mu=chains['mu'][:, i], theta=chains['theta'][:, i],
+                                                 AV=chains['AV'][:, i], del_M=chains['delM'][:, i], eps=full_eps,
+                                                 ebv_mw=self.data[-2, 0, i])[0]
+            mean, std = np.mean(model_lc, axis=1), np.std(model_lc, axis=1)
+            fig, axs = plt.subplots(2, 3, sharex=True, sharey='row', figsize=(16, 12))
+            colours = ['g', 'r', 'g', 'r', 'c', 'k']
+            for n in range(num_bands):
+                ax = axs.flatten()[n]
+                ax.plot(t, mean[n * num_per_band: (n + 1) * num_per_band],
+                        c=colours[n], label=bands[n])
+                ax.fill_between(t,
+                                mean[n * num_per_band: (n + 1) * num_per_band] - std[n * num_per_band: (n + 1) * num_per_band],
+                                mean[n * num_per_band: (n + 1) * num_per_band] + std[n * num_per_band: ( n + 1) * num_per_band],
+                                alpha=0.3, color=colours[n])
+                band_data = self.data[:, self.data[-6, :, i] == band_inds[n]]
+                ax.errorbar(band_data[0, :, i] - tmax, band_data[1, :, i], yerr=band_data[2, :, i], fmt=f'{colours[n]}x')
+                ax.legend()
+                ax.invert_yaxis()
+            plt.subplots_adjust(hspace=0, wspace=0)
+            fig.supxlabel('Phase')
+            fig.supylabel('Apparent magnitude')
+            plt.suptitle(f'{self.sn_list[i]}: Hubble residual = {hres}')
+            plt.savefig(f'plots/YSE_T21_fits/{self.sn_list[i]}.png')
+            plt.show()
+
+
+
+def write_snana_lcfile(output_dir, snname, mjd, flt, mag, magerr, tmax, z_helio, z_cmb, z_cmb_err, ebv_mw, ra=None,
+                       dec=None, author="anonymous", survey=None, paper=None, filename=None):
     '''
     Write user data to an SNANA-like light curve file
 
@@ -2035,33 +2149,33 @@ def write_snana_lcfile(output_dir, snname, mjd, flt, mag, magerr, tmax, z_helio,
         raise ValueError("Requested output directory does not exist!")
 
     tab = at.Table([mjd, flt, mag, magerr], names=["MJD", "FLT", "MAG", "MAGERR"])
-    #Compute fluxcal and fluxcalerr
-    tab["FLUXCAL"] = 10**((27.5 - tab["MAG"])/2.5)
-    tab["FLUXCALERR"] = tab["FLUXCAL"]*tab["MAGERR"]*np.log(10)/2.5
-    #Column which designates observations
-    tab["VARLIST:"] = ["OBS:"]*len(tab)
-    #Round fluxes and flux errors
-    tab["FLUXCAL"] = np.round(tab["FLUXCAL"],4)
-    tab["FLUXCALERR"] = np.round(tab["FLUXCALERR"],4)
-    #Reorder columns
+    # Compute fluxcal and fluxcalerr
+    tab["FLUXCAL"] = 10 ** ((27.5 - tab["MAG"]) / 2.5)
+    tab["FLUXCALERR"] = tab["FLUXCAL"] * tab["MAGERR"] * np.log(10) / 2.5
+    # Column which designates observations
+    tab["VARLIST:"] = ["OBS:"] * len(tab)
+    # Round fluxes and flux errors
+    tab["FLUXCAL"] = np.round(tab["FLUXCAL"], 4)
+    tab["FLUXCALERR"] = np.round(tab["FLUXCALERR"], 4)
+    # Reorder columns
     tab = tab["VARLIST:", "MJD", "FLT", "FLUXCAL", "FLUXCALERR", "MAG", "MAGERR"]
 
-    #Divider for the header
-    divider = "-"*59
+    # Divider for the header
+    divider = "-" * 59
 
-    #Write a preamble to the metadata dictionary
-    datestamp = time.strftime("%Y.%m.%d",time.localtime())
-    timestamp = time.strftime("%H.%M hrs (%Z)",time.localtime())
+    # Write a preamble to the metadata dictionary
+    datestamp = time.strftime("%Y.%m.%d", time.localtime())
+    timestamp = time.strftime("%H.%M hrs (%Z)", time.localtime())
     preamble = ("\n# SNANA-like file generated from user-provided data\n" +
-        "# Zeropoint of the converted SNANA file: 27.5 mag\n" +
-        "# {}\n".format(divider) +
-        "# Data table created by: {}\n".format(author) +
-        "# On date: {} (yyyy.mm.dd); {}.\n".format(datestamp, timestamp) +
-        "# Script used: BayeSNmodel.io.write_snana_lcfile.py\n" +
-        "# {}".format(divider))
+                "# Zeropoint of the converted SNANA file: 27.5 mag\n" +
+                "# {}\n".format(divider) +
+                "# Data table created by: {}\n".format(author) +
+                "# On date: {} (yyyy.mm.dd); {}.\n".format(datestamp, timestamp) +
+                "# Script used: BayeSNmodel.io.write_snana_lcfile.py\n" +
+                "# {}".format(divider))
     tab.meta = {"# {}".format(snname): preamble}
 
-    #Add metadata
+    # Add metadata
     tab.meta["SNID:"] = snname
     if survey is not None:
         tab.meta["SOURCE:"] = survey
@@ -2070,16 +2184,19 @@ def write_snana_lcfile(output_dir, snname, mjd, flt, mag, magerr, tmax, z_helio,
     if dec is not None:
         tab.meta["DEC:"] = dec
     filters = ",".join(at.unique(tab, keys="FLT")["FLT"])
-    tab.meta.update({"MWEBV:": ebv_mw, "REDSHIFT_HELIO:": z_helio, "REDSHIFT_CMB:": z_cmb, "REDSHIFT_CMB_ERR:": z_cmb_err, "PEAKMJD:": tmax, "FILTERS:": filters, "#": divider, "NOBS:": len(tab), "NVAR:": 6})
+    tab.meta.update(
+        {"MWEBV:": ebv_mw, "REDSHIFT_HELIO:": z_helio, "REDSHIFT_CMB:": z_cmb, "REDSHIFT_CMB_ERR:": z_cmb_err,
+         "PEAKMJD:": tmax, "FILTERS:": filters, "#": divider, "NOBS:": len(tab), "NVAR:": 6})
 
-    #Write to file
+    # Write to file
     if filename is None:
-        filename = snname + (survey is not None)*"_{}".format(survey) + (paper is not None)*"_{}".format(paper) + ".snana.dat"
+        filename = snname + (survey is not None) * "_{}".format(survey) + (paper is not None) * "_{}".format(
+            paper) + ".snana.dat"
     sncosmo.write_lc(tab, os.path.join(output_dir, filename), fmt="salt2", metachar="")
 
-    #Write terminating line
+    # Write terminating line
     with open(os.path.join(output_dir, filename), "a") as f:
         f.write("END:")
 
-    #Return filename
+    # Return filename
     return filename

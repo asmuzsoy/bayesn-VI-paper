@@ -454,7 +454,11 @@ zs = []
 
 vpec_table = pd.read_csv('YSE_DR1_vpec_output.txt', delim_whitespace=True)
 
-bad_names = ['2020tfy', '2021aaqi', '2021aaxi', '2021acza', '2021adnv', '2021ita', '2021jox', '2021kcc', '2021lfv']
+bad_names = ['2020tfy', '2021aaqi', '2021aaxi', '2021acza', '2021adnv', '2021ita', '2021jox', '2021kcc', '2021lfv'] # Won't converge
+high_Av = ['2019pmd', '2020aatr', '2020abvg', '2020acmi', '2020aeqm',
+       '2020zfn', '2021aamo', '2021gez', '2021mgc', '2021tqq', '2021van',
+       '2021vwx', '2021xmq']
+bad_names = bad_names + high_Av
 
 for i in range(len(Ia_snid_list)):
     #if i in good:

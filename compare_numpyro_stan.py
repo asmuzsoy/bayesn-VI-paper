@@ -18,10 +18,15 @@ for i, sn in enumerate(sn_list.sn.values):
     T21_mu_errs.append(T21_chains['mu'].std())
 T21_mus, T21_mu_errs = np.array(T21_mus), np.array(T21_mu_errs)
 
+plt.scatter(sn_list.REDSHIFT_CMB, T21_mus)
+plt.show()
+
 with open('results/foundation_fit_T21tmax/chains.pkl', 'rb') as file:
     np_chains = pickle.load(file)
 
 np_mus, np_mu_errs = np_chains['mu'].mean(axis=(0, 1)), np_chains['mu'].std(axis=(0, 1))
+plt.scatter(sn_list.REDSHIFT_CMB, np_mus)
+plt.show()
 fig, ax = plt.subplots(2, 1, figsize=(6, 8), sharex=True)
 ax[0].errorbar(T21_mus, np_mus, xerr=T21_mu_errs, yerr=np_mu_errs, fmt='x')
 ax[1].errorbar(T21_mus, np_mus - T21_mus, xerr=T21_mu_errs, yerr=np_mu_errs, fmt='x')
