@@ -1,4 +1,3 @@
-2019pmd	YSE_DR1	2019pmd.snana.dat
 2019szh	YSE_DR1	2019szh.snana.dat
 2019tvv	YSE_DR1	2019tvv.snana.dat
 2019wka	YSE_DR1	2019wka.snana.dat
@@ -8,27 +7,22 @@
 2019yyb	YSE_DR1	2019yyb.snana.dat
 2019zfv	YSE_DR1	2019zfv.snana.dat
 2020aajf	YSE_DR1	2020aajf.snana.dat
-2020aatr	YSE_DR1	2020aatr.snana.dat
 2020aavd	YSE_DR1	2020aavd.snana.dat
 2020aazk	YSE_DR1	2020aazk.snana.dat
 2020aazr	YSE_DR1	2020aazr.snana.dat
 2020abcn	YSE_DR1	2020abcn.snana.dat
-2020abim	YSE_DR1	2020abim.snana.dat
 2020abip	YSE_DR1	2020abip.snana.dat
 2020abkf	YSE_DR1	2020abkf.snana.dat
 2020abpt	YSE_DR1	2020abpt.snana.dat
-2020abvg	YSE_DR1	2020abvg.snana.dat
 2020acbc	YSE_DR1	2020acbc.snana.dat
 2020aciz	YSE_DR1	2020aciz.snana.dat
 2020acjy	YSE_DR1	2020acjy.snana.dat
-2020acmi	YSE_DR1	2020acmi.snana.dat
 2020acmm	YSE_DR1	2020acmm.snana.dat
 2020acts	YSE_DR1	2020acts.snana.dat
 2020acxb	YSE_DR1	2020acxb.snana.dat
 2020add	YSE_DR1	2020add.snana.dat
 2020adkc	YSE_DR1	2020adkc.snana.dat
 2020adlp	YSE_DR1	2020adlp.snana.dat
-2020aeqm	YSE_DR1	2020aeqm.snana.dat
 2020aeqp	YSE_DR1	2020aeqp.snana.dat
 2020ann	YSE_DR1	2020ann.snana.dat
 2020atv	YSE_DR1	2020atv.snana.dat
@@ -105,7 +99,6 @@
 2020yhn	YSE_DR1	2020yhn.snana.dat
 2020yza	YSE_DR1	2020yza.snana.dat
 2020zbr	YSE_DR1	2020zbr.snana.dat
-2020zfn	YSE_DR1	2020zfn.snana.dat
 2020zgc	YSE_DR1	2020zgc.snana.dat
 2020zhh	YSE_DR1	2020zhh.snana.dat
 2020zj	YSE_DR1	2020zj.snana.dat
@@ -113,7 +106,6 @@
 2020zmi	YSE_DR1	2020zmi.snana.dat
 2020zpi	YSE_DR1	2020zpi.snana.dat
 2021aaez	YSE_DR1	2021aaez.snana.dat
-2021aamo	YSE_DR1	2021aamo.snana.dat
 2021abam	YSE_DR1	2021abam.snana.dat
 2021abgx	YSE_DR1	2021abgx.snana.dat
 2021abpc	YSE_DR1	2021abpc.snana.dat
@@ -164,7 +156,6 @@
 2021fwm	YSE_DR1	2021fwm.snana.dat
 2021gba	YSE_DR1	2021gba.snana.dat
 2021gcv	YSE_DR1	2021gcv.snana.dat
-2021gez	YSE_DR1	2021gez.snana.dat
 2021gfv	YSE_DR1	2021gfv.snana.dat
 2021gqc	YSE_DR1	2021gqc.snana.dat
 2021gwa	YSE_DR1	2021gwa.snana.dat
@@ -194,7 +185,6 @@
 2021lxb	YSE_DR1	2021lxb.snana.dat
 2021lzc	YSE_DR1	2021lzc.snana.dat
 2021mfy	YSE_DR1	2021mfy.snana.dat
-2021mgc	YSE_DR1	2021mgc.snana.dat
 2021mgd	YSE_DR1	2021mgd.snana.dat
 2021mim	YSE_DR1	2021mim.snana.dat
 2021mqf	YSE_DR1	2021mqf.snana.dat
@@ -231,7 +221,6 @@
 2021sve	YSE_DR1	2021sve.snana.dat
 2021tks	YSE_DR1	2021tks.snana.dat
 2021tol	YSE_DR1	2021tol.snana.dat
-2021tqq	YSE_DR1	2021tqq.snana.dat
 2021tsj	YSE_DR1	2021tsj.snana.dat
 2021tup	YSE_DR1	2021tup.snana.dat
 2021uhl	YSE_DR1	2021uhl.snana.dat
@@ -239,14 +228,12 @@
 2021uou	YSE_DR1	2021uou.snana.dat
 2021us	YSE_DR1	2021us.snana.dat
 2021uyq	YSE_DR1	2021uyq.snana.dat
-2021van	YSE_DR1	2021van.snana.dat
 2021vaw	YSE_DR1	2021vaw.snana.dat
 2021vcz	YSE_DR1	2021vcz.snana.dat
 2021vku	YSE_DR1	2021vku.snana.dat
 2021vmm	YSE_DR1	2021vmm.snana.dat
 2021vri	YSE_DR1	2021vri.snana.dat
 2021vtq	YSE_DR1	2021vtq.snana.dat
-2021vwx	YSE_DR1	2021vwx.snana.dat
 2021vym	YSE_DR1	2021vym.snana.dat
 2021wfg	YSE_DR1	2021wfg.snana.dat
 2021wfn	YSE_DR1	2021wfn.snana.dat
@@ -254,7 +241,6 @@
 2021wue	YSE_DR1	2021wue.snana.dat
 2021xct	YSE_DR1	2021xct.snana.dat
 2021xkm	YSE_DR1	2021xkm.snana.dat
-2021xmq	YSE_DR1	2021xmq.snana.dat
 2021xvu	YSE_DR1	2021xvu.snana.dat
 2021yab	YSE_DR1	2021yab.snana.dat
 2021zep	YSE_DR1	2021zep.snana.dat

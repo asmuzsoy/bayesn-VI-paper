@@ -460,20 +460,20 @@ high_Av = ['2019pmd', '2020aatr', '2020abvg', '2020acmi', '2020aeqm',
        '2020zfn', '2021aamo', '2021gez', '2021mgc', '2021tqq', '2021van',
        '2021vwx', '2021xmq']
 bad_fits = ['2020abim']
-# bad_names = bad_names + high_Av + bad_fits
+bad_names = bad_names + high_Av + bad_fits
 
 with open(os.path.join('results', 'YSE_fit', 'chains.pkl'), 'rb') as file:
     chains = pickle.load(file)
 sn_list = np.load('data/lcs/pickles/YSE_DR1/sn_list.npy', allow_pickle=True)
 tmax = chains['tmax'].mean(axis=(0, 1))
-for i in range(263):
+"""for i in range(263):
     if tmax[i] < -8 or tmax[i] > 8:
         for n in range(4):
             plt.hist(chains['tmax'][n, :, i])
         plt.title(sn_list[i])
         plt.show()
-raise ValueError('Nope')
-tmax_dict = {sn: float(t) for sn in sn_list for t in tmax}
+raise ValueError('Nope')"""
+tmax_dict = {sn_list[i]: float(tmax[i]) for i in range(len(tmax))}
 
 for i in range(len(Ia_snid_list)):
     #if i in good:
@@ -495,10 +495,12 @@ for i in range(len(Ia_snid_list)):
     if z_hd < 0.015:  # Cut low redshift objects
         continue
 
-    df['phase'] = (df.MJD - meta['peakmjd']) / (1 + z_hd)
-    fit_df = df[(df.phase > -10) & (df.phase < 40)]
-    print(fit_df.phase)
-    continue
+    tmax = meta['peakmjd'] - tmax_dict[sn] * (1 + z_hd)  # Correct peak MJD based on T21 fits
+
+    df['phase'] = (df.MJD - tmax) / (1 + z_hd)
+    #fit_df = df[(df.phase > -10) & (df.phase < 40)]
+    #print(fit_df.PASSBAND.value_counts())
+    #continue
 
     zs.append(z_cmb)
     #for filt in df.PASSBAND.unique():
@@ -509,14 +511,13 @@ for i in range(len(Ia_snid_list)):
     #plt.gca().invert_yaxis()
     #plt.show()
     #continue
-    continue
-    write_snana_lcfile('data/lcs/YSE_DR1', sn, df.MJD, FLT, df.MAG, df.MAGERR, meta['peakmjd'], z_helio, z_hd,
+    write_snana_lcfile('data/lcs/YSE_DR1', sn, df.MJD, FLT, df.MAG, df.MAGERR, tmax, z_helio, z_hd,
                        z_hd_err, meta['mwebv'], ra=meta['ra'], dec=meta['dec'])
     meta_list.append([sn, meta['peakmjd'], z_cmb, z_hd_err])
     table_list.append([sn, 'YSE_DR1', f'{sn}.snana.dat'])
 
-#meta_list, table_list = np.array(meta_list), np.array(table_list)
-#meta = pd.DataFrame(meta_list, columns=['SNID', 'SEARCH_PEAKMJD', 'REDSHIFT_CMB', 'REDSHIFT_CMB_ERR'])
-#table = pd.DataFrame(table_list)
-#meta.to_csv('data/lcs/meta/YSE_DR1_meta.txt', sep='\t', index=False)
-#table.to_csv('data/lcs/tables/YSE_DR1_table.txt', header=False, sep='\t', index=False)
+meta_list, table_list = np.array(meta_list), np.array(table_list)
+meta = pd.DataFrame(meta_list, columns=['SNID', 'SEARCH_PEAKMJD', 'REDSHIFT_CMB', 'REDSHIFT_CMB_ERR'])
+table = pd.DataFrame(table_list)
+meta.to_csv('data/lcs/meta/YSE_DR1_meta.txt', sep='\t', index=False)
+table.to_csv('data/lcs/tables/YSE_DR1_table.txt', header=False, sep='\t', index=False)

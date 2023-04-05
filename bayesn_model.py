@@ -902,7 +902,7 @@ class SEDmodel(object):
         # Save convergence data for each parameter to csv file
         summary = arviz.summary(samples)
         summary.to_csv(os.path.join('results', output, 'fit_summary.csv'))
-        np.savetxt(os.path.join('results', output, 'sn_list'), self.sn_list)
+        np.save(os.path.join('results', output, 'sn_list'), self.sn_list)
 
     def train_model(self, obs):
         """
