@@ -650,7 +650,7 @@ class SEDmodel(object):
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
             # Rv = numpyro.sample('Rv', dist.Uniform(1, 6))
-            tmax = numpyro.sample('tmax', dist.Uniform(-10, 10))
+            tmax = numpyro.sample('tmax', dist.Uniform(-30, 30))
             t = obs[0, ...] - tmax[None, sn_index]
             hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
             keep_shape = t.shape
@@ -792,7 +792,8 @@ class SEDmodel(object):
 
         """good, bad = [], []
         for i in tqdm(range(self.data.shape[2])):
-            print(i, self.sn_list[i])
+            if self.sn_list[i] != '2020dwg':
+                continue
             #if i != 8:
             #    continue
             data = self.data[..., i:i+1]  # Just to subsample the data, for testing
@@ -834,13 +835,16 @@ class SEDmodel(object):
                 mcmc.run(rng_, data, band_weights)
                 mcmc.print_summary()
                 samples = mcmc.get_samples(group_by_chain=True)
+                print('------')
+                print(samples['Ds'].mean(axis=(0, 1)) - data[-3, 0, 0])
+                print('------')
                 summary = arviz.summary(samples)
                 rhat = np.mean(summary.r_hat)
                 plt.suptitle(f'{self.sn_list[i]}: Mean rhat = {rhat}')
                 plt.savefig(f'plots/YSE_DR1_bad/{self.sn_list[i]}.png')
                 plt.show()
                 for j in range(4):
-                    plt.hist(samples['Ds'][j, :, 0], bins=np.linspace(np.min(samples['Ds'][j, ..., 0]), np.max(samples['Ds'][j, ..., 0]), 10), histtype='step')
+                    plt.hist(samples['tmax'][j, :, 0], bins=np.linspace(np.min(samples['tmax'][j, ..., 0]), np.max(samples['tmax'][j, ..., 0]), 10), histtype='step')
                 plt.show()
                 if rhat > 1.05:
                     bad.append(i)

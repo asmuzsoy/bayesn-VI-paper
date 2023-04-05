@@ -459,14 +459,15 @@ bad_names = ['2020tfy', '2021aaqi', '2021aaxi', '2021acza', '2021adnv', '2021ita
 high_Av = ['2019pmd', '2020aatr', '2020abvg', '2020acmi', '2020aeqm',
        '2020zfn', '2021aamo', '2021gez', '2021mgc', '2021tqq', '2021van',
        '2021vwx', '2021xmq']
-# bad_names = bad_names + high_Av
+bad_fits = ['2020abim']
+# bad_names = bad_names + high_Av + bad_fits
 
 with open(os.path.join('results', 'YSE_fit', 'chains.pkl'), 'rb') as file:
     chains = pickle.load(file)
 sn_list = np.load('data/lcs/pickles/YSE_DR1/sn_list.npy', allow_pickle=True)
 tmax = chains['tmax'].mean(axis=(0, 1))
 for i in range(263):
-    if tmax[i] < -4.5:
+    if tmax[i] < -8 or tmax[i] > 8:
         for n in range(4):
             plt.hist(chains['tmax'][n, :, i])
         plt.title(sn_list[i])
