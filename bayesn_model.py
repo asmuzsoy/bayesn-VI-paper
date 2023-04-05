@@ -630,7 +630,7 @@ class SEDmodel(object):
 
         return X
 
-    def fit_model(self, obs=None, weights=None):
+    def fit_model(self, obs, weights):
         """
         Numpyro model used for fitting SN properties assuming fixed global properties from a trained model. Will fit for tmax
         as well as theta, epsilon, Av and distance modulus
@@ -643,7 +643,6 @@ class SEDmodel(object):
             Band-weights to calculate photometry
 
         """
-        obs, weights = self.data, self.band_weights
         sample_size = obs.shape[-1]
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
 
@@ -680,8 +679,8 @@ class SEDmodel(object):
             flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
                                        J_t, hsiao_interp, weights)
             with numpyro.handlers.mask(mask=mask):
-                numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),)
-                               #obs=obs[1, :, sn_index].T)  # _{sn_index}
+                numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
+                               obs=obs[1, :, sn_index].T)  # _{sn_index}
 
     def fit(self, num_samples, num_warmup, num_chains, output, model_path=None, chain_method='parallel',
             init_strategy='median'):

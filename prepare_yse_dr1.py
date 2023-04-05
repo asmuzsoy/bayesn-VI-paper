@@ -463,6 +463,16 @@ high_Av = ['2019pmd', '2020aatr', '2020abvg', '2020acmi', '2020aeqm',
 
 with open(os.path.join('results', 'YSE_fit', 'chains.pkl'), 'rb') as file:
     chains = pickle.load(file)
+sn_list = np.load('data/lcs/pickles/YSE_DR1/sn_list.npy', allow_pickle=True)
+tmax = chains['tmax'].mean(axis=(0, 1))
+for i in range(263):
+    if tmax[i] < -4.5:
+        for n in range(4):
+            plt.hist(chains['tmax'][n, :, i])
+        plt.title(sn_list[i])
+        plt.show()
+raise ValueError('Nope')
+tmax_dict = {sn: float(t) for sn in sn_list for t in tmax}
 
 for i in range(len(Ia_snid_list)):
     #if i in good:
