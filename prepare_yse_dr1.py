@@ -438,7 +438,8 @@ def zhel_to_zcmb(zhel, RA, Dec):
 
 # ----------------
 c = 299792.458
-full_snid_list, full_meta_list, full_df_list = read_YSE_ZTF_snana_dir(dir_name='/Users/matt/Downloads/yse_dr1_zenodo_snr_geq_4')
+full_snid_list, full_meta_list, full_df_list = read_YSE_ZTF_snana_dir(dir_name='/Users/matt/Downloads/yse_dr1_zenodo_snr_geq_4',
+                                                                      keep_ztf=True)
 
 spec_type = np.array(get_param(meta_list=full_meta_list, param='transient_spec_class'))
 Ia_inds = np.where(spec_type == 'SNIa-norm')[0]
@@ -484,7 +485,11 @@ for i in range(len(Ia_snid_list)):
     #df = df[df.PASSBAND.isin(['X', 'Y'])]
     #if df.empty:
     #    continue
+    df = df[~df.PASSBAND.isin(['X', 'Y'])].copy()
+    if df.empty:
+        continue
     FLT = df.PASSBAND.apply(lambda flt: filt_map[flt])
+
     colour_dict = {'X': 'g', 'Y': 'r', 'g': 'g', 'r': 'g', 'i': 'b', 'z': 'k'}
     z_helio, z_helio_err = meta['redshift'], meta['redshift_err']
     z_cmb = zhel_to_zcmb(z_helio, meta['ra'], meta['dec'])
@@ -495,10 +500,12 @@ for i in range(len(Ia_snid_list)):
     if z_hd < 0.015:  # Cut low redshift objects
         continue
 
-    tmax = meta['peakmjd'] - tmax_dict[sn] * (1 + z_hd)  # Correct peak MJD based on T21 fits
+    tmax = meta['peakmjd'] # - tmax_dict[sn] * (1 + z_hd)  # Correct peak MJD based on T21 fits
 
     df['phase'] = (df.MJD - tmax) / (1 + z_hd)
-    #fit_df = df[(df.phase > -10) & (df.phase < 40)]
+    fit_df = df[(df.phase > -10) & (df.phase < 40)]
+    if fit_df.empty:
+        continue
     #print(fit_df.PASSBAND.value_counts())
     #continue
 

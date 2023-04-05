@@ -719,7 +719,6 @@ class SEDmodel(object):
             ``'sample'`` | Chains are initialised to a random sample from the priors
 
         """
-
         if init_strategy == 'median':
             init_strategy = init_to_median()
         elif init_strategy == 'value':
@@ -2039,6 +2038,9 @@ class SEDmodel(object):
     def plot_fits(self, model):
         with open(os.path.join('results', model, 'chains.pkl'), 'rb') as file:
             chains = pickle.load(file)
+        print(chains.keys())
+        print(self.sn_list[1], self.sn_list[40], self.sn_list[43], self.sn_list[57], self.sn_list[65])
+        return
         # Get mean parameter values from chains
         for key, val in chains.items():
             #chains[key] = np.reshape(val, (val.shape[0] * val.shape[1], *val.shape[2:]), order='F')
