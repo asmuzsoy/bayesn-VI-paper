@@ -650,7 +650,7 @@ class SEDmodel(object):
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
             # Rv = numpyro.sample('Rv', dist.Uniform(1, 6))
-            tmax = numpyro.sample('tmax', dist.Uniform(-30, 30))
+            tmax = numpyro.sample('tmax', dist.Uniform(-20, 20))
             t = obs[0, ...] - tmax[None, sn_index]
             hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
             keep_shape = t.shape
