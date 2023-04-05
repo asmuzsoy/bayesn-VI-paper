@@ -10,6 +10,7 @@ from astropy.io import ascii
 from astropy.table import Table
 import numpy as np
 from numpy import sin, cos, hypot, arctan2
+import pickle
 from bayesn_model import write_snana_lcfile
 
 filt_map = {'g': 'g_PS1', 'r': 'r_PS1', 'i': 'i_PS1', 'z': 'z_PS1', 'X': 'p48g', 'Y': 'p48r'}
@@ -458,7 +459,10 @@ bad_names = ['2020tfy', '2021aaqi', '2021aaxi', '2021acza', '2021adnv', '2021ita
 high_Av = ['2019pmd', '2020aatr', '2020abvg', '2020acmi', '2020aeqm',
        '2020zfn', '2021aamo', '2021gez', '2021mgc', '2021tqq', '2021van',
        '2021vwx', '2021xmq']
-bad_names = bad_names + high_Av
+# bad_names = bad_names + high_Av
+
+with open(os.path.join('results', 'YSE_fit', 'chains.pkl'), 'rb') as file:
+    chains = pickle.load(file)
 
 for i in range(len(Ia_snid_list)):
     #if i in good:
@@ -480,6 +484,11 @@ for i in range(len(Ia_snid_list)):
     if z_hd < 0.015:  # Cut low redshift objects
         continue
 
+    df['phase'] = (df.MJD - meta['peakmjd']) / (1 + z_hd)
+    fit_df = df[(df.phase > -10) & (df.phase < 40)]
+    print(fit_df.phase)
+    continue
+
     zs.append(z_cmb)
     #for filt in df.PASSBAND.unique():
     #    filt_df = df[df.PASSBAND == filt]
@@ -489,15 +498,14 @@ for i in range(len(Ia_snid_list)):
     #plt.gca().invert_yaxis()
     #plt.show()
     #continue
+    continue
     write_snana_lcfile('data/lcs/YSE_DR1', sn, df.MJD, FLT, df.MAG, df.MAGERR, meta['peakmjd'], z_helio, z_hd,
                        z_hd_err, meta['mwebv'], ra=meta['ra'], dec=meta['dec'])
     meta_list.append([sn, meta['peakmjd'], z_cmb, z_hd_err])
     table_list.append([sn, 'YSE_DR1', f'{sn}.snana.dat'])
 
-meta_list, table_list = np.array(meta_list), np.array(table_list)
-meta = pd.DataFrame(meta_list, columns=['SNID', 'SEARCH_PEAKMJD', 'REDSHIFT_CMB', 'REDSHIFT_CMB_ERR'])
-table = pd.DataFrame(table_list)
-meta.to_csv('data/lcs/meta/YSE_DR1_meta.txt', sep='\t', index=False)
-table.to_csv('data/lcs/tables/YSE_DR1_table.txt', header=False, sep='\t', index=False)
-
-#output_dir, snname, mjd, flt, mag, magerr, tmax, z_helio, z_cmb, z_cmb_err, ebv_mw, ra=None, dec=None, author="anonymous", survey=None, paper=None, filename=None
+#meta_list, table_list = np.array(meta_list), np.array(table_list)
+#meta = pd.DataFrame(meta_list, columns=['SNID', 'SEARCH_PEAKMJD', 'REDSHIFT_CMB', 'REDSHIFT_CMB_ERR'])
+#table = pd.DataFrame(table_list)
+#meta.to_csv('data/lcs/meta/YSE_DR1_meta.txt', sep='\t', index=False)
+#table.to_csv('data/lcs/tables/YSE_DR1_table.txt', header=False, sep='\t', index=False)

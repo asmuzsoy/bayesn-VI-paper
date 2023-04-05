@@ -630,7 +630,7 @@ class SEDmodel(object):
 
         return X
 
-    def fit_model(self, obs, weights):
+    def fit_model(self, obs=None, weights=None):
         """
         Numpyro model used for fitting SN properties assuming fixed global properties from a trained model. Will fit for tmax
         as well as theta, epsilon, Av and distance modulus
@@ -643,6 +643,7 @@ class SEDmodel(object):
             Band-weights to calculate photometry
 
         """
+        obs, weights = self.data, self.band_weights
         sample_size = obs.shape[-1]
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
 
@@ -650,7 +651,7 @@ class SEDmodel(object):
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
             # Rv = numpyro.sample('Rv', dist.Uniform(1, 6))
-            tmax = numpyro.sample('tmax', dist.Uniform(-5, 5))
+            tmax = numpyro.sample('tmax', dist.Uniform(-10, 10))
             t = obs[0, ...] - tmax[None, sn_index]
             hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
             keep_shape = t.shape
@@ -679,8 +680,8 @@ class SEDmodel(object):
             flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
                                        J_t, hsiao_interp, weights)
             with numpyro.handlers.mask(mask=mask):
-                numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
-                               obs=obs[1, :, sn_index].T)  # _{sn_index}
+                numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),)
+                               #obs=obs[1, :, sn_index].T)  # _{sn_index}
 
     def fit(self, num_samples, num_warmup, num_chains, output, model_path=None, chain_method='parallel',
             init_strategy='median'):
@@ -898,6 +899,7 @@ class SEDmodel(object):
         # Save convergence data for each parameter to csv file
         summary = arviz.summary(samples)
         summary.to_csv(os.path.join('results', output, 'fit_summary.csv'))
+        np.savetxt(os.path.join('results', output, 'sn_list'), self.sn_list)
 
     def train_model(self, obs):
         """
@@ -2034,49 +2036,86 @@ class SEDmodel(object):
     def plot_fits(self, model):
         with open(os.path.join('results', model, 'chains.pkl'), 'rb') as file:
             chains = pickle.load(file)
-        print(chains.keys())
+        # Get mean parameter values from chains
         for key, val in chains.items():
-            chains[key] = np.reshape(val, (val.shape[0] * val.shape[1], *val.shape[2:]), order='F')
+            #chains[key] = np.reshape(val, (val.shape[0] * val.shape[1], *val.shape[2:]), order='F')
+            chains[key] = np.mean(val, axis=(0, 1))[None, ...]
         rng_key, rng_key_ = jax.random.split(PRNGKey(123))
-        # pred = Predictive(self.fit_model, chains)
-        # preds = pred(rng_key, self.data, self.band_weights)['obs']
+        pred = Predictive(self.fit_model, chains)
+        preds = pred(rng_key, None, self.band_weights)['obs']
         bands = ['p48g', 'p48r', 'g_PS1', 'r_PS1', 'i_PS1', 'z_PS1']
         band_inds = [self.band_dict[band] for band in bands]
         t = np.arange(-10, 41, 1)
         num_per_band = len(t)
         num_bands = len(bands)
-        for i in range(chains['theta'].shape[-1]):
-            eps = chains['eps'][..., i].reshape((1000, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
-            full_eps = np.zeros((1000, 6, 6))
+        red_chi2s = []
+        g_rs, g_r_errs = [], []
+        AVs = []
+        for i in tqdm(range(chains['theta'].shape[-1])):
+            #print(' ')
+            #print(pd.Series(self.data[-6, :, i][self.data[-6, :, i] != 0]).value_counts())
+            #continue
+            sn_pred = np.mean(preds[..., i], axis=0)
+            chi2 = np.power((sn_pred - self.data[1, :, i]) / self.data[2, :, i], 2) * self.data[-1, :, i]
+            red_chi2 = np.sum(chi2) / np.sum(self.data[-1, :, i])
+            red_chi2s.append(red_chi2)
+            eps = chains['eps'][..., i].reshape((chains['eps'].shape[0], self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+            full_eps = np.zeros((chains['eps'].shape[0], 6, 6))
             full_eps[:, 1:-1, :] = eps
-            tmax = np.mean(chains['tmax'], axis=0)[i]
             z = np.array(self.data[-5, 0, i])
-            hres = np.mean(chains['mu'], axis=0)[i] - self.cosmo.distmod(z).value
-            model_lc = self.simulate_light_curve(t, 1000, bands, z=self.data[-5, 0, i], write_to_files=False, mag=True,
-                                                 mu=chains['mu'][:, i], theta=chains['theta'][:, i],
-                                                 AV=chains['AV'][:, i], del_M=chains['delM'][:, i], eps=full_eps,
-                                                 ebv_mw=self.data[-2, 0, i])[0]
-            mean, std = np.mean(model_lc, axis=1), np.std(model_lc, axis=1)
+            mu, AV, theta, tmax, del_M = chains['mu'][0, i], chains['AV'][0, i], chains['theta'][0, i], \
+                                         chains['tmax'][0, i], chains['delM'][0, i]
+            print(self.sn_list[i], tmax)
+            hres = mu - self.cosmo.distmod(z).value
+            model_lc = self.simulate_light_curve(t, 1, bands, z=z, write_to_files=False, mag=True,
+                                                 mu=mu, theta=theta,
+                                                 AV=AV, del_M=del_M, eps=full_eps,
+                                                 ebv_mw=self.data[-2, 0, i])[0][:, 0]
+            peak_g_r = model_lc[112] - model_lc[163]
+            g_rs.append(peak_g_r)
+            AVs.append(AV)
+            continue
+            model_lc = self.simulate_light_curve(t, 1, bands, z=z, write_to_files=False, mag=False,
+                                                 mu=mu, theta=theta,
+                                                 AV=AV, del_M=del_M, eps=full_eps,
+                                                 ebv_mw=self.data[-2, 0, i])[0][:, 0]
+            #g_r_errs.append(peak_g_r_err)
+            #mean, std = np.mean(model_lc, axis=1), np.std(model_lc, axis=1)
             fig, axs = plt.subplots(2, 3, sharex=True, sharey='row', figsize=(16, 12))
             colours = ['g', 'r', 'g', 'r', 'c', 'k']
+
             for n in range(num_bands):
                 ax = axs.flatten()[n]
-                ax.plot(t, mean[n * num_per_band: (n + 1) * num_per_band],
+                ax.plot(t, model_lc[n * num_per_band: (n + 1) * num_per_band],
                         c=colours[n], label=bands[n])
-                ax.fill_between(t,
-                                mean[n * num_per_band: (n + 1) * num_per_band] - std[n * num_per_band: (n + 1) * num_per_band],
-                                mean[n * num_per_band: (n + 1) * num_per_band] + std[n * num_per_band: ( n + 1) * num_per_band],
-                                alpha=0.3, color=colours[n])
+                #ax.fill_between(t,
+                #                mean[n * num_per_band: (n + 1) * num_per_band] - std[n * num_per_band: (n + 1) * num_per_band],
+                #                mean[n * num_per_band: (n + 1) * num_per_band] + std[n * num_per_band: ( n + 1) * num_per_band],
+                #                alpha=0.3, color=colours[n])
+                ax.scatter(t[10], model_lc[n * num_per_band + 10])
                 band_data = self.data[:, self.data[-6, :, i] == band_inds[n]]
                 ax.errorbar(band_data[0, :, i] - tmax, band_data[1, :, i], yerr=band_data[2, :, i], fmt=f'{colours[n]}x')
                 ax.legend()
-                ax.invert_yaxis()
+                #ax.invert_yaxis()
             plt.subplots_adjust(hspace=0, wspace=0)
             fig.supxlabel('Phase')
-            fig.supylabel('Apparent magnitude')
-            plt.suptitle(f'{self.sn_list[i]}: Hubble residual = {hres}')
-            plt.savefig(f'plots/YSE_T21_fits/{self.sn_list[i]}.png')
+            fig.supylabel('Relative flux')
+            plt.suptitle(rf'{self.sn_list[i]}: $\Delta\mu$ = {hres:.2f}, $\theta$ = {theta:.2f}, A$_V$ = {AV:.2f}, $\chi^2_r$ = {red_chi2:.2f}')
+            #plt.savefig(f'plots/YSE_T21_fits/{self.sn_list[i]}.png')
+            #plt.close()
             plt.show()
+        plt.hist(g_rs)
+        plt.show()
+        plt.figure(figsize=(12, 8))
+        plt.scatter(g_rs, AVs)
+        plt.hlines(1, -0.5, 0.8, ls='--')
+        plt.vlines(0.3, 0, 2.5, ls='--')
+        plt.xlabel('Peak g-r')
+        plt.ylabel(r'$A_V$')
+        plt.savefig('plots/Av_vs_g-r.png')
+        plt.show()
+        plt.scatter(g_rs, red_chi2s)
+        plt.show()
 
 
 
