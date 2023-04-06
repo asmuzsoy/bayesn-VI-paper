@@ -461,12 +461,12 @@ high_Av = ['2019pmd', '2020aatr', '2020abvg', '2020acmi', '2020aeqm',
        '2020zfn', '2021aamo', '2021gez', '2021mgc', '2021tqq', '2021van',
        '2021vwx', '2021xmq']
 bad_fits = ['2020abim']
-#bad_names = bad_names + high_Av + bad_fits
+bad_names = bad_names + high_Av + bad_fits
 
-"""with open(os.path.join('results', 'YSE_fit', 'chains.pkl'), 'rb') as file:
+with open(os.path.join('results', 'YSE_fit', 'chains.pkl'), 'rb') as file:
     chains = pickle.load(file)
-sn_list = np.load('data/lcs/pickles/YSE_DR1/sn_list.npy', allow_pickle=True)
-tmax = chains['tmax'].mean(axis=(0, 1))"""
+sn_list = pd.read_csv('results/YSE_fit/sn_list.txt', header=None).values[:, 0]
+tmax = chains['tmax'].mean(axis=(0, 1))
 """for i in range(263):
     if tmax[i] < -8 or tmax[i] > 8:
         for n in range(4):
@@ -474,7 +474,7 @@ tmax = chains['tmax'].mean(axis=(0, 1))"""
         plt.title(sn_list[i])
         plt.show()
 raise ValueError('Nope')"""
-#tmax_dict = {sn_list[i]: float(tmax[i]) for i in range(len(tmax))}
+tmax_dict = {sn_list[i]: float(tmax[i]) for i in range(len(tmax))}
 
 for i in range(len(Ia_snid_list)):
     #if i in good:
@@ -482,9 +482,9 @@ for i in range(len(Ia_snid_list)):
     sn, meta, df = Ia_snid_list[i], Ia_meta_list[i], Ia_df_list[i]
     if sn in bad_names:
         continue
-    #df = df[~df.PASSBAND.isin(['X', 'Y'])].copy()
-    #if df.empty:
-    #    continue
+    df = df[~df.PASSBAND.isin(['X', 'Y'])].copy()
+    if df.empty:
+        continue
     FLT = df.PASSBAND.apply(lambda flt: filt_map[flt])
 
     colour_dict = {'X': 'g', 'Y': 'r', 'g': 'g', 'r': 'g', 'i': 'b', 'z': 'k'}
@@ -497,12 +497,12 @@ for i in range(len(Ia_snid_list)):
     if z_hd < 0.015:  # Cut low redshift objects
         continue
 
-    tmax = meta['peakmjd'] # - tmax_dict[sn] * (1 + z_hd)  # Correct peak MJD based on T21 fits
+    tmax = meta['peakmjd'] + tmax_dict[sn] * (1 + z_hd)  # Correct peak MJD based on T21 fits
 
     df['phase'] = (df.MJD - tmax) / (1 + z_hd)
     fit_df = df[(df.phase > -10) & (df.phase < 40)]
-    #if fit_df.empty:
-    #    continue
+    if fit_df.empty:
+        continue
     #print(fit_df.PASSBAND.value_counts())
     #continue
 

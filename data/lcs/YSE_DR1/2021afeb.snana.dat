@@ -3,7 +3,7 @@
 # Zeropoint of the converted SNANA file: 27.5 mag
 # -----------------------------------------------------------
 # Data table created by: anonymous
-# On date: 2023.04.06 (yyyy.mm.dd); 16.05 hrs (BST).
+# On date: 2023.04.06 (yyyy.mm.dd); 17.25 hrs (BST).
 # Script used: BayeSNmodel.io.write_snana_lcfile.py
 # -----------------------------------------------------------
 SNID: 2021afeb
@@ -13,10 +13,10 @@ MWEBV: 0.018
 REDSHIFT_HELIO: 0.0553
 REDSHIFT_CMB: 0.055625129579547794
 REDSHIFT_CMB_ERR: 0.005
-PEAKMJD: 59546.32
-FILTERS: g_PS1,i_PS1,p48g,p48r,r_PS1,z_PS1
+PEAKMJD: 59553.75239517608
+FILTERS: g_PS1,i_PS1,r_PS1,z_PS1
 # -----------------------------------------------------------
-NOBS: 13
+NOBS: 11
 NVAR: 6
 VARLIST: MJD FLT FLUXCAL FLUXCALERR MAG MAGERR
 OBS: 59537.42 r_PS1 399.9447 75.8827 20.995 0.206
@@ -24,8 +24,6 @@ OBS: 59540.25 i_PS1 1153.4533 195.476 19.845 0.184
 OBS: 59540.26 r_PS1 1213.3889 134.1087 19.79 0.12
 OBS: 59541.31 r_PS1 1389.3127 70.3782 19.643 0.055
 OBS: 59541.31 z_PS1 1107.6435 113.2397 19.889 0.111
-OBS: 59542.19 p48r 1910.733 140.788 19.297 0.08
-OBS: 59542.252 p48g 2089.2961 209.7501 19.2 0.109
 OBS: 59542.26 r_PS1 1891.4724 78.395 19.308 0.045
 OBS: 59542.26 i_PS1 1770.109 92.9288 19.38 0.057
 OBS: 59544.38 g_PS1 3000.544 93.9625 18.807 0.034

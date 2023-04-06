@@ -789,7 +789,7 @@ class SEDmodel(object):
         # print('vmap: ', end - start)
         # self.fit_postprocess(samples, output)
 
-        """good, bad = [], []
+        good, bad = [], []
         for i in tqdm(range(self.data.shape[2])):
             #if self.sn_list[i] != '2020dwg':
             #    continue
@@ -860,7 +860,7 @@ class SEDmodel(object):
         print(repr(good))
         print(repr(bad))
 
-        return"""
+        return
 
         start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
@@ -1298,6 +1298,9 @@ class SEDmodel(object):
 
         with open(os.path.join('results', output, 'BAYESN.YAML'), 'w') as file:
             yaml.dump(yaml_data, file)
+
+        df = pd.DataFrame(self.sn_list, columns=['sn'])
+        df.to_csv(os.path.join('results', output, 'sn_list.txt'), index=False, header=False)
 
         """global_param_dict = {
             'W0': repr(np.round(np.mean(samples['W0'], axis=[0, 1]).reshape((self.l_knots.shape[0], self.tau_knots.shape[0]), order='F'), 3).tolist()),
