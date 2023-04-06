@@ -1,4 +1,5 @@
 2019szh	YSE_DR1	2019szh.snana.dat
+2019tvv	YSE_DR1	2019tvv.snana.dat
 2019wka	YSE_DR1	2019wka.snana.dat
 2019wqf	YSE_DR1	2019wqf.snana.dat
 2019wyp	YSE_DR1	2019wyp.snana.dat
@@ -26,6 +27,7 @@
 2020ann	YSE_DR1	2020ann.snana.dat
 2020atv	YSE_DR1	2020atv.snana.dat
 2020azn	YSE_DR1	2020azn.snana.dat
+2020azs	YSE_DR1	2020azs.snana.dat
 2020azt	YSE_DR1	2020azt.snana.dat
 2020cyz	YSE_DR1	2020cyz.snana.dat
 2020dow	YSE_DR1	2020dow.snana.dat
@@ -49,6 +51,8 @@
 2020msu	YSE_DR1	2020msu.snana.dat
 2020myi	YSE_DR1	2020myi.snana.dat
 2020nbo	YSE_DR1	2020nbo.snana.dat
+2020nva	YSE_DR1	2020nva.snana.dat
+2020onu	YSE_DR1	2020onu.snana.dat
 2020pf	YSE_DR1	2020pf.snana.dat
 2020pki	YSE_DR1	2020pki.snana.dat
 2020ppe	YSE_DR1	2020ppe.snana.dat
@@ -110,6 +114,7 @@
 2021abwm	YSE_DR1	2021abwm.snana.dat
 2021abym	YSE_DR1	2021abym.snana.dat
 2021acfi	YSE_DR1	2021acfi.snana.dat
+2021acgo	YSE_DR1	2021acgo.snana.dat
 2021acgu	YSE_DR1	2021acgu.snana.dat
 2021aci	YSE_DR1	2021aci.snana.dat
 2021actw	YSE_DR1	2021actw.snana.dat
@@ -130,6 +135,7 @@
 2021agu	YSE_DR1	2021agu.snana.dat
 2021apd	YSE_DR1	2021apd.snana.dat
 2021arl	YSE_DR1	2021arl.snana.dat
+2021bbz	YSE_DR1	2021bbz.snana.dat
 2021bmb	YSE_DR1	2021bmb.snana.dat
 2021bmt	YSE_DR1	2021bmt.snana.dat
 2021bpq	YSE_DR1	2021bpq.snana.dat
@@ -152,6 +158,7 @@
 2021gcv	YSE_DR1	2021gcv.snana.dat
 2021gfv	YSE_DR1	2021gfv.snana.dat
 2021gqc	YSE_DR1	2021gqc.snana.dat
+2021gwa	YSE_DR1	2021gwa.snana.dat
 2021gyh	YSE_DR1	2021gyh.snana.dat
 2021hca	YSE_DR1	2021hca.snana.dat
 2021hem	YSE_DR1	2021hem.snana.dat
@@ -180,6 +187,7 @@
 2021mfy	YSE_DR1	2021mfy.snana.dat
 2021mgd	YSE_DR1	2021mgd.snana.dat
 2021mim	YSE_DR1	2021mim.snana.dat
+2021mqf	YSE_DR1	2021mqf.snana.dat
 2021mwb	YSE_DR1	2021mwb.snana.dat
 2021nlj	YSE_DR1	2021nlj.snana.dat
 2021nsh	YSE_DR1	2021nsh.snana.dat
@@ -231,6 +239,7 @@
 2021wfn	YSE_DR1	2021wfn.snana.dat
 2021wrt	YSE_DR1	2021wrt.snana.dat
 2021wue	YSE_DR1	2021wue.snana.dat
+2021xct	YSE_DR1	2021xct.snana.dat
 2021xkm	YSE_DR1	2021xkm.snana.dat
 2021xvu	YSE_DR1	2021xvu.snana.dat
 2021yab	YSE_DR1	2021yab.snana.dat

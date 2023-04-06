@@ -485,9 +485,9 @@ for i in range(len(Ia_snid_list)):
     #df = df[df.PASSBAND.isin(['X', 'Y'])]
     #if df.empty:
     #    continue
-    df = df[~df.PASSBAND.isin(['X', 'Y'])].copy()
-    if df.empty:
-        continue
+    #df = df[~df.PASSBAND.isin(['X', 'Y'])].copy()
+    #if df.empty:
+    #    continue
     FLT = df.PASSBAND.apply(lambda flt: filt_map[flt])
 
     colour_dict = {'X': 'g', 'Y': 'r', 'g': 'g', 'r': 'g', 'i': 'b', 'z': 'k'}
@@ -500,12 +500,12 @@ for i in range(len(Ia_snid_list)):
     if z_hd < 0.015:  # Cut low redshift objects
         continue
 
-    tmax = meta['peakmjd'] # - tmax_dict[sn] * (1 + z_hd)  # Correct peak MJD based on T21 fits
+    tmax = meta['peakmjd'] - tmax_dict[sn] * (1 + z_hd)  # Correct peak MJD based on T21 fits
 
     df['phase'] = (df.MJD - tmax) / (1 + z_hd)
     fit_df = df[(df.phase > -10) & (df.phase < 40)]
-    if fit_df.empty:
-        continue
+    #if fit_df.empty:
+    #    continue
     #print(fit_df.PASSBAND.value_counts())
     #continue
 
