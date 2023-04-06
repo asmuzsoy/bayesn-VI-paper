@@ -791,8 +791,8 @@ class SEDmodel(object):
 
         """good, bad = [], []
         for i in tqdm(range(self.data.shape[2])):
-            if self.sn_list[i] != '2020dwg':
-                continue
+            #if self.sn_list[i] != '2020dwg':
+            #    continue
             #if i != 8:
             #    continue
             data = self.data[..., i:i+1]  # Just to subsample the data, for testing
@@ -901,7 +901,8 @@ class SEDmodel(object):
         # Save convergence data for each parameter to csv file
         summary = arviz.summary(samples)
         summary.to_csv(os.path.join('results', output, 'fit_summary.csv'))
-        np.save(os.path.join('results', output, 'sn_list'), self.sn_list)
+        df = pd.DataFrame(self.sn_list, columns=['sn'])
+        df.to_csv(os.path.join('results', output, 'sn_list.txt'), index=False, header=False)
 
     def train_model(self, obs):
         """
