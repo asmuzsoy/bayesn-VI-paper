@@ -1028,7 +1028,7 @@ class SEDmodel(object):
         param_init['W1'] = jnp.array(W1_init + np.random.normal(0, 0.01, W1_init.shape[0]))
         #param_init['mu_R'] = 2.5
         #param_init['sigma_R'] = 0.5
-        param_init['Rv'] = jnp.array(3.0) #  jnp.array(np.random.normal(3, 1, self.data.shape[-1]))
+        param_init['Rv'] = jnp.array(3.0) # jnp.array(np.random.normal(param_init['mu_R'], param_init['sigma_R'], self.data.shape[-1])) #
         param_init['tauA_tform'] = jnp.arctan(tauA_ / 1.)
         # param_init['tauA'] = tauA_
         param_init['sigma0_tform'] = jnp.arctan(sigma0_ / 0.1)
