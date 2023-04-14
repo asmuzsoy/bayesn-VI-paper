@@ -937,9 +937,9 @@ class SEDmodel(object):
         sigma0_tform = numpyro.sample('sigma0_tform', dist.Uniform(0, jnp.pi / 2.))
         sigma0 = numpyro.deterministic('sigma0', 0.1 * jnp.tan(sigma0_tform))
 
-        Rv = numpyro.sample('Rv', dist.Uniform(1, 5))
-        #mu_R = numpyro.sample('mu_R', dist.Uniform(1, 5))
-        #sigma_R = numpyro.sample('sigma_R', dist.HalfNormal(2))
+        # Rv = numpyro.sample('Rv', dist.Uniform(1, 5))
+        mu_R = numpyro.sample('mu_R', dist.Uniform(1, 5))
+        sigma_R = numpyro.sample('sigma_R', dist.HalfNormal(2))
 
         # tauA = numpyro.sample('tauA', dist.HalfCauchy())
         tauA_tform = numpyro.sample('tauA_tform', dist.Uniform(0, jnp.pi / 2.))
@@ -948,8 +948,8 @@ class SEDmodel(object):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             Av = numpyro.sample(f'AV', dist.Exponential(1 / tauA))
-            #Rv_tform = numpyro.sample('Rv_tform', dist.Normal(0, 1))
-            #Rv = numpyro.deterministic('Rv', mu_R + Rv_tform * sigma_R)
+            Rv_tform = numpyro.sample('Rv_tform', dist.Normal(0, 1))
+            Rv = numpyro.deterministic('Rv', mu_R + Rv_tform * sigma_R)
 
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=L_Sigma))
@@ -1026,9 +1026,9 @@ class SEDmodel(object):
         sigma0_ = sigma0_init + np.random.normal(0, 0.01)
         param_init['W0'] = jnp.array(W0_init + np.random.normal(0, 0.01, W0_init.shape[0]))
         param_init['W1'] = jnp.array(W1_init + np.random.normal(0, 0.01, W1_init.shape[0]))
-        #param_init['mu_R'] = 2.5
-        #param_init['sigma_R'] = 0.5
-        param_init['Rv'] = jnp.array(3.0) # jnp.array(np.random.normal(param_init['mu_R'], param_init['sigma_R'], self.data.shape[-1])) #
+        param_init['mu_R'] = 2.5
+        param_init['sigma_R'] = 0.5
+        param_init['Rv'] = jnp.array(np.random.normal(param_init['mu_R'], param_init['sigma_R'], self.data.shape[-1])) # jnp.array(3.0) #
         param_init['tauA_tform'] = jnp.arctan(tauA_ / 1.)
         # param_init['tauA'] = tauA_
         param_init['sigma0_tform'] = jnp.arctan(sigma0_ / 0.1)
