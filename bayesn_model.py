@@ -521,7 +521,10 @@ class SEDmodel(object):
 
         model_flux = jnp.sum(model_spectra * obs_band_weights, axis=1).T
         model_flux = model_flux * 10 ** (-0.4 * (self.M0 + Ds))
-        model_flux *= self.device_scale
+        zps = self.zps[band_indices]
+        zp_flux = 10 ** (zps / 2.5)
+        #model_flux = model_flux * self.device_scale
+        model_flux = (model_flux / zp_flux) * 10 ** (0.4 * 27.5)  # Convert to FLUXCAL
         model_flux *= mask
         return model_flux
 
@@ -564,11 +567,13 @@ class SEDmodel(object):
             Matrix containing model magnitudes for all SNe at all time-steps
         """
         model_flux = self.get_flux_batch(theta, Av, W0, W1, eps, Ds, Rv, band_indices, mask, J_t, hsiao_interp, weights)
-        model_flux = model_flux / self.device_scale
+        #model_flux = model_flux / self.device_scale
         model_flux = model_flux + (1 - mask) * 0.01
-        zps = self.zps[band_indices]
 
-        model_mag = - 2.5 * jnp.log10(model_flux) + zps  # self.M0 + Ds
+        #zps = self.zps[band_indices]
+        #model_mag = - 2.5 * jnp.log10(model_flux) + zps  # self.M0 + Ds
+
+        model_mag = - 2.5 * jnp.log10(model_flux) + 27.5  # self.M0 + Ds
         model_mag *= mask
 
         return model_mag
@@ -1399,8 +1404,8 @@ class SEDmodel(object):
                 if (data['MAG'] == 0).sum() > 0:
                     data['MAG'] = 27.5 - 2.5 * np.log10(data['FLUXCAL'])
                     data['MAGERR'] = (2.5 / np.log(10)) * data['FLUXCALERR'] / data['FLUXCAL']
-                data['flux'] = np.power(10, -0.4 * (data['MAG'] - data['zp'])) * self.scale
-                data['flux_err'] = (np.log(10) / 2.5) * data['flux'] * data['MAGERR']
+                data['flux'] = data['FLUXCAL']  # np.power(10, -0.4 * (data['MAG'] - data['zp'])) * self.scale
+                data['flux_err'] = data['FLUXCALERR']  # (np.log(10) / 2.5) * data['flux'] * data['MAGERR']
                 data['redshift'] = row.REDSHIFT_CMB
                 data['redshift_error'] = row.REDSHIFT_CMB_ERR
                 data['MWEBV'] = meta['MWEBV']
