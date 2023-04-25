@@ -943,8 +943,6 @@ class SEDmodel(object):
         sigma0 = numpyro.deterministic('sigma0', 0.1 * jnp.tan(sigma0_tform))
 
         Rv = numpyro.sample('Rv', dist.Uniform(1, 5))
-        print(Rv)
-        raise ValueError(' Nope')
         # mu_R = numpyro.sample('mu_R', dist.Uniform(1, 5))
         # sigma_R = numpyro.sample('sigma_R', dist.HalfNormal(2))
 
