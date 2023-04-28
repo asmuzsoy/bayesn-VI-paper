@@ -1439,6 +1439,7 @@ class SEDmodel(object):
             lc = all_lcs[i]
             all_data[i, :lc.shape[0], :] = lc.values
             all_data[i, lc.shape[0]:, 2] = 1 / jnp.sqrt(2 * np.pi)
+            all_data[i, lc.shape[0]:, 3] = 10  # Arbitrarily set all masked points to H-band
             all_J_t[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.tau_knots, self.KD_t).T
         with open(os.path.join('data', 'lcs', 'pickles', sample_name, f'dataset_{data_mode}.pkl'), 'wb') as file:
             pickle.dump(all_data, file)
