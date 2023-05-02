@@ -523,5 +523,12 @@ for i in range(len(Ia_snid_list)):
 meta_list, table_list = np.array(meta_list), np.array(table_list)
 meta = pd.DataFrame(meta_list, columns=['SNID', 'SEARCH_PEAKMJD', 'REDSHIFT_CMB', 'REDSHIFT_CMB_ERR'])
 table = pd.DataFrame(table_list)
-meta.to_csv('data/lcs/meta/YSE_DR1_meta.txt', sep='\t', index=False)
-table.to_csv('data/lcs/tables/YSE_DR1_table.txt', header=False, sep='\t', index=False)
+
+# Add Foundation as well
+f_table = pd.read_csv('data/lcs/tables/T21_training_set.txt', delim_whitespace=True, skiprows=5, header=None)
+f_meta = pd.read_csv('data/lcs/meta/T21_training_set_meta.txt', delim_whitespace=True)
+table = pd.concat([table, f_table])
+meta = pd.concat([meta, f_meta])
+
+meta.to_csv('data/lcs/meta/YSE_Foundation_meta.txt', sep='\t', index=False)
+table.to_csv('data/lcs/tables/YSE_Foundation_table.txt', header=False, sep='\t', index=False)

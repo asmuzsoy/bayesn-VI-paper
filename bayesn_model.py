@@ -1031,9 +1031,9 @@ class SEDmodel(object):
         sigma0_ = sigma0_init + np.random.normal(0, 0.01)
         param_init['W0'] = jnp.array(W0_init + np.random.normal(0, 0.01, W0_init.shape[0]))
         param_init['W1'] = jnp.array(W1_init + np.random.normal(0, 0.01, W1_init.shape[0]))
-        param_init['mu_R'] = 3
-        param_init['sigma_R'] = 0.5
-        param_init['Rv_tform'] = jnp.array(np.random.normal(0, 1, self.data.shape[-1])) # jnp.array(3.0) #
+        param_init['mu_R'] = jnp.array(np.random.uniform(1, 5))
+        param_init['sigma_R'] = jnp.array(np.abs(np.random.normal()))
+        param_init['Rv_tform'] = jnp.array(np.random.normal(0, 1, self.data.shape[-1]))
         param_init['tauA_tform'] = jnp.arctan(tauA_ / 1.)
         # param_init['tauA'] = tauA_
         param_init['sigma0_tform'] = jnp.arctan(sigma0_ / 0.1)
@@ -1395,7 +1395,11 @@ class SEDmodel(object):
                     peak_mjd = meta['SEARCH_PEAKMJD']
                 data = data[~data.FLT.isin(['K', 'K_AND', 'K_P', 'U', 'u_CSP', 'g_CSP'])]  # Skip certain bands
                 data['t'] = (data.MJD - peak_mjd) / (1 + row.REDSHIFT_CMB)
+                # If filter not in map_dict, assume one-to-one mapping
                 if map_dict is not None:
+                    for f in data.FLT.unique():
+                        if f not in map_dict.keys():
+                            map_dict[f] = f
                     data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[map_dict[x]])
                     data['zp'] = data.FLT.apply(lambda x: self.zp_dict[map_dict[x]])
                 else:
