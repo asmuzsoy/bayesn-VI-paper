@@ -17,5 +17,5 @@ model.process_dataset('foundation', 'data/lcs/tables/T21_training_set.txt', 'dat
 
 #model.process_dataset('YSE_DR1', 'data/lcs/tables/YSE_DR1_table.txt', 'data/lcs/meta/YSE_DR1_meta.txt', data_mode='mag')
 
-model.train(1000, 1000, 4, 'T21_popRv', chain_method='parallel', init_strategy='T21', max_tree_depth=10)
+model.train(500, 500, 4, 'T21_popRv', chain_method='parallel', init_strategy='T21', max_tree_depth=10)
 
