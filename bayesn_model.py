@@ -1410,7 +1410,7 @@ class SEDmodel(object):
                     peak_mjd = meta['SEARCH_PEAKMJD']
                 data = data[~data.FLT.isin(['K', 'K_AND', 'K_P', 'U', 'u_CSP', 'g_CSP'])]  # Skip certain bands
                 if row.REDSHIFT_CMB > 3900 / self.l_knots[0] - 1:  # Drop g-band if below edge of model
-                    data = data[~data.FLT.isin(['g', 'g_DES', 'g_PS1'])]
+                    data = data[~data.FLT.isin(['g', 'g_DES', 'g_PS1', 'p48g'])]
                 data['t'] = (data.MJD - peak_mjd) / (1 + row.REDSHIFT_CMB)
                 # If filter not in map_dict, assume one-to-one mapping
                 if map_dict is not None:
