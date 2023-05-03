@@ -162,7 +162,14 @@ class SEDmodel(object):
             self.L_Sigma = jnp.array(params['L_SIGMA_EPSILON'])
             self.M0 = jnp.array(params['M0'])
             self.sigma0 = jnp.array(params['SIGMA0'])
-            self.Rv = jnp.array(params['RV'])
+            if 'MU_R' in params.keys():
+                self.Rv = None
+                self.mu_R = jnp.array(params['MU_R'])
+                self.sigma_R = jnp.array(params['SIGMA_R'])
+            else:
+                self.Rv = jnp.array(params['RV'])
+                self.mu_R = None
+                self.sigma_R = None
             self.tauA = jnp.array(params['TAUA'])
         else:
             self.l_knots = np.genfromtxt(f'model_files/{load_model}/l_knots.txt')
@@ -654,7 +661,7 @@ class SEDmodel(object):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
-            # Rv = numpyro.sample('Rv', dist.Uniform(1, 6))
+            Rv = numpyro.sample('Rv', dist.Normal(self.mu_R, self.sigma_R))
             tmax = numpyro.sample('tmax', dist.Uniform(-10, 10))
             t = obs[0, ...] - tmax[None, sn_index]
             hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
@@ -681,7 +688,7 @@ class SEDmodel(object):
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
             # Ds = numpyro.sample('Ds', dist.ImproperUniform(dist.constraints.greater_than(0), (), event_shape=()))
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))  # Ds_err
-            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, Rv, band_indices, mask,
                                        J_t, hsiao_interp, weights)
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
@@ -809,7 +816,7 @@ class SEDmodel(object):
             muhat_err = 5 / (redshift * jnp.log(10)) * jnp.sqrt(
                 jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))
             print(f'Muhat: {data[-3, 0, 0]}')
-            N = 100
+            N = 1
             t = np.arange(-10, 40, 1)
             bands = ['p48g', 'p48r', 'g_PS1', 'r_PS1', 'i_PS1', 'z_PS1']
             preds = self.simulate_light_curve(t, N, bands, z=data[-5, 0, 0],
@@ -1272,6 +1279,9 @@ class SEDmodel(object):
                             np.mean(samples['L_Omega'], axis=[0, 1]))
         sigma0 = np.mean(samples['sigma0'])
 
+        if 'mu_R' in samples.keys():
+            mu_R = np.mean(samples['mu_R'])
+            sigma_R = np.mean(samples['sigma_R'])
         Rv = np.mean(samples['Rv'])
         tauA = np.mean(samples['tauA'])
         M0_sigma0_RV_tauA = np.array([self.M0, sigma0, Rv, tauA])
@@ -1290,9 +1300,8 @@ class SEDmodel(object):
         np.savetxt(os.path.join('results', output, 'potentials.txt'), potentials)
 
         yaml_data = {
-            'MO': float(self.M0),
+            'M0': float(self.M0),
             'SIGMA0': float(sigma0),
-            'RV': float(Rv),
             'TAUA': float(tauA),
             'TAU_KNOTS': self.tau_knots.tolist(),
             'L_KNOTS': self.l_knots.tolist(),
@@ -1300,6 +1309,12 @@ class SEDmodel(object):
             'W1': W1.tolist(),
             'L_SIGMA_EPSILON': L_Sigma.tolist()
         }
+
+        if 'mu_R' in samples.keys():
+            yaml_data['MU_R'] = float(mu_R)
+            yaml_data['SIGMA_R'] = float(sigma_R)
+        else:
+            yaml_data['RV'] = float(Rv)
 
         with open(os.path.join('results', output, 'BAYESN.YAML'), 'w') as file:
             yaml.dump(yaml_data, file)
@@ -1394,6 +1409,8 @@ class SEDmodel(object):
                 else:
                     peak_mjd = meta['SEARCH_PEAKMJD']
                 data = data[~data.FLT.isin(['K', 'K_AND', 'K_P', 'U', 'u_CSP', 'g_CSP'])]  # Skip certain bands
+                if row.REDSHIFT_CMB > 3900 / self.l_knots[0] - 1:  # Drop g-band if below edge of model
+                    data = data[~data.FLT.isin(['g', 'g_DES', 'g_PS1'])]
                 data['t'] = (data.MJD - peak_mjd) / (1 + row.REDSHIFT_CMB)
                 # If filter not in map_dict, assume one-to-one mapping
                 if map_dict is not None:
@@ -1803,7 +1820,10 @@ class SEDmodel(object):
             raise ValueError(
                 'For ebv_mw, either pass a single scalar value or an array of values for each of the N simulated objects')
         if Rv is None:
-            Rv = self.Rv
+            if self.Rv is None:
+                Rv = np.random.normal(self.mu_R, self.sigma_R, N)
+            else:
+                Rv = self.Rv
         Rv = np.array(Rv)
         if len(Rv.shape) == 0:
             Rv = Rv.repeat(N)
