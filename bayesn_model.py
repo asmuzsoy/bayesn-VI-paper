@@ -661,7 +661,7 @@ class SEDmodel(object):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
-            Rv = numpyro.sample('Rv', dist.Normal(self.mu_R, self.sigma_R))
+            # Rv = numpyro.sample('Rv', dist.Normal(self.mu_R, self.sigma_R))
             tmax = numpyro.sample('tmax', dist.Uniform(-10, 10))
             t = obs[0, ...] - tmax[None, sn_index]
             hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
@@ -688,7 +688,7 @@ class SEDmodel(object):
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
             # Ds = numpyro.sample('Ds', dist.ImproperUniform(dist.constraints.greater_than(0), (), event_shape=()))
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))  # Ds_err
-            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, Rv, band_indices, mask,
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
                                        J_t, hsiao_interp, weights)
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
@@ -842,30 +842,30 @@ class SEDmodel(object):
             #nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
             mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                         chain_method=chain_method)
-            try:
-                mcmc.run(rng_, data, band_weights)
-                mcmc.print_summary()
-                samples = mcmc.get_samples(group_by_chain=True)
-                print('------')
-                print(samples['Ds'].mean(axis=(0, 1)) - data[-3, 0, 0])
-                print('------')
-                summary = arviz.summary(samples)
-                rhat = np.mean(summary.r_hat)
-                plt.suptitle(f'{self.sn_list[i]}: Mean rhat = {rhat}')
-                plt.savefig(f'plots/YSE_DR1_bad/{self.sn_list[i]}.png')
-                plt.show()
-                for j in range(4):
-                    plt.hist(samples['tmax'][j, :, 0], bins=np.linspace(np.min(samples['tmax'][j, ..., 0]), np.max(samples['tmax'][j, ..., 0]), 10), histtype='step')
-                plt.show()
-                if rhat > 1.05:
-                    bad.append(i)
-                else:
-                    good.append(i)
-                continue
-            except:
-                #raise ValueError('Nope')
+            # try:
+            mcmc.run(rng_, data, band_weights)
+            mcmc.print_summary()
+            samples = mcmc.get_samples(group_by_chain=True)
+            print('------')
+            print(samples['Ds'].mean(axis=(0, 1)) - data[-3, 0, 0])
+            print('------')
+            summary = arviz.summary(samples)
+            rhat = np.mean(summary.r_hat)
+            plt.suptitle(f'{self.sn_list[i]}: Mean rhat = {rhat}')
+            plt.savefig(f'plots/YSE_DR1_bad/{self.sn_list[i]}.png')
+            plt.show()
+            for j in range(4):
+                plt.hist(samples['tmax'][j, :, 0], bins=np.linspace(np.min(samples['tmax'][j, ..., 0]), np.max(samples['tmax'][j, ..., 0]), 10), histtype='step')
+            plt.show()
+            if rhat > 1.05:
                 bad.append(i)
-                continue
+            else:
+                good.append(i)
+            continue
+            #except:
+            #    #raise ValueError('Nope')
+            #    bad.append(i)
+            #    continue
         print(len(good), len(bad))
         print(good)
         print(bad)
