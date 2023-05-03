@@ -1038,6 +1038,7 @@ class SEDmodel(object):
         sigma0_ = sigma0_init + np.random.normal(0, 0.01)
         param_init['W0'] = jnp.array(W0_init + np.random.normal(0, 0.01, W0_init.shape[0]))
         param_init['W1'] = jnp.array(W1_init + np.random.normal(0, 0.01, W1_init.shape[0]))
+        param_init['Rv'] = jnp.array(np.random.uniform(1, 5))
         param_init['mu_R'] = jnp.array(np.random.uniform(1, 5))
         param_init['sigma_R'] = jnp.array(np.abs(np.random.normal()))
         param_init['Rv_tform'] = jnp.array(np.random.normal(0, 1, self.data.shape[-1]))

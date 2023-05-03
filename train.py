@@ -6,7 +6,7 @@ model = SEDmodel(load_model='T21_model')
 #model.process_dataset('foundation', 'data/lcs/tables/T21_training_set.txt', 'data/lcs/meta/T21_training_set_meta.txt',
 #                      filt_map_dict, data_mode='mag')
 
-model.process_dataset('T21_sim_1000', 'data/lcs/tables/T21_sim_1000.txt', 'data/lcs/meta/T21_sim_1000_meta.txt',
+model.process_dataset('T21_sim_100', 'data/lcs/tables/T21_sim_100.txt', 'data/lcs/meta/T21_sim_100_meta.txt',
                       data_mode='mag')
 
 #model.process_dataset('M20', 'data/lcs/tables/M20_training_set.txt', 'data/lcs/meta/M20_training_set_meta.txt',
@@ -18,5 +18,5 @@ model.process_dataset('T21_sim_1000', 'data/lcs/tables/T21_sim_1000.txt', 'data/
 #model.process_dataset('YSE_Foundation', 'data/lcs/tables/YSE_Foundation_table.txt', 'data/lcs/meta/YSE_Foundation_meta.txt', data_mode='mag',
 #                      map_dict=filt_map_dict)
 
-model.train(500, 500, 4, 'T21_1000_train', chain_method='parallel', init_strategy='T21', max_tree_depth=10)
+model.train(500, 500, 4, 'T21_100_train', chain_method='parallel', init_strategy='T21', max_tree_depth=10)
 
