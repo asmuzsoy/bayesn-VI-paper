@@ -801,7 +801,7 @@ class SEDmodel(object):
         # print('vmap: ', end - start)
         # self.fit_postprocess(samples, output)
 
-        good, bad = [], []
+        """good, bad = [], []
         for i in tqdm(range(self.data.shape[2])):
             #if self.sn_list[i] != '2020dwg':
             #    continue
@@ -872,7 +872,7 @@ class SEDmodel(object):
         print(repr(good))
         print(repr(bad))
 
-        return
+        return"""
 
         start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
