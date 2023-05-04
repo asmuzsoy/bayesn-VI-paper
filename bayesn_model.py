@@ -987,8 +987,6 @@ class SEDmodel(object):
 
             plt.plot(self.model_wave, self.band_weights[5, :, 40])
             plt.show()
-            plt.plot(self.model_wave, self.band_weights[6, :, 40])
-            plt.show()
             raise ValueError('Nope')
 
             mask = obs[-1, :, sn_index].T.astype(bool)
@@ -1163,7 +1161,7 @@ class SEDmodel(object):
         return param_init
 
     def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median',
-              mode='flux', l_knots=None, max_tree_depth=10):
+              mode='flux', l_knots=None, tau_knots=None, max_tree_depth=10):
         """
         Function to run training process and save chains and fit statistics.
 
@@ -1195,9 +1193,19 @@ class SEDmodel(object):
 
         """
         if l_knots is not None:
-            self.l_knots = jnp.array(l_knots)
+            self.l_knots = device_put(np.array(l_knots, dtype=float))
+            self._setup_band_weights()
+            self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
             KD_l = spline_utils.invKD_irr(self.l_knots)
             self.J_l_T = device_put(spline_utils.spline_coeffs_irr(self.model_wave, self.l_knots, KD_l))
+        if tau_knots is not None:
+            self.tau_knots = device_put(np.array(tau_knots, dtype=float))
+            self.KD_t = device_put(spline_utils.invKD_irr(self.tau_knots))
+            t = self.data[0, ...]
+            keep_shape = t.shape
+            t = t.flatten(order='F')
+            self.J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
+                                                                          order='F').transpose(1, 2, 0)
         t = self.data[0, ...]
         self.hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
 

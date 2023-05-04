@@ -18,5 +18,6 @@ filt_map_dict = {'g': 'g_PS1', 'r': 'r_PS1', 'i': 'i_PS1', 'z': 'z_PS1'}
 model.process_dataset('YSE_Foundation', 'data/lcs/tables/YSE_Foundation_table.txt', 'data/lcs/meta/YSE_Foundation_meta.txt', data_mode='mag',
                       map_dict=filt_map_dict)
 
-model.train(500, 500, 4, 'YSE+Foundation_train', chain_method='sequential', init_strategy='T21', max_tree_depth=10)
+model.train(500, 500, 4, 'YSE+Foundation_train', chain_method='sequential', init_strategy='T21', max_tree_depth=10,
+            l_knots=[3300, 4900, 6200, 7700, 8700, 9500])
 
