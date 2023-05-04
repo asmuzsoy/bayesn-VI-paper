@@ -981,14 +981,6 @@ class SEDmodel(object):
             muhat = obs[-3, 0, sn_index]
             ebv = obs[-2, 0, sn_index]
 
-            print(band_indices[:, 0])
-
-            print(self.band_weights.shape)
-
-            plt.plot(self.model_wave, self.band_weights[5, :, 40])
-            plt.show()
-            raise ValueError('Nope')
-
             mask = obs[-1, :, sn_index].T.astype(bool)
             muhat_err = 5 / (redshift * jnp.log(10)) * jnp.sqrt(
                 jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))
@@ -1020,12 +1012,17 @@ class SEDmodel(object):
         param_root = f'model_files/{reference_model}_model'
         W0_init = np.loadtxt(f'{param_root}/W0.txt')
         l_knots = np.loadtxt(f'{param_root}/l_knots.txt')
+        tau_knots = np.loadtxt(f'{param_root}/tau_knots.txt')
         W1_init = np.loadtxt(f'{param_root}/W1.txt')
         RV_init, tauA_init = np.loadtxt(f'{param_root}/M0_sigma0_RV_tauA.txt')[[2, 3]]
 
         # Interpolate to match new wavelength knots
-        W0_init = interp1d(l_knots, W0_init, kind='cubic', axis=0)(self.l_knots)
-        W1_init = interp1d(l_knots, W1_init, kind='cubic', axis=0)(self.l_knots)
+        W0_init = interp1d(l_knots, W0_init, kind='cubic', axis=0, fill_value=0, bounds_error=False)(self.l_knots)
+        W1_init = interp1d(l_knots, W1_init, kind='cubic', axis=0, fill_value=0, bounds_error=False)(self.l_knots)
+
+        # Interpolate to match new time knots
+        W0_init = interp1d(tau_knots, W0_init, kind='linear', axis=1, fill_value=0, bounds_error=False)(self.tau_knots)
+        W1_init = interp1d(tau_knots, W1_init, kind='linear', axis=1, fill_value=0, bounds_error=False)(self.tau_knots)
 
         W0_init = W0_init.flatten(order='F')
         W1_init = W1_init.flatten(order='F')
@@ -1429,8 +1426,6 @@ class SEDmodel(object):
                 else:
                     peak_mjd = meta['SEARCH_PEAKMJD']
                 data = data[~data.FLT.isin(['K', 'K_AND', 'K_P', 'U', 'u_CSP', 'g_CSP'])]  # Skip certain bands
-                if row.REDSHIFT_CMB > 3900 / self.l_knots[0] - 1:  # Drop g-band if below edge of model
-                    data = data[~data.FLT.isin(['g', 'g_DES', 'g_PS1', 'p48g'])]
                 data['t'] = (data.MJD - peak_mjd) / (1 + row.REDSHIFT_CMB)
                 # If filter not in map_dict, assume one-to-one mapping
                 if map_dict is not None:
@@ -1474,21 +1469,27 @@ class SEDmodel(object):
         N_col = lc.shape[1]
         sne = sn_list['sn'].values
         all_data = np.zeros((N_sn, N_obs, N_col))
-        all_J_t = np.zeros((N_sn, self.tau_knots.shape[0], N_obs))
+        #all_J_t = np.zeros((N_sn, self.tau_knots.shape[0], N_obs))
         print('Saving light curves to standard grid...')
         for i in tqdm(range(len(all_lcs))):
             lc = all_lcs[i]
             all_data[i, :lc.shape[0], :] = lc.values
             all_data[i, lc.shape[0]:, 2] = 1 / jnp.sqrt(2 * np.pi)
             all_data[i, lc.shape[0]:, 3] = 10  # Arbitrarily set all masked points to H-band
-            all_J_t[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.tau_knots, self.KD_t).T
+            #all_J_t[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.tau_knots, self.KD_t).T
+        all_data = all_data.T
+        t = all_data[0, ...]
+        keep_shape = t.shape
+        t = t.flatten(order='F')
+        all_J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
+                                                                      order='F').transpose(1, 2, 0)
         with open(os.path.join('data', 'lcs', 'pickles', sample_name, f'dataset_{data_mode}.pkl'), 'wb') as file:
             pickle.dump(all_data, file)
         with open(os.path.join('data', 'lcs', 'pickles', sample_name, 'J_t.pkl'), 'wb') as file:
             pickle.dump(all_J_t, file)
         np.save(os.path.join('data', 'lcs', 'pickles', sample_name, 'sn_list'), sne)
         self.sn_list = sne
-        self.data = device_put(all_data.T)
+        self.data = device_put(all_data)
         self.J_t = device_put(all_J_t)
         self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
 
