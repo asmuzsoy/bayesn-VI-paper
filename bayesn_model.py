@@ -191,11 +191,6 @@ class SEDmodel(object):
         #    raise ValueError('Must select one of M20_model, T21_model, T21_partial-split_model and W22_model')
 
         # Initialise arrays and values for band responses - these are based on ParSNiP as presented in Boone+22
-        self.min_wave = self.l_knots[0]
-        self.max_wave = self.l_knots[-1]
-        self.spectrum_bins = 300
-        self.band_oversampling = 51
-        self.max_redshift = 4
 
         self.obsmode_file = obsmodel_file
         self._setup_band_weights()
@@ -248,6 +243,12 @@ class SEDmodel(object):
         Boone+21
         """
         # Build the model in log wavelength
+        self.min_wave = self.l_knots[0]
+        self.max_wave = self.l_knots[-1]
+        self.spectrum_bins = 300
+        self.band_oversampling = 51
+        self.max_redshift = 4
+
         model_log_wave = np.linspace(np.log10(self.min_wave),
                                      np.log10(self.max_wave),
                                      self.spectrum_bins)
@@ -949,9 +950,9 @@ class SEDmodel(object):
         sigma0_tform = numpyro.sample('sigma0_tform', dist.Uniform(0, jnp.pi / 2.))
         sigma0 = numpyro.deterministic('sigma0', 0.1 * jnp.tan(sigma0_tform))
 
-        Rv = numpyro.sample('Rv', dist.Uniform(1, 5))
-        #mu_R = numpyro.sample('mu_R', dist.Uniform(1, 5))
-        #sigma_R = numpyro.sample('sigma_R', dist.HalfNormal(2))
+        #Rv = numpyro.sample('Rv', dist.Uniform(1, 5))
+        mu_R = numpyro.sample('mu_R', dist.Uniform(1, 5))
+        sigma_R = numpyro.sample('sigma_R', dist.HalfNormal(2))
 
         # tauA = numpyro.sample('tauA', dist.HalfCauchy())
         tauA_tform = numpyro.sample('tauA_tform', dist.Uniform(0, jnp.pi / 2.))
@@ -960,8 +961,8 @@ class SEDmodel(object):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))  # _{sn_index}
             Av = numpyro.sample(f'AV', dist.Exponential(1 / tauA))
-            #Rv_tform = numpyro.sample('Rv_tform', dist.Normal(0, 1))
-            #Rv = numpyro.deterministic('Rv', mu_R + Rv_tform * sigma_R)
+            Rv_tform = numpyro.sample('Rv_tform', dist.Normal(0, 1))
+            Rv = numpyro.deterministic('Rv', mu_R + Rv_tform * sigma_R)
 
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=L_Sigma))
@@ -1011,12 +1012,17 @@ class SEDmodel(object):
         param_root = f'model_files/{reference_model}_model'
         W0_init = np.loadtxt(f'{param_root}/W0.txt')
         l_knots = np.loadtxt(f'{param_root}/l_knots.txt')
+        tau_knots = np.loadtxt(f'{param_root}/tau_knots.txt')
         W1_init = np.loadtxt(f'{param_root}/W1.txt')
         RV_init, tauA_init = np.loadtxt(f'{param_root}/M0_sigma0_RV_tauA.txt')[[2, 3]]
 
         # Interpolate to match new wavelength knots
-        W0_init = interp1d(l_knots, W0_init, kind='cubic', axis=0)(self.l_knots)
-        W1_init = interp1d(l_knots, W1_init, kind='cubic', axis=0)(self.l_knots)
+        W0_init = interp1d(l_knots, W0_init, kind='cubic', axis=0, fill_value=0, bounds_error=False)(self.l_knots)
+        W1_init = interp1d(l_knots, W1_init, kind='cubic', axis=0, fill_value=0, bounds_error=False)(self.l_knots)
+
+        # Interpolate to match new time knots
+        W0_init = interp1d(tau_knots, W0_init, kind='linear', axis=1, fill_value=0, bounds_error=False)(self.tau_knots)
+        W1_init = interp1d(tau_knots, W1_init, kind='linear', axis=1, fill_value=0, bounds_error=False)(self.tau_knots)
 
         W0_init = W0_init.flatten(order='F')
         W1_init = W1_init.flatten(order='F')
@@ -1152,7 +1158,7 @@ class SEDmodel(object):
         return param_init
 
     def train(self, num_samples, num_warmup, num_chains, output, chain_method='parallel', init_strategy='median',
-              mode='flux', l_knots=None, max_tree_depth=10):
+              mode='flux', l_knots=None, tau_knots=None, max_tree_depth=10):
         """
         Function to run training process and save chains and fit statistics.
 
@@ -1184,9 +1190,19 @@ class SEDmodel(object):
 
         """
         if l_knots is not None:
-            self.l_knots = jnp.array(l_knots)
+            self.l_knots = device_put(np.array(l_knots, dtype=float))
+            self._setup_band_weights()
+            self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
             KD_l = spline_utils.invKD_irr(self.l_knots)
             self.J_l_T = device_put(spline_utils.spline_coeffs_irr(self.model_wave, self.l_knots, KD_l))
+        if tau_knots is not None:
+            self.tau_knots = device_put(np.array(tau_knots, dtype=float))
+            self.KD_t = device_put(spline_utils.invKD_irr(self.tau_knots))
+            t = self.data[0, ...]
+            keep_shape = t.shape
+            t = t.flatten(order='F')
+            self.J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
+                                                                          order='F').transpose(1, 2, 0)
         t = self.data[0, ...]
         self.hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
 
@@ -1410,8 +1426,6 @@ class SEDmodel(object):
                 else:
                     peak_mjd = meta['SEARCH_PEAKMJD']
                 data = data[~data.FLT.isin(['K', 'K_AND', 'K_P', 'U', 'u_CSP', 'g_CSP'])]  # Skip certain bands
-                if row.REDSHIFT_CMB > 3900 / self.l_knots[0] - 1:  # Drop g-band if below edge of model
-                    data = data[~data.FLT.isin(['g', 'g_DES', 'g_PS1', 'p48g'])]
                 data['t'] = (data.MJD - peak_mjd) / (1 + row.REDSHIFT_CMB)
                 # If filter not in map_dict, assume one-to-one mapping
                 if map_dict is not None:
@@ -1455,21 +1469,27 @@ class SEDmodel(object):
         N_col = lc.shape[1]
         sne = sn_list['sn'].values
         all_data = np.zeros((N_sn, N_obs, N_col))
-        all_J_t = np.zeros((N_sn, self.tau_knots.shape[0], N_obs))
+        #all_J_t = np.zeros((N_sn, self.tau_knots.shape[0], N_obs))
         print('Saving light curves to standard grid...')
         for i in tqdm(range(len(all_lcs))):
             lc = all_lcs[i]
             all_data[i, :lc.shape[0], :] = lc.values
             all_data[i, lc.shape[0]:, 2] = 1 / jnp.sqrt(2 * np.pi)
             all_data[i, lc.shape[0]:, 3] = 10  # Arbitrarily set all masked points to H-band
-            all_J_t[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.tau_knots, self.KD_t).T
+            #all_J_t[i, ...] = spline_utils.spline_coeffs_irr(all_data[i, :, 0], self.tau_knots, self.KD_t).T
+        all_data = all_data.T
+        t = all_data[0, ...]
+        keep_shape = t.shape
+        t = t.flatten(order='F')
+        all_J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
+                                                                      order='F').transpose(1, 2, 0)
         with open(os.path.join('data', 'lcs', 'pickles', sample_name, f'dataset_{data_mode}.pkl'), 'wb') as file:
             pickle.dump(all_data, file)
         with open(os.path.join('data', 'lcs', 'pickles', sample_name, 'J_t.pkl'), 'wb') as file:
             pickle.dump(all_J_t, file)
         np.save(os.path.join('data', 'lcs', 'pickles', sample_name, 'sn_list'), sne)
         self.sn_list = sne
-        self.data = device_put(all_data.T)
+        self.data = device_put(all_data)
         self.J_t = device_put(all_J_t)
         self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
 
