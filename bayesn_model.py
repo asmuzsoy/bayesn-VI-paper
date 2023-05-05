@@ -1017,8 +1017,8 @@ class SEDmodel(object):
         RV_init, tauA_init = np.loadtxt(f'{param_root}/M0_sigma0_RV_tauA.txt')[[2, 3]]
 
         # Interpolate to match new wavelength knots
-        W0_init = interp1d(l_knots, W0_init, kind='cubic', axis=0, fill_value=0, bounds_error=False)(self.l_knots)
-        W1_init = interp1d(l_knots, W1_init, kind='cubic', axis=0, fill_value=0, bounds_error=False)(self.l_knots)
+        W0_init = interp1d(l_knots, W0_init, kind='cubic', axis=0, fill_value='extrapolate', bounds_error=False)(self.l_knots)
+        W1_init = interp1d(l_knots, W1_init, kind='cubic', axis=0, fill_value='extrapolate', bounds_error=False)(self.l_knots)
 
         # Interpolate to match new time knots
         W0_init = interp1d(tau_knots, W0_init, kind='linear', axis=1, fill_value=0, bounds_error=False)(self.tau_knots)
@@ -1398,7 +1398,7 @@ class SEDmodel(object):
                 all_J_t = pickle.load(file)
             sne = np.load(os.path.join('data', 'lcs', 'pickles', sample_name, 'sn_list.npy'), allow_pickle=True)
             self.sn_list = sne
-            self.data = device_put(all_data.T)
+            self.data = device_put(all_data)
             self.J_t = device_put(all_J_t)
             self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
             return
