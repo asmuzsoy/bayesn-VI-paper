@@ -1,0 +1,35 @@
+# 2020aavd 
+# SNANA-like file generated from user-provided data
+# Zeropoint of the converted SNANA file: 27.5 mag
+# -----------------------------------------------------------
+# Data table created by: anonymous
+# On date: 2023.05.03 (yyyy.mm.dd); 12.13 hrs (BST).
+# Script used: BayeSNmodel.io.write_snana_lcfile.py
+# -----------------------------------------------------------
+SNID: 2020aavd
+RA: 59.287429
+DEC: -24.901844
+MWEBV: 0.029
+REDSHIFT_HELIO: 0.142
+REDSHIFT_CMB: 0.13338839029906557
+REDSHIFT_CMB_ERR: 0.005
+PEAKMJD: 59169.360250030884
+FILTERS: g_PS1,i_PS1,r_PS1,z_PS1
+# -----------------------------------------------------------
+NOBS: 13
+NVAR: 6
+VARLIST: MJD FLT FLUXCAL FLUXCALERR MAG MAGERR
+OBS: 59156.47 i_PS1 266.4404 59.6324 21.436 0.243
+OBS: 59161.45 g_PS1 914.5343 82.5471 20.097 0.098
+OBS: 59161.45 z_PS1 702.1017 123.512 20.384 0.191
+OBS: 59167.46 g_PS1 1120.9855 115.6362 19.876 0.112
+OBS: 59167.46 r_PS1 998.1596 92.8532 20.002 0.101
+OBS: 59172.45 g_PS1 1108.6641 76.5838 19.888 0.075
+OBS: 59172.45 i_PS1 1020.4694 91.169 19.978 0.097
+OBS: 59180.46 r_PS1 679.8295 123.9769 20.419 0.198
+OBS: 59187.43 r_PS1 696.9474 83.4486 20.392 0.13
+OBS: 59189.37 r_PS1 480.8393 62.8875 20.795 0.142
+OBS: 59191.4 i_PS1 455.827 72.2111 20.853 0.172
+OBS: 59191.41 g_PS1 277.2043 53.8714 21.393 0.211
+OBS: 59193.42 i_PS1 463.4469 61.4665 20.835 0.144
+END:

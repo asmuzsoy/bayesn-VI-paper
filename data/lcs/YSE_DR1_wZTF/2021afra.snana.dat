@@ -1,0 +1,29 @@
+# 2021afra 
+# SNANA-like file generated from user-provided data
+# Zeropoint of the converted SNANA file: 27.5 mag
+# -----------------------------------------------------------
+# Data table created by: anonymous
+# On date: 2023.05.03 (yyyy.mm.dd); 12.13 hrs (BST).
+# Script used: BayeSNmodel.io.write_snana_lcfile.py
+# -----------------------------------------------------------
+SNID: 2021afra
+RA: 325.107571
+DEC: 8.308136
+MWEBV: 0.059
+REDSHIFT_HELIO: 0.087
+REDSHIFT_CMB: 0.08598239760432169
+REDSHIFT_CMB_ERR: 0.005
+PEAKMJD: 59554.73949616038
+FILTERS: g_PS1,i_PS1,p48g,r_PS1,z_PS1
+# -----------------------------------------------------------
+NOBS: 7
+NVAR: 6
+VARLIST: MJD FLT FLUXCAL FLUXCALERR MAG MAGERR
+OBS: 59541.21 r_PS1 585.5986 90.0725 20.581 0.167
+OBS: 59541.21 z_PS1 608.6954 122.7778 20.539 0.219
+OBS: 59543.154 p48g 716.4733 135.9386 20.362 0.206
+OBS: 59543.21 r_PS1 826.4184 97.4284 20.207 0.128
+OBS: 59543.21 i_PS1 920.4496 106.8184 20.09 0.126
+OBS: 59545.21 g_PS1 1520.5475 84.0286 19.545 0.06
+OBS: 59545.21 z_PS1 1303.767 136.8928 19.712 0.114
+END:

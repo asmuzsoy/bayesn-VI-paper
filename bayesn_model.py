@@ -662,7 +662,7 @@ class SEDmodel(object):
         with numpyro.plate('SNe', sample_size) as sn_index:
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
             Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
-            # Rv = numpyro.sample('Rv', dist.Normal(self.mu_R, self.sigma_R))
+            Rv = numpyro.sample('Rv', dist.Normal(self.mu_R, self.sigma_R))
             tmax = numpyro.sample('tmax', dist.Uniform(-10, 10))
             t = obs[0, ...] - tmax[None, sn_index]
             hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
@@ -689,7 +689,7 @@ class SEDmodel(object):
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
             # Ds = numpyro.sample('Ds', dist.ImproperUniform(dist.constraints.greater_than(0), (), event_shape=()))
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))  # Ds_err
-            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, Rv, band_indices, mask,
                                        J_t, hsiao_interp, weights)
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
@@ -1018,6 +1018,7 @@ class SEDmodel(object):
 
         # Interpolate to match new wavelength knots
         W0_init = interp1d(l_knots, W0_init, kind='cubic', axis=0, fill_value='extrapolate', bounds_error=False)(self.l_knots)
+        W1_init = interp1d(l_knots, W1_init, kind='cubic', axis=0, fill_value='extrapolate', bounds_error=False)(self.l_knots)
         W1_init = interp1d(l_knots, W1_init, kind='cubic', axis=0, fill_value='extrapolate', bounds_error=False)(self.l_knots)
 
         # Interpolate to match new time knots
