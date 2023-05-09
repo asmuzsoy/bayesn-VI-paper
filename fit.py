@@ -15,7 +15,7 @@ model = SEDmodel(load_model='YSE+Foundation')
 #                      data_mode='flux')
 
 filt_map_dict = {'g': 'g_PS1', 'r': 'r_PS1', 'i': 'i_PS1', 'z': 'z_PS1'}
-model.process_dataset('YSEwZTF_Foundation', 'data/lcs/tables/YSEwZTF_Foundation_table.txt', 'data/lcs/meta/YSEwZTF_Foundation_meta.txt', data_mode='flux',
+model.process_dataset('YSE_Foundation', 'data/lcs/tables/YSE_Foundation_table.txt', 'data/lcs/meta/YSE_Foundation_meta.txt', data_mode='flux',
                       map_dict=filt_map_dict)
 
-model.fit(250, 250, 4, 'YSEwZTF+Foundation_fit', chain_method='parallel', init_strategy='median')
+model.fit(250, 250, 4, 'YSE+Foundation_fit', chain_method='parallel', init_strategy='median')
