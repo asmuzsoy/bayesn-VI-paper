@@ -21,10 +21,35 @@ sn_list = pd.read_csv('results/YSEwZTF+Foundation_fit/sn_list.txt', header=None,
 with open('data/lcs/pickles/YSE_DR1/dataset_mag.pkl', 'rb') as file:
     T21_data = pickle.load(file).T
 
-with open(os.path.join('results', 'YSE_fit', 'chains.pkl'), 'rb') as file:
+with open(os.path.join('results', 'YSE_full_T21_fit', 'chains.pkl'), 'rb') as file:
     T21_chains = pickle.load(file)
 
-T21_fit_sn_list = pd.read_csv('results/YSE_fit/sn_list.txt', header=None, names=['sn'])
+df = pd.read_csv('results/YSE_full_T21_fit/sn_props.txt')
+df['mu'] = T21_chains['mu'].mean(axis=(0, 1))
+df['mu_err'] = T21_chains['mu'].std(axis=(0, 1))
+df['theta'] = T21_chains['theta'].mean(axis=(0, 1))
+df['theta_err'] = T21_chains['theta'].std(axis=(0, 1))
+df['Av'] = T21_chains['AV'].mean(axis=(0, 1))
+df['Av_err'] = T21_chains['AV'].std(axis=(0, 1))
+df['tmax'] = T21_chains['tmax'].mean(axis=(0, 1))
+df['tmax_err'] = T21_chains['tmax'].std(axis=(0, 1))
+df['Hres'] = df.mu - df.muhat
+
+print('Full', df.Hres.std())
+
+df = df[df.Av < 1]
+print('Av cut', df.Hres.std())
+
+df = df[df.theta_err < 0.5]
+print('Theta error cut', df.Hres.std())
+
+df = df[df.tmax_err < 2]
+print('tmax error cut', df.Hres.std())
+
+plt.errorbar(df.z, df.mu, yerr=df.mu_err, fmt='x')
+plt.show()
+
+"""
 
 sn_list['z'] = data[-5, 0, :]
 
@@ -70,5 +95,5 @@ ax[0, 0].set_ylabel(r'$\mu$')
 ax[1, 0].set_ylabel('Residual')
 plt.subplots_adjust(hspace=0, wspace=0)
 plt.show()
-
+"""
 
