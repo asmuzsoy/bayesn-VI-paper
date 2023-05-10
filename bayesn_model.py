@@ -283,7 +283,7 @@ class SEDmodel(object):
             return f
 
         band_weights, zps = [], []
-        self.band_dict, self.zp_dict = {}, {}
+        self.band_dict, self.zp_dict, self.band_lim_dict = {}, {}, {}
 
         obsmode = pd.read_csv(self.obsmode_file, delim_whitespace=True)
 
@@ -295,6 +295,9 @@ class SEDmodel(object):
             except:
                 continue
             band_transmission = np.interp(10 ** band_pad_log_wave, R[:, 0], R[:, 1])
+
+            band_low_lim = R[np.where(R[:, 1] > 0.01 * R[:, 1].max())[0][0], 0]
+
 
             # Convolve the bands to match the sampling of the spectrum.
             band_conv_transmission = jnp.interp(band_wave, 10 ** band_pad_log_wave, band_transmission)
@@ -321,6 +324,7 @@ class SEDmodel(object):
             int2 = simpson(lam * R[:, 1], lam)
             zp = 2.5 * np.log10(int1 / int2)
             self.band_dict[band] = band_ind
+            self.band_lim_dict[band] = band_low_lim
             self.zp_dict[band] = zp
             zps.append(zp)
             band_ind += 1
@@ -1353,7 +1357,7 @@ class SEDmodel(object):
             'sigma0': np.mean(samples['sigma0'])
         }"""
 
-    def process_dataset(self, sample_name, sample_file, meta_file, map_dict=None, sn_list=None, data_mode='flux'):
+    def process_dataset(self, sample_name, sample_file, meta_file, map_dict={}, sn_list=None, data_mode='flux'):
         """
         Function to process a data set to be used by the numpyro model. Currently, this is set up just to read in SNANA
         format files, there is more to be added. This will read through all light curves and work out the maximum number
@@ -1431,16 +1435,18 @@ class SEDmodel(object):
                     peak_mjd = meta['SEARCH_PEAKMJD']
                 data = data[~data.FLT.isin(['K', 'K_AND', 'K_P', 'U', 'u_CSP', 'g_CSP'])]  # Skip certain bands
                 data['t'] = (data.MJD - peak_mjd) / (1 + row.REDSHIFT_CMB)
-                # If filter not in map_dict, assume one-to-one mapping
-                if map_dict is not None:
-                    for f in data.FLT.unique():
-                        if f not in map_dict.keys():
-                            map_dict[f] = f
-                    data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[map_dict[x]])
-                    data['zp'] = data.FLT.apply(lambda x: self.zp_dict[map_dict[x]])
-                else:
-                    data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[x])
-                    data['zp'] = data.FLT.apply(lambda x: self.zp_dict[x])
+                # If filter not in map_dict, assume one-to-one mapping------
+                for f in data.FLT.unique():
+                    if f not in map_dict.keys():
+                        map_dict[f] = f
+                data['FLT'] = data.FLT.apply(lambda x: map_dict[x])
+                # Remove bands outside of filter coverage-------------------
+                for f in data.FLT.unique():
+                    if row.REDSHIFT_CMB > (self.band_lim_dict[f] / self.l_knots[0] - 1):
+                        data = data[~data.FLT.isin([f])]
+                # ----------------------------------------------------------
+                data['band_indices'] = data.FLT.apply(lambda x: self.band_dict[x])
+                data['zp'] = data.FLT.apply(lambda x: self.zp_dict[x])
                 if (data['MAG'] == 0).sum() > 0:
                     data['MAG'] = 27.5 - 2.5 * np.log10(data['FLUXCAL'])
                     data['MAGERR'] = (2.5 / np.log(10)) * data['FLUXCALERR'] / data['FLUXCAL']

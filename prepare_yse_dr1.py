@@ -494,7 +494,7 @@ for i in range(len(Ia_snid_list)):
     z_pec = np.sqrt((1 + v_pec / c) / (1 - v_pec / c)) - 1
     z_hd, z_hd_err = (1 + z_cmb) / (1 + z_pec) - 1, z_helio_err
 
-    if z_hd < 0.0000000000015:  # Cut low redshift objects
+    if z_hd < 0.015:  # Cut low redshift objects
         continue
 
     tmax = meta['peakmjd'] # + tmax_dict[sn] * (1 + z_hd)  # Correct peak MJD based on T21 fits
