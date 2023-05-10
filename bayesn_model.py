@@ -915,7 +915,10 @@ class SEDmodel(object):
         summary = arviz.summary(samples)
         summary.to_csv(os.path.join('results', output, 'fit_summary.csv'))
         df = pd.DataFrame(self.sn_list, columns=['sn'])
-        df.to_csv(os.path.join('results', output, 'sn_list.txt'), index=False, header=False)
+        df['z'] = self.data[-5, 0, :]
+        df['z_err'] = self.data[-4, 0, :]
+        df['muhat'] = self.data[-3, 0, :]
+        df.to_csv(os.path.join('results', output, 'sn_props.txt'), index=False)
 
     def train_model(self, obs):
         """
