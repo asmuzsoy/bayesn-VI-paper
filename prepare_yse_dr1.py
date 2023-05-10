@@ -480,8 +480,8 @@ for i in range(len(Ia_snid_list)):
     #if i in good:
     #    continue
     sn, meta, df = Ia_snid_list[i], Ia_meta_list[i], Ia_df_list[i]
-    if sn in bad_names:
-        continue
+    #if sn in bad_names:
+    #    continue
     #df = df[~df.PASSBAND.isin(['X', 'Y'])].copy()
     if df.empty:
         continue
@@ -494,10 +494,10 @@ for i in range(len(Ia_snid_list)):
     z_pec = np.sqrt((1 + v_pec / c) / (1 - v_pec / c)) - 1
     z_hd, z_hd_err = (1 + z_cmb) / (1 + z_pec) - 1, z_helio_err
 
-    if z_hd < 0.015:  # Cut low redshift objects
+    if z_hd < 0.0000000000015:  # Cut low redshift objects
         continue
 
-    tmax = meta['peakmjd'] + tmax_dict[sn] * (1 + z_hd)  # Correct peak MJD based on T21 fits
+    tmax = meta['peakmjd'] # + tmax_dict[sn] * (1 + z_hd)  # Correct peak MJD based on T21 fits
 
     df['phase'] = (df.MJD - tmax) / (1 + z_hd)
     fit_df = df[(df.phase > -10) & (df.phase < 40)]
@@ -515,20 +515,20 @@ for i in range(len(Ia_snid_list)):
     #plt.gca().invert_yaxis()
     #plt.show()
     #continue
-    write_snana_lcfile('data/lcs/YSE_DR1_wZTF', sn, df.MJD, FLT, df.MAG, df.MAGERR, tmax, z_helio, z_hd,
+    write_snana_lcfile('data/lcs/YSE_DR1', sn, df.MJD, FLT, df.MAG, df.MAGERR, tmax, z_helio, z_hd,
                        z_hd_err, meta['mwebv'], ra=meta['ra'], dec=meta['dec'])
     meta_list.append([sn, tmax, z_cmb, z_hd_err])
-    table_list.append([sn, 'YSE_DR1_wZTF', f'{sn}.snana.dat'])
+    table_list.append([sn, 'YSE_DR1', f'{sn}.snana.dat'])
 
 meta_list, table_list = np.array(meta_list), np.array(table_list)
 meta = pd.DataFrame(meta_list, columns=['SNID', 'SEARCH_PEAKMJD', 'REDSHIFT_CMB', 'REDSHIFT_CMB_ERR'])
 table = pd.DataFrame(table_list)
 
 # Add Foundation as well
-f_table = pd.read_csv('data/lcs/tables/T21_training_set.txt', delim_whitespace=True, skiprows=5, header=None)
-f_meta = pd.read_csv('data/lcs/meta/T21_training_set_meta.txt', delim_whitespace=True)
-table = pd.concat([table, f_table])
-meta = pd.concat([meta, f_meta])
+#f_table = pd.read_csv('data/lcs/tables/T21_training_set.txt', delim_whitespace=True, skiprows=5, header=None)
+#f_meta = pd.read_csv('data/lcs/meta/T21_training_set_meta.txt', delim_whitespace=True)
+#table = pd.concat([table, f_table])
+#meta = pd.concat([meta, f_meta])
 
-meta.to_csv('data/lcs/meta/YSEwZTF_Foundation_meta.txt', sep='\t', index=False)
-table.to_csv('data/lcs/tables/YSEwZTF_Foundation_table.txt', header=False, sep='\t', index=False)
+meta.to_csv('data/lcs/meta/YSEfull_meta.txt', sep='\t', index=False)
+table.to_csv('data/lcs/tables/YSEfull_table.txt', header=False, sep='\t', index=False)

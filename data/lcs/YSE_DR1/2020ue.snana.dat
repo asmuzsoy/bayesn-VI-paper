@@ -3,7 +3,7 @@
 # Zeropoint of the converted SNANA file: 27.5 mag
 # -----------------------------------------------------------
 # Data table created by: anonymous
-# On date: 2023.03.31 (yyyy.mm.dd); 10.41 hrs (BST).
+# On date: 2023.05.10 (yyyy.mm.dd); 12.22 hrs (BST).
 # Script used: BayeSNmodel.io.write_snana_lcfile.py
 # -----------------------------------------------------------
 SNID: 2020ue
@@ -11,7 +11,7 @@ RA: 190.694908
 DEC: 2.659503
 MWEBV: 0.025
 REDSHIFT_HELIO: 0.003
-REDSHIFT_CMB: 0.004123907506458746
+REDSHIFT_CMB: 0.0016027661087194556
 REDSHIFT_CMB_ERR: 0.005
 PEAKMJD: 58867.61
 FILTERS: g_PS1,i_PS1,r_PS1,z_PS1
