@@ -1,4 +1,5 @@
 pb obsmode magsys magzero
+NULL_BAND filters/NULL/NULL.dat abmag 0.
 u_CSP filters/LCO/Swope/u_tel_ccd_atm_ext_1.2.dat abmag 0.
 g_CSP filters/LCO/Swope/g_tel_ccd_atm_ext_1.2.dat abmag 0.
 r_CSP filters/LCO/Swope/r_tel_ccd_atm_ext_1.2.dat abmag 0.
