@@ -11,9 +11,9 @@ from scipy.integrate import simpson
 import numpyro
 from numpyro.infer import MCMC, NUTS, init_to_median, init_to_sample, init_to_value, Predictive
 import numpyro.distributions as dist
-from numpyro.optim import Adam
-from numpyro.infer import SVI, Trace_ELBO
-from numpyro.infer.autoguide import AutoDelta
+from numpyro.optim import Adam, ClippedAdam
+from numpyro.infer import SVI, Trace_ELBO, TraceGraph_ELBO
+from numpyro.infer.autoguide import AutoDelta, AutoMultivariateNormal, AutoDiagonalNormal
 import h5py
 import sncosmo
 import spline_utils
@@ -35,6 +35,7 @@ from astropy.io import fits
 import ruamel.yaml as yaml
 import time
 from tqdm import tqdm
+from zltn_utils import *
 
 # Make plots look pretty
 rc('font', **{'family': 'serif', 'serif': ['cmr10']})
@@ -664,10 +665,14 @@ class SEDmodel(object):
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
 
         with numpyro.plate('SNe', sample_size) as sn_index:
+            Av = numpyro.sample(f'AV', My_Exponential(1 / self.tauA))
+            print("Model AV:", Av)
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
-            Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
             # Rv = numpyro.sample('Rv', dist.Normal(self.mu_R, self.sigma_R))
-            tmax = numpyro.sample('tmax', dist.Uniform(-10, 10))
+            # tmax = numpyro.sample('tmax', dist.Uniform(-10, 10))
+            # tmax = numpyro.sample('tmax', dist.Normal(0, 0.003))
+
+            tmax = jnp.asarray([6])
             t = obs[0, ...] - tmax[None, sn_index]
             hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
             keep_shape = t.shape
@@ -678,7 +683,8 @@ class SEDmodel(object):
                                                                      order='F').transpose(1, 2, 0)
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
-            eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
+            # eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
+            eps_tform = eps_mu
             eps_tform = eps_tform.T
             eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
             eps = eps.T
@@ -698,6 +704,9 @@ class SEDmodel(object):
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
                                obs=obs[1, :, sn_index].T)  # _{sn_index}
+
+
+
 
     def fit(self, num_samples, num_warmup, num_chains, output, model_path=None, chain_method='parallel',
             init_strategy='median'):
@@ -806,78 +815,78 @@ class SEDmodel(object):
         # print('vmap: ', end - start)
         # self.fit_postprocess(samples, output)
 
-        good, bad = [], []
-        for i in tqdm(range(self.data.shape[2])):
-            #if self.sn_list[i] != '2020dwg':
-            #    continue
-            #if i != 8:
-            #    continue
-            data = self.data[..., i:i+1]  # Just to subsample the data, for testing
-            band_weights = self.band_weights[i:i+1, ...]  # Just to subsample the data, for testing
-            #init_strategy = init_to_value(values=self.fit_initial_guess())
-            prior_predictive = Predictive(self.fit_model, num_samples=100)
-            redshift = data[-5, 0, 0]
-            redshift_error = data[-4, 0, 0]
-            muhat_err = 5 / (redshift * jnp.log(10)) * jnp.sqrt(
-                jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))
-            print(f'Muhat: {data[-3, 0, 0]}')
-            N = 1
-            t = np.arange(-10, 40, 1)
-            bands = ['p48g', 'p48r', 'g_PS1', 'r_PS1', 'i_PS1', 'z_PS1']
-            preds = self.simulate_light_curve(t, N, bands, z=data[-5, 0, 0],
-                                              mu=data[-3, 0, 0], write_to_files=False, mag=False)
-            num_bands = len(bands)
-            num_per_band = len(t)
-            t = t[:, None].repeat(num_bands, axis=1).flatten(order='F')
-            mean, std = np.mean(preds[0], axis=1),  np.std(preds[0], axis=1)
-            print(self.band_dict)
-            fig, axs = plt.subplots(2, 3, sharex=True, sharey=True, figsize=(16, 12))
-            colours = ['g', 'r', 'g', 'r', 'c', 'k']
-            band_inds = [87, 88, 40, 41, 42, 43]
-            for n in range(num_bands):
-                ax = axs.flatten()[n]
-                ax.plot(t[n * num_per_band: (n + 1) * num_per_band], mean[n * num_per_band: (n + 1) * num_per_band], c=colours[n], label=bands[n])
-                ax.fill_between(t[n * num_per_band: (n + 1) * num_per_band], mean[n * num_per_band: (n + 1) * num_per_band] - std[n * num_per_band: (n + 1) * num_per_band],
-                                 mean[n * num_per_band: (n + 1) * num_per_band] + std[n * num_per_band: (n + 1) * num_per_band], alpha=0.3, color=colours[n])
-                band_data = data[:, data[-6, :, 0] == band_inds[n]]
-                ax.errorbar(band_data[0, :, 0], band_data[1, :, 0], yerr=band_data[2, :, 0], fmt=f'{colours[n]}x')
-                ax.legend()
-            #ax.invert_yaxis()
-            plt.subplots_adjust(hspace=0, wspace=0)
-            #nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
-            mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
-                        chain_method=chain_method)
-            # try:
-            mcmc.run(rng_, data, band_weights)
-            mcmc.print_summary()
-            samples = mcmc.get_samples(group_by_chain=True)
-            print('------')
-            print(samples['Ds'].mean(axis=(0, 1)) - data[-3, 0, 0])
-            print('------')
-            summary = arviz.summary(samples)
-            rhat = np.mean(summary.r_hat)
-            plt.suptitle(f'{self.sn_list[i]}: Mean rhat = {rhat}')
-            plt.savefig(f'plots/YSE_DR1_bad/{self.sn_list[i]}.png')
-            plt.show()
-            for j in range(4):
-                plt.hist(samples['tmax'][j, :, 0], bins=np.linspace(np.min(samples['tmax'][j, ..., 0]), np.max(samples['tmax'][j, ..., 0]), 10), histtype='step')
-            plt.show()
-            if rhat > 1.05:
-                bad.append(i)
-            else:
-                good.append(i)
-            continue
-            #except:
-            #    #raise ValueError('Nope')
-            #    bad.append(i)
-            #    continue
-        print(len(good), len(bad))
-        print(good)
-        print(bad)
-        print(repr(good))
-        print(repr(bad))
+        # good, bad = [], []
+        # for i in tqdm(range(self.data.shape[2])):
+        #     #if self.sn_list[i] != '2020dwg':
+        #     #    continue
+        #     #if i != 8:
+        #     #    continue
+        #     data = self.data[..., i:i+1]  # Just to subsample the data, for testing
+        #     band_weights = self.band_weights[i:i+1, ...]  # Just to subsample the data, for testing
+        #     #init_strategy = init_to_value(values=self.fit_initial_guess())
+        #     prior_predictive = Predictive(self.fit_model, num_samples=100)
+        #     redshift = data[-5, 0, 0]
+        #     redshift_error = data[-4, 0, 0]
+        #     muhat_err = 5 / (redshift * jnp.log(10)) * jnp.sqrt(
+        #         jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))
+        #     print(f'Muhat: {data[-3, 0, 0]}')
+        #     N = 1
+        #     t = np.arange(-10, 40, 1)
+        #     bands = ['p48g', 'p48r', 'g_PS1', 'r_PS1', 'i_PS1', 'z_PS1']
+        #     preds = self.simulate_light_curve(t, N, bands, z=data[-5, 0, 0],
+        #                                       mu=data[-3, 0, 0], write_to_files=False, mag=False)
+        #     num_bands = len(bands)
+        #     num_per_band = len(t)
+        #     t = t[:, None].repeat(num_bands, axis=1).flatten(order='F')
+        #     mean, std = np.mean(preds[0], axis=1),  np.std(preds[0], axis=1)
+        #     print(self.band_dict)
+        #     fig, axs = plt.subplots(2, 3, sharex=True, sharey=True, figsize=(16, 12))
+        #     colours = ['g', 'r', 'g', 'r', 'c', 'k']
+        #     band_inds = [87, 88, 40, 41, 42, 43]
+        #     for n in range(num_bands):
+        #         ax = axs.flatten()[n]
+        #         ax.plot(t[n * num_per_band: (n + 1) * num_per_band], mean[n * num_per_band: (n + 1) * num_per_band], c=colours[n], label=bands[n])
+        #         ax.fill_between(t[n * num_per_band: (n + 1) * num_per_band], mean[n * num_per_band: (n + 1) * num_per_band] - std[n * num_per_band: (n + 1) * num_per_band],
+        #                          mean[n * num_per_band: (n + 1) * num_per_band] + std[n * num_per_band: (n + 1) * num_per_band], alpha=0.3, color=colours[n])
+        #         band_data = data[:, data[-6, :, 0] == band_inds[n]]
+        #         ax.errorbar(band_data[0, :, 0], band_data[1, :, 0], yerr=band_data[2, :, 0], fmt=f'{colours[n]}x')
+        #         ax.legend()
+        #     #ax.invert_yaxis()
+        #     plt.subplots_adjust(hspace=0, wspace=0)
+        #     #nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
+        #     mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
+        #                 chain_method=chain_method)
+        #     # try:
+        #     mcmc.run(rng_, data, band_weights)
+        #     mcmc.print_summary()
+        #     samples = mcmc.get_samples(group_by_chain=True)
+        #     print('------')
+        #     print(samples['Ds'].mean(axis=(0, 1)) - data[-3, 0, 0])
+        #     print('------')
+        #     summary = arviz.summary(samples)
+        #     rhat = np.mean(summary.r_hat)
+        #     plt.suptitle(f'{self.sn_list[i]}: Mean rhat = {rhat}')
+        #     plt.savefig(f'plots/YSE_DR1_bad/{self.sn_list[i]}.png')
+        #     plt.show()
+        #     for j in range(4):
+        #         plt.hist(samples['tmax'][j, :, 0], bins=np.linspace(np.min(samples['tmax'][j, ..., 0]), np.max(samples['tmax'][j, ..., 0]), 10), histtype='step')
+        #     plt.show()
+        #     if rhat > 1.05:
+        #         bad.append(i)
+        #     else:
+        #         good.append(i)
+        #     continue
+        #     #except:
+        #     #    #raise ValueError('Nope')
+        #     #    bad.append(i)
+        #     #    continue
+        # print(len(good), len(bad))
+        # print(good)
+        # print(bad)
+        # print(repr(good))
+        # print(repr(bad))
 
-        return
+        # return
 
         start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
@@ -887,6 +896,66 @@ class SEDmodel(object):
         samples = mcmc.get_samples(group_by_chain=True)
         end = timeit.default_timer()
         print('original: ', end - start)
+        self.fit_postprocess(samples, output)
+
+    def fit_with_vi(self, output, model_path=None, init_strategy='median'):
+        """
+        Parameters
+        ----------
+        output: str
+            Name of output directory which will store results
+        model_path: str, optional
+            Name of directory containing model parameters to use for fitting. I'm using this for now to keep my
+            numpyro trained models separate from T21/M20/W22 etc. until we're confident with them. Defaults to None,
+            which means that the model loaded when initialising the SEDmodel object is used.
+            Strategy to use for initialisation, default to median. Options are:
+            ``'median'`` | Chains are initialised to prior media
+            ``'sample'`` | Chains are initialised to a random sample from the priors
+
+        """
+        if init_strategy == 'median':
+            init_strategy = init_to_median()
+        elif init_strategy == 'value':
+            init_strategy = init_to_value(values=self.fit_initial_guess())
+        elif init_strategy == 'map':
+            init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
+        elif init_strategy == 'sample':
+            init_strategy = init_to_sample()
+        else:
+            raise ValueError('Invalid init strategy, must be one of median or sample')
+        if model_path is not None:
+            with open(os.path.join('results', model_path, 'chains.pkl'), 'rb') as file:
+                result = pickle.load(file)
+            self.W0 = device_put(
+                np.reshape(np.mean(result['W0'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            self.W1 = device_put(
+                np.reshape(np.mean(result['W1'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            # sigmaepsilon = np.mean(result['sigmaepsilon'], axis=(0, 1))
+            # L_Omega = np.mean(result['L_Omega'], axis=(0, 1))
+            # self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
+            self.Rv = device_put(np.mean(result['Rv'], axis=(0, 1)))
+            self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
+            self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
+
+        optimizer = Adam(0.001)
+
+        start = timeit.default_timer() 
+        # guide = AutoMultivariateNormal(self.fit_model, init_loc_fn=init_strategy)
+        guide = AutoMultiZLTNGuide(self.fit_model, init_loc_fn=init_strategy)
+
+        svi = SVI(self.fit_model, guide, optimizer, loss=Trace_ELBO())
+        svi_result = svi.run(PRNGKey(123), 30000, self.data, self.band_weights)
+        params, losses = svi_result.params, svi_result.losses
+        # print(params)
+        end = timeit.default_timer()
+        print('VI: ', end - start)
+        predictive = Predictive(guide, params=params, num_samples=1000)
+        samples = predictive(PRNGKey(123), self.data, self.band_weights)
+        print(samples.keys())
+        print(samples)
+        print(params)
         self.fit_postprocess(samples, output)
 
     def fit_postprocess(self, samples, output):
@@ -1397,19 +1466,19 @@ class SEDmodel(object):
             multiplied by SEDmodel.scale to ensure that values are of order unity, to assist in HMC processes.
 
         """
-        if not os.path.exists(os.path.join('data', 'lcs', 'pickles', sample_name)):
-            os.mkdir(os.path.join('data', 'lcs', 'pickles', sample_name))
-        if os.path.exists(os.path.join('data', 'lcs', 'pickles', sample_name, f'dataset_{data_mode}.pkl')):
-            with open(os.path.join('data', 'lcs', 'pickles', sample_name, f'dataset_{data_mode}.pkl'), 'rb') as file:
-                all_data = pickle.load(file)
-            with open(os.path.join('data', 'lcs', 'pickles', sample_name, 'J_t.pkl'), 'rb') as file:
-                all_J_t = pickle.load(file)
-            sne = np.load(os.path.join('data', 'lcs', 'pickles', sample_name, 'sn_list.npy'), allow_pickle=True)
-            self.sn_list = sne
-            self.data = device_put(all_data)
-            self.J_t = device_put(all_J_t)
-            self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
-            return
+        # if not os.path.exists(os.path.join('data', 'lcs', 'pickles', sample_name)):
+        #     os.mkdir(os.path.join('data', 'lcs', 'pickles', sample_name))
+        # if os.path.exists(os.path.join('data', 'lcs', 'pickles', sample_name, f'dataset_{data_mode}.pkl')):
+        #     with open(os.path.join('data', 'lcs', 'pickles', sample_name, f'dataset_{data_mode}.pkl'), 'rb') as file:
+        #         all_data = pickle.load(file)
+        #     with open(os.path.join('data', 'lcs', 'pickles', sample_name, 'J_t.pkl'), 'rb') as file:
+        #         all_J_t = pickle.load(file)
+        #     sne = np.load(os.path.join('data', 'lcs', 'pickles', sample_name, 'sn_list.npy'), allow_pickle=True)
+        #     self.sn_list = sne
+        #     self.data = device_put(all_data)
+        #     self.J_t = device_put(all_J_t)
+        #     self.band_weights = self._calculate_band_weights(self.data[-5, 0, :], self.data[-2, 0, :])
+        #     return
         if not os.path.exists(sample_file):
             raise FileNotFoundError(f'No file found at {sample_file}')
         sn_list = pd.read_csv(sample_file, comment='#', delim_whitespace=True, names=['sn', 'source', 'files'])
@@ -1493,11 +1562,11 @@ class SEDmodel(object):
         t = t.flatten(order='F')
         all_J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
                                                                       order='F').transpose(1, 2, 0)
-        with open(os.path.join('data', 'lcs', 'pickles', sample_name, f'dataset_{data_mode}.pkl'), 'wb') as file:
-            pickle.dump(all_data, file)
-        with open(os.path.join('data', 'lcs', 'pickles', sample_name, 'J_t.pkl'), 'wb') as file:
-            pickle.dump(all_J_t, file)
-        np.save(os.path.join('data', 'lcs', 'pickles', sample_name, 'sn_list'), sne)
+        # with open(os.path.join('data', 'lcs', 'pickles', sample_name, f'dataset_{data_mode}.pkl'), 'wb') as file:
+        #     pickle.dump(all_data, file)
+        # with open(os.path.join('data', 'lcs', 'pickles', sample_name, 'J_t.pkl'), 'wb') as file:
+        #     pickle.dump(all_J_t, file)
+        # np.save(os.path.join('data', 'lcs', 'pickles', sample_name, 'sn_list'), sne)
         self.sn_list = sne
         self.data = device_put(all_data)
         self.J_t = device_put(all_J_t)

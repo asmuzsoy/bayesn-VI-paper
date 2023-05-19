@@ -1,0 +1,5 @@
+0	T21_sim_100	0.snana.dat
+1	T21_sim_100	1.snana.dat
+2	T21_sim_100	2.snana.dat
+3	T21_sim_100	3.snana.dat
+4	T21_sim_100	4.snana.dat
