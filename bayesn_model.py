@@ -648,7 +648,7 @@ class SEDmodel(object):
 
         return X
 
-    def fit_model(self, obs, weights):
+    def fit_model_vi(self, obs, weights):
         """
         Numpyro model used for fitting SN properties assuming fixed global properties from a trained model. Will fit for tmax
         as well as theta, epsilon, Av and distance modulus
@@ -669,10 +669,10 @@ class SEDmodel(object):
             print("Model AV:", Av)
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
             # Rv = numpyro.sample('Rv', dist.Normal(self.mu_R, self.sigma_R))
-            # tmax = numpyro.sample('tmax', dist.Uniform(-10, 10))
+            tmax = numpyro.sample('tmax', dist.Uniform(-10, 10))
             # tmax = numpyro.sample('tmax', dist.Normal(0, 0.003))
 
-            tmax = jnp.asarray([6])
+            # tmax = jnp.asarray([6])
             t = obs[0, ...] - tmax[None, sn_index]
             hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
             keep_shape = t.shape
@@ -683,8 +683,8 @@ class SEDmodel(object):
                                                                      order='F').transpose(1, 2, 0)
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
-            # eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
-            eps_tform = eps_mu
+            eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
+            # eps_tform = eps_mu
             eps_tform = eps_tform.T
             eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
             eps = eps.T
@@ -705,6 +705,62 @@ class SEDmodel(object):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
                                obs=obs[1, :, sn_index].T)  # _{sn_index}
 
+    def fit_model_mcmc(self, obs, weights):
+        """
+        Numpyro model used for fitting SN properties assuming fixed global properties from a trained model. Will fit for tmax
+        as well as theta, epsilon, Av and distance modulus
+
+        Parameters
+        ----------
+        obs: array-like
+            Data to fit, from output of process_dataset
+        weights: array-like
+            Band-weights to calculate photometry
+
+        """
+        sample_size = obs.shape[-1]
+        N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
+
+        with numpyro.plate('SNe', sample_size) as sn_index:
+            Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
+            print("Model AV:", Av)
+            theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
+            # Rv = numpyro.sample('Rv', dist.Normal(self.mu_R, self.sigma_R))
+            tmax = numpyro.sample('tmax', dist.Uniform(-10, 10))
+            # tmax = numpyro.sample('tmax', dist.Normal(0, 0.003))
+
+            # tmax = jnp.asarray([6])
+            t = obs[0, ...] - tmax[None, sn_index]
+            hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
+            keep_shape = t.shape
+            t = t.flatten(order='F')
+            # J_t = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
+            #                                                         order='F').transpose(1, 2, 0)
+            J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
+                                                                     order='F').transpose(1, 2, 0)
+            eps_mu = jnp.zeros(N_knots_sig)
+            # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
+            eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
+            # eps_tform = eps_mu
+            eps_tform = eps_tform.T
+            eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
+            eps = eps.T
+            eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+            eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            eps = eps_full.at[:, 1:-1, :].set(eps)
+            # eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            band_indices = obs[-6, :, sn_index].astype(int).T
+            muhat = obs[-3, 0, sn_index]
+            mask = obs[-1, :, sn_index].T.astype(bool)
+            muhat_err = 5
+            Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
+            # Ds = numpyro.sample('Ds', dist.ImproperUniform(dist.constraints.greater_than(0), (), event_shape=()))
+            Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))  # Ds_err
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
+                                       J_t, hsiao_interp, weights)
+            with numpyro.handlers.mask(mask=mask):
+                numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
+                               obs=obs[1, :, sn_index].T)  # _{sn_index}
 
 
 
@@ -773,7 +829,7 @@ class SEDmodel(object):
 
         rng = PRNGKey(321)
         rng, rng_ = split(rng)
-        nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
+        nuts_kernel = NUTS(self.fit_model_mcmc, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
 
         def do_mcmc(data, weights):
             """
@@ -795,7 +851,7 @@ class SEDmodel(object):
 
             """
             rng_key = PRNGKey(123)
-            nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy,
+            nuts_kernel = NUTS(self.fit_model_mcmc, adapt_step_size=True, init_strategy=init_strategy,
                                max_tree_depth=10)
             mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
                         chain_method=chain_method, progress_bar=True)
@@ -939,13 +995,13 @@ class SEDmodel(object):
             self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
             self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
 
-        optimizer = Adam(0.001)
+        optimizer = Adam(0.01)
 
         start = timeit.default_timer() 
         # guide = AutoMultivariateNormal(self.fit_model, init_loc_fn=init_strategy)
-        guide = AutoMultiZLTNGuide(self.fit_model, init_loc_fn=init_strategy)
+        guide = AutoMultiZLTNGuide(self.fit_model_vi, init_loc_fn=init_strategy)
 
-        svi = SVI(self.fit_model, guide, optimizer, loss=Trace_ELBO())
+        svi = SVI(self.fit_model_vi, guide, optimizer, loss=Trace_ELBO(5))
         svi_result = svi.run(PRNGKey(123), 30000, self.data, self.band_weights)
         params, losses = svi_result.params, svi_result.losses
         # print(params)
@@ -1202,8 +1258,8 @@ class SEDmodel(object):
             svi = SVI(self.train_model, guide, optimizer, loss=Trace_ELBO())
             svi_result = svi.run(PRNGKey(123), 5000, self.data)
         else:
-            guide = AutoDelta(self.fit_model)
-            svi = SVI(self.fit_model, guide, optimizer, loss=Trace_ELBO())
+            guide = AutoDelta(self.fit_model_mcmc)
+            svi = SVI(self.fit_model_mcmc, guide, optimizer, loss=Trace_ELBO())
             svi_result = svi.run(PRNGKey(123), 1000, self.data, self.band_weights)
         params, losses = svi_result.params, svi_result.losses
 
@@ -1955,6 +2011,7 @@ class SEDmodel(object):
             'ebv_mw': ebv_mw,
             'Rv': Rv
         }
+        print(AV, theta, mu)
 
         t = jnp.array(t)
         num_per_band = t.shape[0]
@@ -1978,6 +2035,7 @@ class SEDmodel(object):
                                                                                                                      2,
                                                                                                                      0)
         t = t.reshape(keep_shape, order='F')
+        print(t)
         if mag:
             data = self.get_mag_batch(theta, AV, self.W0, self.W1, eps, mu + del_M, Rv, band_indices, mask, J_t,
                                       hsiao_interp, band_weights)
@@ -2008,6 +2066,7 @@ class SEDmodel(object):
                 sn_names.append(sn_name)
                 sn_files.append(sn_file)
             # Prepare sample files
+            print("writing files")
             sample_file = os.path.join('data', 'lcs', 'tables', f'{sim_name}.txt')
             meta_file = os.path.join('data', 'lcs', 'meta', f'{sim_name}_meta.txt')
             sources = np.array([sim_name] * N)
@@ -2187,7 +2246,7 @@ class SEDmodel(object):
             #chains[key] = np.reshape(val, (val.shape[0] * val.shape[1], *val.shape[2:]), order='F')
             chains[key] = np.mean(val, axis=(0, 1))[None, ...]
         rng_key, rng_key_ = jax.random.split(PRNGKey(123))
-        pred = Predictive(self.fit_model, chains)
+        pred = Predictive(self.fit_model_mcmc, chains)
         preds = pred(rng_key, None, self.band_weights)['obs']
         bands = ['p48g', 'p48r', 'g_PS1', 'r_PS1', 'i_PS1', 'z_PS1']
         band_inds = [self.band_dict[band] for band in bands]

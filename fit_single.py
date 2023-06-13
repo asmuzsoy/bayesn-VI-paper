@@ -2,8 +2,13 @@ from bayesn_model import SEDmodel
 
 model = SEDmodel(load_model='T21_model')
 
+dataset = 'sim_low_AV'
+# dataset = 'sim_nonzero_eps'
+
+# dataset = 'T21_sim_2'
+
 filt_map_dict = {'g': 'g_PS1', 'r': 'r_PS1', 'i': 'i_PS1', 'z': 'z_PS1'}
-model.process_dataset('foundation', 'data/lcs/tables/T21_sim_1.txt', 'data/lcs/meta/T21_sim_1_meta.txt',
+model.process_dataset('foundation', 'data/lcs/tables/' + dataset + '.txt', 'data/lcs/meta/' + dataset + '_meta.txt',
                       filt_map_dict, data_mode='flux')
 
 #model.process_dataset('T21_sim_1000', 'data/lcs/tables/T21_sim_1000.txt', 'data/lcs/meta/T21_sim_1000_meta.txt',
@@ -19,7 +24,7 @@ model.process_dataset('foundation', 'data/lcs/tables/T21_sim_1.txt', 'data/lcs/m
 #                      map_dict=filt_map_dict)
 
 print("Fitting MCMC...")
-model.fit(250, 250, 4, 'T21_fit_1_mcmc', chain_method='parallel', init_strategy='median')
+model.fit(250, 250, 4, dataset + '_mcmc', chain_method='parallel', init_strategy='median')
 
 print("Fitting VI...")
-model.fit_with_vi('T21_fit_1_vi', init_strategy='median')
+model.fit_with_vi(dataset + '_vi', init_strategy='median')
