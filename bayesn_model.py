@@ -37,6 +37,7 @@ import time
 from tqdm import tqdm
 from zltn_utils import *
 
+
 # Make plots look pretty
 rc('font', **{'family': 'serif', 'serif': ['cmr10']})
 mpl.rcParams['axes.unicode_minus'] = False
@@ -142,6 +143,7 @@ class SEDmodel(object):
         jax.config.update('jax_enable_x64', enable_x64)
         # os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
         print('Current devices:', jax.devices())
+        print(jax.local_device_count())
 
         self.cosmo = FlatLambdaCDM(**fiducial_cosmology)
         self.data = None
@@ -1010,7 +1012,6 @@ class SEDmodel(object):
         predictive = Predictive(guide, params=params, num_samples=1000)
         samples = predictive(PRNGKey(123), self.data, self.band_weights)
         print(samples.keys())
-        print(samples)
         print(params)
         self.fit_postprocess(samples, output)
 
@@ -1537,9 +1538,14 @@ class SEDmodel(object):
         #     return
         if not os.path.exists(sample_file):
             raise FileNotFoundError(f'No file found at {sample_file}')
+        sn_to_read = pd.read_csv(sn_list, delim_whitespace=True)
+        print(sn_to_read)
+
         sn_list = pd.read_csv(sample_file, comment='#', delim_whitespace=True, names=['sn', 'source', 'files'])
         meta_file = pd.read_csv(meta_file, delim_whitespace=True)
         sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')
+        sn_list = sn_list.merge(sn_to_read, left_on='sn', right_on='SNID')
+        print(sn_list)
         n_obs = []
 
         all_lcs = []
@@ -2011,7 +2017,6 @@ class SEDmodel(object):
             'ebv_mw': ebv_mw,
             'Rv': Rv
         }
-        print(AV, theta, mu)
 
         t = jnp.array(t)
         num_per_band = t.shape[0]
@@ -2035,7 +2040,6 @@ class SEDmodel(object):
                                                                                                                      2,
                                                                                                                      0)
         t = t.reshape(keep_shape, order='F')
-        print(t)
         if mag:
             data = self.get_mag_batch(theta, AV, self.W0, self.W1, eps, mu + del_M, Rv, band_indices, mask, J_t,
                                       hsiao_interp, band_weights)

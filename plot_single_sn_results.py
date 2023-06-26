@@ -6,8 +6,8 @@ import numpy as np
 import corner
 
 
-# dataset = 'T21_sim_2'
-dataset = 'sim_really_low_AV'
+dataset = 'sim_population/8'
+# dataset = 'sim_really_low_AV'
 # dataset = 'sim_low_AV'
 # dataset = 'sim_nonzero_eps'
 
