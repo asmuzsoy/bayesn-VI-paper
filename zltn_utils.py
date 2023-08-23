@@ -6,7 +6,7 @@ from numpyro.distributions.distribution import Distribution
 from numpyro.distributions.continuous import MultivariateNormal, Normal
 from numpyro.distributions.truncated import TruncatedNormal
 from numpyro.distributions.constraints import _SingletonConstraint
-from numpyro.distributions.transforms import biject_to, IdentityTransform
+from numpyro.distributions.transforms import biject_to, IdentityTransform, LowerCholeskyAffine
 import torch
 import jax.numpy as jnp
 from numpyro.distributions.util import (
@@ -104,6 +104,7 @@ class MultiZLTN(Distribution):
         self.mu_1 = self.mu[0]
         print("Distribution mean:", self.mu_1)
         self.mu_2 = jnp.squeeze(self.mu[1:])
+        print("input mu 2", self.mu_2)
 
         self.sigma = self.covariance_matrix
         self.sigma_11 = self.sigma[0][0]
@@ -112,7 +113,7 @@ class MultiZLTN(Distribution):
         self.sigma_12 = self.sigma[:1, 1:]
 
         self.zltn_dist = TruncatedNormal(self.mu_1, self.scale_tril[0][0], low = 0.)
-
+        print("batch shape: ", batch_shape)
         super(MultiZLTN, self).__init__(
             batch_shape=batch_shape,
             event_shape=event_shape,
@@ -139,7 +140,7 @@ class MultiZLTN(Distribution):
             return jnp.concatenate((first_samples,second_samples), axis=0)
 
         mu_hat = self.mu_2[:,None] + jnp.matmul(self.sigma_21, ((1.0 / self.sigma_11) * (first_samples - self.mu_1)).T)
-
+        print("mu hat", mu_hat)
         sigma_hat = self.sigma_22 - jnp.matmul((self.sigma_21 * sigma_11_inverse), self.sigma_12)
         sigma_hat += 1.e-9 * jnp.eye(self.event_shape[0]-1)
 
@@ -153,30 +154,33 @@ class MultiZLTN(Distribution):
 
 
     def log_prob(self, value):
-        log_prob_x = self.zltn_dist.log_prob(value[0])
+        log_prob_x = self.zltn_dist.log_prob(value[...,0])
         sigma_11_inverse = 1. / self.sigma_11
         # mu_hat = self.mu_2 + self.sigma_21*sigma_11_inverse*(value[0]- self.mu_1)
-        mu_hat = self.mu_2 + jnp.matmul(self.sigma_21, sigma_11_inverse * (value[0] - self.mu_1))
+        # print(self.mu_1.shape)
+        # print(value)
+        # print(value[...,0].shape)
+        # print(value[0][0].shape)
+
+        mu_hat = self.mu_2[...,None] + jnp.matmul(self.sigma_21, sigma_11_inverse * (value[...,0] - self.mu_1[None,...]))
         sigma_hat = self.sigma_22 - jnp.matmul((self.sigma_21 * sigma_11_inverse), self.sigma_12)
-        log_prob_y_given_x = MultivariateNormal(mu_hat, sigma_hat).log_prob(value[1:])
-        
+        # print(mu_hat.shape, sigma_hat.shape, value[...,1:].shape)
+        m = MultivariateNormal(mu_hat.T, sigma_hat)
+
+        log_prob_y_given_x = MultivariateNormal(mu_hat.T, sigma_hat).log_prob(value[...,1:])
+        # print(log_prob_x + log_prob_y_given_x)
         return log_prob_x + log_prob_y_given_x
 
-# mu = jnp.asarray([0.1, 0.2, 0.3])
-# cov = jnp.eye(3)
-# cov = cov.at[0,1].set(0.9)
-# cov = cov.at[1,0].set(0.9)
-
-# # cov = cov.at[1,2].set(0.5)
-# # cov = cov.at[2,1].set(0.5)
-
-# z = MultiZLTN(mu, covariance_matrix = cov)
-# samples = z.sample(key, (1000,))
-# corner.corner(np.array(samples))
-# plt.show()
-# print(samples[0])
-# print(z.log_prob(samples[0]))
-
+    # old method without vectorization
+    # def log_prob(self, value):
+    #     log_prob_x = self.zltn_dist.log_prob(value[0])
+    #     sigma_11_inverse = 1. / self.sigma_11
+    #     # mu_hat = self.mu_2 + self.sigma_21*sigma_11_inverse*(value[0]- self.mu_1)
+    #     mu_hat = self.mu_2 + jnp.matmul(self.sigma_21, sigma_11_inverse * (value[0] - self.mu_1))
+    #     sigma_hat = self.sigma_22 - jnp.matmul((self.sigma_21 * sigma_11_inverse), self.sigma_12)
+    #     log_prob_y_given_x = MultivariateNormal(mu_hat, sigma_hat).log_prob(value[1:])
+    #     print(log_prob_x + log_prob_y_given_x)
+    #     return log_prob_x + log_prob_y_given_x
 
 class AutoMultiZLTNGuide(AutoContinuous):
 
@@ -204,6 +208,7 @@ class AutoMultiZLTNGuide(AutoContinuous):
             jnp.identity(self.latent_dim) * self._init_scale,
             constraint=self.scale_tril_constraint,
         )
+
         return MultiZLTN(loc, scale_tril=scale_tril)
 
     def get_base_dist(self):

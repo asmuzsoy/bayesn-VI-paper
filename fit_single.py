@@ -1,9 +1,11 @@
 from bayesn_model import SEDmodel
+from numpyro.infer import init_to_value
+import jax.numpy as jnp
 
 model = SEDmodel(load_model='T21_model')
 
-dataset = 'sim_low_AV'
-# dataset = 'sim_nonzero_eps'
+# dataset = 'sim_low_AV'
+dataset = 'sim_zero_AV'
 
 # dataset = 'T21_sim_2'
 
@@ -14,7 +16,7 @@ model.process_dataset('foundation', 'data/lcs/tables/' + dataset + '.txt', 'data
 #model.process_dataset('T21_sim_1000', 'data/lcs/tables/T21_sim_1000.txt', 'data/lcs/meta/T21_sim_1000_meta.txt',
 #                      data_mode='flux')
 
-#model.process_dataset('YSE_DR1', 'data/lcs/tables/YSE_DR1_table.txt', 'data/lcs/meta/YSE_DR1_meta.txt', data_mode='flux')
+#model.process_dataset('pytYSE_DR1', 'data/lcs/tables/YSE_DR1_table.txt', 'data/lcs/meta/YSE_DR1_meta.txt', data_mode='flux')
 
 #model.process_dataset('M20', 'data/lcs/tables/M20_training_set.txt', 'data/lcs/meta/M20_training_set_meta.txt',
 #                      data_mode='flux')
@@ -27,4 +29,8 @@ print("Fitting MCMC...")
 model.fit(250, 250, 4, dataset + '_mcmc', chain_method='parallel', init_strategy='median')
 
 print("Fitting VI...")
-model.fit_with_vi(dataset + '_vi', init_strategy='median')
+# model.fit_with_vi(dataset + '_vi', init_strategy='median')
+model.fit_with_vi(str(dataset) + '_vi', init_strategy=init_to_value(values={'AV':jnp.array([-0.1]), 'theta':jnp.array([1.]), 'Ds':jnp.array([35.])}))
+
+# model.fit_with_vi2(dataset + '_vi_2', init_strategy='median')
+

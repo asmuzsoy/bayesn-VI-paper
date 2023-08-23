@@ -14,6 +14,7 @@ import numpyro.distributions as dist
 from numpyro.optim import Adam, ClippedAdam
 from numpyro.infer import SVI, Trace_ELBO, TraceGraph_ELBO
 from numpyro.infer.autoguide import AutoDelta, AutoMultivariateNormal, AutoDiagonalNormal
+from numpyro.distributions.transforms import LowerCholeskyAffine
 import h5py
 import sncosmo
 import spline_utils
@@ -44,7 +45,7 @@ mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['mathtext.fontset'] = 'cm'
 plt.rcParams.update({'font.size': 22})
 
-# jax.config.update('jax_platform_name', 'cpu')
+jax.config.update('jax_platform_name', 'cpu')
 
 print(f'Currently working in {os.getcwd()}')
 
@@ -141,7 +142,6 @@ class SEDmodel(object):
         # Settings for jax/numpyro
         numpyro.set_host_device_count(num_devices)
         jax.config.update('jax_enable_x64', enable_x64)
-        # os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
         print('Current devices:', jax.devices())
         print(jax.local_device_count())
 
@@ -954,9 +954,70 @@ class SEDmodel(object):
         samples = mcmc.get_samples(group_by_chain=True)
         end = timeit.default_timer()
         print('original: ', end - start)
-        self.fit_postprocess(samples, output)
+        self.fit_postprocess_samples(samples, output)
 
     def fit_with_vi(self, output, model_path=None, init_strategy='median'):
+        """
+        Parameters
+        ----------
+        output: str
+            Name of output directory which will store results
+        model_path: str, optional
+            Name of directory containing model parameters to use for fitting. I'm using this for now to keep my
+            numpyro trained models separate from T21/M20/W22 etc. until we're confident with them. Defaults to None,
+            which means that the model loaded when initialising the SEDmodel object is used.
+            Strategy to use for initialisation, default to median. Options are:
+            ``'median'`` | Chains are initialised to prior media
+            ``'sample'`` | Chains are initialised to a random sample from the priors
+
+        """
+        if init_strategy == 'median':
+            init_strategy = init_to_median()
+        elif init_strategy == 'value':
+            init_strategy = init_to_value(values=self.fit_initial_guess())
+        elif init_strategy == 'map':
+            init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
+        elif init_strategy == 'sample':
+            init_strategy = init_to_sample()
+        # else:
+        #     raise ValueError('Invalid init strategy, must be one of median or sample')
+        if model_path is not None:
+            with open(os.path.join('results', model_path, 'chains.pkl'), 'rb') as file:
+                result = pickle.load(file)
+            self.W0 = device_put(
+                np.reshape(np.mean(result['W0'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            self.W1 = device_put(
+                np.reshape(np.mean(result['W1'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            # sigmaepsilon = np.mean(result['sigmaepsilon'], axis=(0, 1))
+            # L_Omega = np.mean(result['L_Omega'], axis=(0, 1))
+            # self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
+            self.Rv = device_put(np.mean(result['Rv'], axis=(0, 1)))
+            self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
+            self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
+
+        optimizer = Adam(0.01)
+
+        start = timeit.default_timer() 
+        # guide = AutoMultivariateNormal(self.fit_model_vi, init_loc_fn=init_strategy)
+        guide = AutoMultiZLTNGuide(self.fit_model_vi, init_loc_fn=init_strategy)
+
+        svi = SVI(self.fit_model_vi, guide, optimizer, loss=Trace_ELBO(10))
+        svi_result = svi.run(PRNGKey(123), 50000, self.data, self.band_weights)
+        params, losses = svi_result.params, svi_result.losses
+        # print(params)
+        end = timeit.default_timer()
+        print('VI: ', end - start)
+        predictive = Predictive(guide, params=params, num_samples=1000)
+        # samples = predictive(PRNGKey(123), self.data, self.band_weights)
+        samples = predictive(PRNGKey(123), data=None)
+        print(samples.keys())
+
+        self.fit_postprocess_samples(samples, output)
+        self.fit_postprocess_params(guide, params, output)
+
+    def fit_with_vi2(self, output, model_path=None, init_strategy='median'):
         """
         Parameters
         ----------
@@ -1000,7 +1061,7 @@ class SEDmodel(object):
         optimizer = Adam(0.01)
 
         start = timeit.default_timer() 
-        # guide = AutoMultivariateNormal(self.fit_model, init_loc_fn=init_strategy)
+        # guide = AutoMultivariateNormal(self.fit_model_vi, init_loc_fn=init_strategy)
         guide = AutoMultiZLTNGuide(self.fit_model_vi, init_loc_fn=init_strategy)
 
         svi = SVI(self.fit_model_vi, guide, optimizer, loss=Trace_ELBO(5))
@@ -1010,12 +1071,63 @@ class SEDmodel(object):
         end = timeit.default_timer()
         print('VI: ', end - start)
         predictive = Predictive(guide, params=params, num_samples=1000)
-        samples = predictive(PRNGKey(123), self.data, self.band_weights)
+        # samples = predictive(PRNGKey(123), self.data, self.band_weights)
+        samples = predictive(PRNGKey(123), data=None)
         print(samples.keys())
-        print(params)
-        self.fit_postprocess(samples, output)
 
-    def fit_postprocess(self, samples, output):
+        self.fit_postprocess_samples2(samples, output)
+        self.fit_postprocess_params2(guide, params, output)
+
+
+    def fit_postprocess_params(self, guide, params, output):
+        """
+        Processes output of fit function, saving the chains and calculating fitting statistics
+
+        Parameters
+        ----------
+        guide: AutoGuide
+			trained autoguide (trained with fit_with_vi())
+		params: dict
+			fit parameters of guide (trained with fit_with_vi())
+        output: str
+            Name of directory to store output files in
+
+        """
+        if not os.path.exists(os.path.join('results', output)):
+            os.mkdir(os.path.join('results', output))
+
+
+        mu = guide.get_posterior(params).mu
+        cov = guide.get_posterior(params).sigma
+
+        np.savez(os.path.join('results', output, 'vi_params'), mu=mu, cov=cov)
+
+    # def fit_postprocess_params2(self, guide, params, output):
+    #     """
+    #     Processes output of fit function, saving the chains and calculating fitting statistics
+
+    #     Parameters
+    #     ----------
+    #     guide: AutoGuide
+    #         trained autoguide (trained with fit_with_vi())
+    #     params: dict
+    #         fit parameters of guide (trained with fit_with_vi())
+    #     output: str
+    #         Name of directory to store output files in
+
+    #     """
+    #     if not os.path.exists(os.path.join('results', output)):
+    #         os.mkdir(os.path.join('results', output))
+
+
+    #     mu = guide.get_posterior(params).mu
+    #     cov = guide.get_posterior(params).sigma
+
+    #     np.savez(os.path.join('results', output, 'vi_params'), mu=mu, cov=cov)
+
+
+
+    def fit_postprocess_samples(self, samples, output):
         """
         Processes output of fit function, saving the chains and calculating fitting statistics
 
@@ -1049,6 +1161,46 @@ class SEDmodel(object):
         df['z_err'] = self.data[-4, 0, :]
         df['muhat'] = self.data[-3, 0, :]
         df.to_csv(os.path.join('results', output, 'sn_props.txt'), index=False)
+
+
+    def fit_postprocess_samples2(self, samples, output):
+        """
+        Processes output of fit function, saving the chains and calculating fitting statistics
+
+        Parameters
+        ----------
+        samples: dict
+            Dictionary containing samples for all parameters from fitting process
+        output: str
+            Name of directory to store output files in
+
+        """
+        if not os.path.exists(os.path.join('results', output)):
+            os.mkdir(os.path.join('results', output))
+
+        muhat = self.data[-3, 0, :]
+        muhat_err = 10
+        Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
+        samples['delM'] = np.random.normal(0, self.sigma0, 1000)
+        samples['mu'] = samples['Ds'] - samples['delM']
+
+        # mu = np.random.normal((samples['Ds'] * np.power(muhat_err, 2) + muhat * np.power(self.sigma0, 2)) /
+        #                       np.power(Ds_err, 2),
+        #                       np.sqrt((np.power(self.sigma0, 2) * np.power(muhat_err, 2)) / np.power(Ds_err, 2)))
+        # delM = samples['Ds'] - mu
+        # samples['mu'] = mu
+        # samples['delM'] = delM
+        with open(os.path.join('results', output, 'chains.pkl'), 'wb') as file:
+            pickle.dump(samples, file)
+        # Save convergence data for each parameter to csv file
+        summary = arviz.summary(samples)
+        summary.to_csv(os.path.join('results', output, 'fit_summary.csv'))
+        df = pd.DataFrame(self.sn_list, columns=['sn'])
+        df['z'] = self.data[-5, 0, :]
+        df['z_err'] = self.data[-4, 0, :]
+        df['muhat'] = self.data[-3, 0, :]
+        df.to_csv(os.path.join('results', output, 'sn_props.txt'), index=False)
+
 
     def train_model(self, obs):
         """
@@ -1538,14 +1690,21 @@ class SEDmodel(object):
         #     return
         if not os.path.exists(sample_file):
             raise FileNotFoundError(f'No file found at {sample_file}')
-        sn_to_read = pd.read_csv(sn_list, delim_whitespace=True)
-        print(sn_to_read)
+        
+        read_partial = False
+        if sn_list is not None:
+        	read_partial = True
+        	sn_to_read = pd.read_csv(sn_list, delim_whitespace=True)
+        	print(sn_to_read)
 
         sn_list = pd.read_csv(sample_file, comment='#', delim_whitespace=True, names=['sn', 'source', 'files'])
         meta_file = pd.read_csv(meta_file, delim_whitespace=True)
         sn_list = sn_list.merge(meta_file, left_on='sn', right_on='SNID')
-        sn_list = sn_list.merge(sn_to_read, left_on='sn', right_on='SNID')
-        print(sn_list)
+        
+
+        if read_partial:
+	        sn_list = sn_list.merge(sn_to_read, left_on='sn', right_on='SNID')
+	        print(sn_list)
         n_obs = []
 
         all_lcs = []
@@ -2153,7 +2312,9 @@ class SEDmodel(object):
         """
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
         eps_mu = jnp.zeros(N_knots_sig)
-        eps = np.random.multivariate_normal(eps_mu, np.matmul(self.L_Sigma.T, self.L_Sigma), N)
+        eps_tform = np.random.multivariate_normal(eps_mu, np.eye(N_knots_sig), N)
+        eps_tform = eps_tform.T
+        eps = np.matmul(self.L_Sigma, eps_tform)
         eps = np.reshape(eps, (N, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
         eps_full = np.zeros((N, self.l_knots.shape[0], self.tau_knots.shape[0]))
         eps_full[:, 1:-1, :] = eps
