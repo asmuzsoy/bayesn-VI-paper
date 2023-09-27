@@ -5,16 +5,16 @@ import os.path
 
 model = SEDmodel(load_model='T21_model')
 
-dataset_number = 15
+dataset_number = 19
 # if os.path.exists("sim_population_AV_" + str(dataset_number) + ".txt"):
 #     raise ValueError("It looks like a dataset with this name already exists.")
 
 
-N = 100
+N = 200
 start = default_timer()
 
-AV = model.sample_AV(N)
 # AV = np.zeros(N)
+AV = model.sample_AV(N)
 
 z = np.random.uniform(0.015, 0.08, N)
 theta = model.sample_theta(N)

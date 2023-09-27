@@ -24,12 +24,12 @@ ds_mcmc_sample_diffs = []
 ds_means = []
 ds_errs = []
 
-num_to_plot = 30
+num_to_plot = 200
 
 fiducial_cosmology={"H0": 73.24, "Om0": 0.28}
 cosmo = FlatLambdaCDM(**fiducial_cosmology)
 
-dataset_number=15
+dataset_number=16
 
 sigma0 = 0.103
 muhat_err = 10
@@ -96,7 +96,9 @@ for i in range(num_to_plot):
 		if var == "AV":
 			# vi_modes[var].append(get_mode_from_samples(vi_samples))
 			mcmc_medians[var].append(get_mode_from_samples(mcmc_samples))
-			vi_modes[var].append(np.maximum(0, vi_params['mu'][0][0])) # mu means mean here
+			# vi_modes[var].append(np.maximum(0, vi_params['mu'][0][0])) # mu means mean here
+			vi_modes[var].append(get_mode_from_samples(vi_samples)) # mu means mean here
+
 			# vi_modes[var].append(vi_params['mu'][0][0]) # mu means mean here
 
 
@@ -119,7 +121,7 @@ for i in range(num_to_plot):
 		else: # mu
 			vi_modes[var].append(np.median(vi_samples))
 			# vi_modes[var].append(vi_params['mu'][-1][0])
-			mcmc_medians[var].append(np.mean(mcmc_samples))
+			mcmc_medians[var].append(np.median(mcmc_samples))
 			mu_sample_diffs.append(vi_samples - mcmc_samples)	
 			ds_sample_diffs.append(vi_params['mu'][-1][0] - np.median(vi_samples))
 			ds_mcmc_sample_diffs.append(vi_params['mu'][-1][0] - mcmc_samples)
@@ -132,15 +134,15 @@ for i in range(num_to_plot):
 	av_vi_samples.append(np.squeeze(vi_objects['AV']))
 
 
-plt.hist(vi_modes['AV'])
-plt.show()
+# plt.hist(vi_modes['AV'])
+# plt.show()
 
 mu_sample_diffs = np.array(mu_sample_diffs)
 ds_mcmc_sample_diffs = np.array(ds_mcmc_sample_diffs)
 delm_samples = np.array(delm_samples)
 av_vi_samples = np.array(av_vi_samples)
 
-muhats = np.array(muhats)
+# muhats = np.array(muhats)
 ds_means = np.array(ds_means)
 ds_errs = np.array(ds_errs)
 

@@ -17,11 +17,11 @@ print(samples)
 print(len(samples[:,0]))
 
 
-plt.hist(samples[:,0], histtype='step', label='ZLTN samples')
-plt.hist(np.random.normal(-0.1, 1, size=1000), histtype='step', label='Normal samples')
-plt.axvline(-0.1, color = 'r', linestyle='dashed', label='mean')
-plt.legend()
-plt.show()
+# plt.hist(samples[:,0], histtype='step', label='ZLTN samples')
+# plt.hist(np.random.normal(-0.1, 1, size=1000), histtype='step', label='Normal samples')
+# plt.axvline(-0.1, color = 'r', linestyle='dashed', label='mean')
+# plt.legend()
+# plt.show()
 # corner.corner(np.array(samples))
 # plt.show()
 
@@ -56,17 +56,33 @@ def model_3d(data):
 # plt.hist(np.random.normal(-0.2, np.sqrt(0.9), size=1000), histtype='step')
 # plt.show()
 
+def get_mode_from_samples(samples):
+	hist, bin_edges = np.histogram(samples, bins=50)
+	max_index = np.argmax(hist)
+	mode = (bin_edges[max_index] + bin_edges[max_index + 1])/2
+	return mode
 
-test_Avs = [-1, -0.5, -0.1, 0, 0.1, 0.5, 1]
 
+# test_Avs = [-1, -0.5, -0.1, 0, 0.1, 0.5, 1]
+test_Avs = np.linspace(-1,2)
+
+modes = []
 
 for i in test_Avs:
 	test_loc = jnp.array([i, 0.9, 0.2])
 	test_cov = jnp.array([[0.9, -0.7, -0.9], [-0.7, 1.0, 0.5], [0.5, -0.9, 1.0]])
 	test_samples = MultiZLTN(test_loc, test_cov).sample(PRNGKey(123), (1000,))
 
-	fig = corner.corner(np.array(test_samples))
-	corner.overplot_lines(fig, test_loc, linestyle = 'dashed', color='g')
-	plt.show()
+	# fig = corner.corner(np.array(test_samples))
+	# corner.overplot_lines(fig, test_loc, linestyle = 'dashed', color='g')
+	# # plt.show()
 
+	# print("av samples", test_samples[:,1])
+	modes.append(get_mode_from_samples(test_samples[:,2]))
+
+
+plt.plot(test_Avs, 0.2 - np.array(modes), 'o')
+plt.xlabel("Untruncated mean of first variable")
+plt.ylabel("Discrepancy (unconditional mean - samples mean) of second variable")
+plt.show()
 

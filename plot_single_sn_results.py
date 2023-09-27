@@ -17,8 +17,8 @@ cosmo = FlatLambdaCDM(**fiducial_cosmology)
 # dataset = 'sim_zero_AV'
 
 # dataset = 'sim_population_15/1'
-dataset_number = 15
-sn_number = 1
+dataset_number = 16
+sn_number =130
 dataset = 'sim_population_' + str(dataset_number) + '/' + str(sn_number)
 true_av = np.loadtxt("sim_population_AV_" + str(dataset_number) + ".txt")[sn_number]
 true_theta = np.loadtxt("sim_population_theta_" + str(dataset_number) + ".txt")[sn_number]
@@ -78,12 +78,13 @@ for i in range(1):
 	print(vi_results.shape)
 	print(mcmc_results.shape)
 
-	range1 = [(-0.05,0.2), (34, 35), (-0.5,0.5)]
-	num_sigma = 3
-	range1 = [((vi_mu[0] - num_sigma * np.sqrt(vi_cov[0][0]))[0], (vi_mu[0] + num_sigma * np.sqrt(vi_cov[0][0]))[0]), ((vi_mu[-1] - (num_sigma+1) * np.sqrt(vi_cov[-1][-1]))[0], (vi_mu[-1] + (num_sigma+1) * np.sqrt(vi_cov[-1][-1]))[0]), ((vi_mu[1] - num_sigma * np.sqrt(vi_cov[1][1]))[0], (vi_mu[1] + num_sigma * np.sqrt(vi_cov[1][1]))[0])]
+	num_sigma = [3,5,3]
+	# range1 = [((vi_mu[0] - num_sigma[0] * np.sqrt(vi_cov[0][0]))[0], (vi_mu[0] + num_sigma[0] * np.sqrt(vi_cov[0][0]))[0]), ((vi_mu[-1] - (num_sigma[1]) * np.sqrt(vi_cov[-1][-1]))[0], (vi_mu[-1] + (num_sigma[1]) * np.sqrt(vi_cov[-1][-1]))[0]), ((vi_mu[1] - num_sigma[2] * np.sqrt(vi_cov[1][1]))[0], (vi_mu[1] + num_sigma[2] * np.sqrt(vi_cov[1][1]))[0])]
+	range1 = [(-0.05, (vi_mu[0] + num_sigma[0] * np.sqrt(vi_cov[0][0]))[0]), ((vi_mu[-1] - (num_sigma[1]) * np.sqrt(vi_cov[-1][-1]))[0], (vi_mu[-1] + (num_sigma[1]) * np.sqrt(vi_cov[-1][-1]))[0]), ((vi_mu[1] - num_sigma[2] * np.sqrt(vi_cov[1][1]))[0], (vi_mu[1] + num_sigma[2] * np.sqrt(vi_cov[1][1]))[0])]
+	# range1 = [(1, (vi_mu[0] + num_sigma[0] * np.sqrt(vi_cov[0][0]))[0]), ((vi_mu[-1] - (num_sigma[1]) * np.sqrt(vi_cov[-1][-1]))[0], (vi_mu[-1] + (num_sigma[1]) * np.sqrt(vi_cov[-1][-1]))[0]), ((vi_mu[1] - num_sigma[2] * np.sqrt(vi_cov[1][1]))[0], (vi_mu[1] + num_sigma[2] * np.sqrt(vi_cov[1][1]))[0])]
 
 
-	fig = corner.corner(vi_results, labels = ["AV", "mu", "theta"], range=range1)
+	fig = corner.corner(vi_results, labels = ["$A_V$", "$\mu$", "$\\theta$"], range=range1)
 	corner.corner(mcmc_results, color = 'r', fig = fig, range=range1)
 	if dataset == 'sim_low_AV':
 		corner.overplot_lines(fig, [known_values['AV'],known_values['mu'],known_values['theta']], linestyle = 'dashed', color='b')
@@ -92,12 +93,12 @@ for i in range(1):
 	if dataset == 'sim_nonzero_eps':
 		corner.overplot_lines(fig, [nonzero_eps_values['AV'],nonzero_eps_values['mu'],nonzero_eps_values['theta']])
 	
-	corner.overplot_lines(fig, [vi_mu[0],vi_mu[-1],vi_mu[1]], linestyle = 'dashed', color='g')
+	# corner.overplot_lines(fig, [vi_mu[0],vi_mu[-1],vi_mu[1]], linestyle = 'dashed', color='g')
 	corner.overplot_lines(fig, [true_av, true_mu, true_theta], linestyle = 'solid', color='blue')
 
-	colors = ['k','r', 'b', 'g']
+	colors = ['k','r', 'b']
 
-	labels = ['VI Samples', 'MCMC Samples', 'True Values', 'VI parameters']
+	labels = ['VI Samples', 'MCMC Samples', 'True Values']
 
 	plt.legend(
 	    handles=[
