@@ -29,7 +29,7 @@ ds_errs = []
 
 num_to_plot = 200
 
-dataset_number=10
+dataset_number=20
 
 title_str = ""
 
@@ -105,40 +105,134 @@ for var in ['AV', 'mu', 'theta']:
 	vi_point_estimates[var] = np.array(vi_point_estimates[var])
 
 # VI vs true subplots
+alpha = 0.2
 fig, ax = plt.subplots(2,3, figsize = (16,9))
-ax[0][0].plot(true_mus, vi_point_estimates['mu'], 'o')
+ax[0][0].plot(true_mus, vi_point_estimates['mu'], 'o', alpha=alpha)
 ax[0][0].plot(np.linspace(min(true_mus), max(true_mus)),np.linspace(min(true_mus), max(true_mus)))
-ax[0][0].set_ylabel('Fit $\\mu$', fontsize = 16)
+ax[0][0].set_ylabel('VI $\\mu$', fontsize = 16)
 # ax[0][0].set_xlabel('True $\\mu$', fontsize = 16)
 
 
-ax[1][0].plot(true_mus, vi_point_estimates['mu'] - true_mus, 'o')
+ax[1][0].plot(true_mus, vi_point_estimates['mu'] - true_mus, 'o', alpha=alpha)
 ax[1][0].axhline(0, color = 'k')
-ax[1][0].set_ylabel('Residual $\\mu$ (fit - true)', fontsize = 16)
+ax[1][0].set_ylabel('Residual $\\mu$ (VI - true)', fontsize = 16)
 ax[1][0].set_xlabel('True $\\mu$', fontsize = 16)
 
 
-ax[0][1].plot(true_thetas, vi_point_estimates['theta'], 'o')
+ax[0][1].plot(true_thetas, vi_point_estimates['theta'], 'o', alpha=alpha)
 ax[0][1].plot(np.linspace(min(true_thetas), max(true_thetas)),np.linspace(min(true_thetas), max(true_thetas)))
-ax[0][1].set_ylabel('Fit $\\theta$', fontsize = 16)
+ax[0][1].set_ylabel('VI $\\theta$', fontsize = 16)
 # ax[0][1].set_xlabel('True $\\theta$', fontsize = 16)
 
-ax[1][1].plot(true_thetas, vi_point_estimates['theta'] - true_thetas, 'o')
+ax[1][1].plot(true_thetas, vi_point_estimates['theta'] - true_thetas, 'o', alpha=alpha)
 ax[1][1].axhline(0, color = 'k')
-ax[1][1].set_ylabel('Residual $\\theta$ (fit - true)', fontsize = 16)
+ax[1][1].set_ylabel('Residual $\\theta$ (VI - true)', fontsize = 16)
 ax[1][1].set_xlabel('True $\\theta$', fontsize = 16)
 
-ax[0][2].plot(true_avs, vi_point_estimates['AV'], 'o')
+ax[0][2].plot(true_avs, vi_point_estimates['AV'], 'o', alpha=alpha)
 ax[0][2].plot(np.linspace(0, 2.1),np.linspace(0, 2.1))
-ax[0][2].set_ylabel('Fit $A_V$', fontsize = 16)
+ax[0][2].set_ylabel('VI $A_V$', fontsize = 16)
 ax[0][2].set_xlim(0,1)
 ax[0][2].set_ylim(0,1)
 
 # ax[0][2].set_xlabel('True $A_V$', fontsize = 16)
 
-ax[1][2].plot(true_avs, vi_point_estimates['AV'] - true_avs, 'o')
+ax[1][2].plot(true_avs, vi_point_estimates['AV'] - true_avs, 'o', label='VI', alpha=alpha)
 ax[1][2].axhline(0, color = 'k')
-ax[1][2].set_ylabel('Residual $A_V$ (fit - true)', fontsize = 16)
+ax[1][2].set_ylabel('Residual $A_V$ (VI - true)', fontsize = 16)
+ax[1][2].set_xlabel('True $A_V$', fontsize = 16)
+# ax[1][2].set_xlim(0,1)
+
+# for axis in ax.flatten():
+#   axis.tick_params(axis='x', labelsize=12)
+#   axis.tick_params(axis='y', labelsize=12)
+
+# plt.tight_layout()
+# plt.show()
+
+# MCMC vs true subplots
+# fig, ax = plt.subplots(2,3, figsize = (16,9))
+
+mcmc_color = 'r'
+ax[0][0].plot(true_mus, mcmc_point_estimates['mu'], 'o', c=mcmc_color, alpha=alpha)
+ax[0][0].plot(np.linspace(min(true_mus), max(true_mus)),np.linspace(min(true_mus), max(true_mus)))
+ax[0][0].set_ylabel('MCMC $\\mu$', fontsize = 16)
+# ax[0][0].set_xlabel('True $\\mu$', fontsize = 16)
+
+
+ax[1][0].plot(true_mus, mcmc_point_estimates['mu'] - true_mus, 'o', c=mcmc_color, alpha=alpha)
+ax[1][0].axhline(0, color = 'k')
+ax[1][0].set_ylabel('Residual $\\mu$ (MCMC - true)', fontsize = 16)
+ax[1][0].set_xlabel('True $\\mu$', fontsize = 16)
+
+
+ax[0][1].plot(true_thetas, mcmc_point_estimates['theta'], 'o', c=mcmc_color, alpha=alpha)
+ax[0][1].plot(np.linspace(min(true_thetas), max(true_thetas)),np.linspace(min(true_thetas), max(true_thetas)))
+ax[0][1].set_ylabel('MCMC $\\theta$', fontsize = 16)
+# ax[0][1].set_xlabel('True $\\theta$', fontsize = 16)
+
+ax[1][1].plot(true_thetas, mcmc_point_estimates['theta'] - true_thetas, 'o', c=mcmc_color, alpha=alpha)
+ax[1][1].axhline(0, color = 'k')
+ax[1][1].set_ylabel('Residual $\\theta$ (MCMC - true)', fontsize = 16)
+ax[1][1].set_xlabel('True $\\theta$', fontsize = 16)
+
+ax[0][2].plot(true_avs, mcmc_point_estimates['AV'], 'o', c=mcmc_color, alpha=alpha)
+ax[0][2].plot(np.linspace(0, 2.1),np.linspace(0, 2.1))
+ax[0][2].set_ylabel('MCMC $A_V$', fontsize = 16)
+ax[0][2].set_xlim(0,1)
+ax[0][2].set_ylim(0,1)
+
+# ax[0][2].set_xlabel('True $A_V$', fontsize = 16)
+
+ax[1][2].plot(true_avs, mcmc_point_estimates['AV'] - true_avs, 'o', c=mcmc_color, label = 'MCMC', alpha=alpha)
+ax[1][2].axhline(0, color = 'k')
+ax[1][2].set_ylabel('Residual $A_V$ (MCMC - true)', fontsize = 16)
+ax[1][2].set_xlabel('True $A_V$', fontsize = 16)
+# ax[1][2].set_xlim(0,1)
+
+for axis in ax.flatten():
+  axis.tick_params(axis='x', labelsize=12)
+  axis.tick_params(axis='y', labelsize=12)
+
+plt.tight_layout()
+plt.legend()
+plt.show()
+
+# VI vs MCMC subplots
+fig, ax = plt.subplots(2,3, figsize = (16,9))
+ax[0][0].plot(true_mus, vi_point_estimates['mu'], 'o')
+ax[0][0].plot(np.linspace(min(true_mus), max(true_mus)),np.linspace(min(true_mus), max(true_mus)))
+ax[0][0].set_ylabel('VI $\\mu$', fontsize = 16)
+# ax[0][0].set_xlabel('True $\\mu$', fontsize = 16)
+
+
+ax[1][0].plot(true_mus, vi_point_estimates['mu'] - mcmc_point_estimates['mu'], 'o')
+ax[1][0].axhline(0, color = 'k')
+ax[1][0].set_ylabel('Residual $\\mu$ (VI - MCMC)', fontsize = 16)
+ax[1][0].set_xlabel('True $\\mu$', fontsize = 16)
+
+
+ax[0][1].plot(true_thetas, vi_point_estimates['theta'], 'o')
+ax[0][1].plot(np.linspace(min(mcmc_point_estimates['theta']), max(mcmc_point_estimates['theta'])),np.linspace(min(mcmc_point_estimates['theta']), max(mcmc_point_estimates['theta'])))
+ax[0][1].set_ylabel('VI $\\theta$', fontsize = 16)
+# ax[0][1].set_xlabel('True $\\theta$', fontsize = 16)
+
+ax[1][1].plot(true_thetas, vi_point_estimates['theta'] - mcmc_point_estimates['theta'], 'o')
+ax[1][1].axhline(0, color = 'k')
+ax[1][1].set_ylabel('Residual $\\theta$ (VI - MCMC)', fontsize = 16)
+ax[1][1].set_xlabel('True $\\theta$', fontsize = 16)
+
+ax[0][2].plot(true_avs, vi_point_estimates['AV'], 'o')
+ax[0][2].plot(np.linspace(0, 2.1),np.linspace(0, 2.1))
+ax[0][2].set_ylabel('VI $A_V$', fontsize = 16)
+# ax[0][2].set_xlim(0,1)
+# ax[0][2].set_ylim(0,1)
+
+# ax[0][2].set_xlabel('True $A_V$', fontsize = 16)
+
+ax[1][2].plot(true_avs, vi_point_estimates['AV'] - mcmc_point_estimates['AV'], 'o')
+ax[1][2].axhline(0, color = 'k')
+ax[1][2].set_ylabel('Residual $A_V$ (VI - MCMC)', fontsize = 16)
 ax[1][2].set_xlabel('True $A_V$', fontsize = 16)
 # ax[1][2].set_xlim(0,1)
 
@@ -148,7 +242,6 @@ for axis in ax.flatten():
 
 plt.tight_layout()
 plt.show()
-
 
 # VI vs MCMC subplots
 fig, ax = plt.subplots(2,3, figsize = (16,9))
@@ -195,10 +288,41 @@ for axis in ax.flatten():
 plt.tight_layout()
 plt.show()
 
+
 plt.plot(mcmc_point_estimates['AV'], vi_point_estimates['mu'] - mcmc_point_estimates['mu'], 'o')
+median_residual_vi_mcmc = np.median(vi_point_estimates['mu'] - mcmc_point_estimates['mu'])
+plt.axhline(median_residual_vi_mcmc, color='k', label='median residual = ' + str(round(median_residual_vi_mcmc, 4)))
 plt.xlabel('MCMC $A_V$', fontsize = 16)
 plt.ylabel('Residual $\\mu$ (VI - MCMC)', fontsize = 16)
+plt.legend()
 plt.title(title_str)
+plt.show()
+
+plt.plot(true_avs, vi_point_estimates['mu'] - mcmc_point_estimates['mu'], 'o')
+plt.axhline(median_residual_vi_mcmc, color='k', label='median residual = ' + str(round(median_residual_vi_mcmc, 4)))
+plt.xlabel('True $A_V$', fontsize = 16)
+plt.ylabel('Residual $\\mu$ (VI - MCMC)', fontsize = 16)
+plt.title(title_str)
+plt.legend()
+
+plt.show()
+
+plt.plot(true_avs, vi_point_estimates['mu'] - true_mus, 'o')
+median_residual_vi_true = np.median(vi_point_estimates['mu'] - true_mus)
+plt.axhline(median_residual_vi_true, color='k', label='median residual = ' + str(round(median_residual_vi_true, 4)))
+plt.xlabel('True $A_V$', fontsize = 16)
+plt.ylabel('Residual $\\mu$ (VI - true)', fontsize = 16)
+plt.title(title_str)
+plt.legend()
+plt.show()
+
+plt.plot(true_avs, mcmc_point_estimates['mu'] - true_mus, 'o')
+median_residual_mcmc_true = np.median(mcmc_point_estimates['mu'] - true_mus)
+plt.axhline(median_residual_mcmc_true, color='k', label='median residual = ' + str(round(median_residual_mcmc_true, 4)))
+plt.xlabel('True $A_V$', fontsize = 16)
+plt.ylabel('Residual $\\mu$ (MCMC - true)', fontsize = 16)
+plt.title(title_str)
+plt.legend()
 plt.show()
 
 av_residuals = vi_point_estimates['AV'] - mcmc_point_estimates['AV']
@@ -206,9 +330,10 @@ for i, residual in enumerate(av_residuals):
 	if abs(mcmc_point_estimates['AV'][i]) > 0.75:
 		print(i, mcmc_point_estimates['AV'][i], residual)
 
-plt.plot(mcmc_point_estimates['AV'] - true_avs, vi_point_estimates['AV'] - true_avs, 'o')
-plt.plot(np.linspace(-0.2,0.2), np.linspace(-0.2,0.2))
-
+plt.scatter(mcmc_point_estimates['AV'] - true_avs, vi_point_estimates['AV'] - true_avs, c = true_avs)
+plt.plot(np.linspace(-0.3,0.3), np.linspace(-0.3,0.3), color='goldenrod')
+cbar = plt.colorbar()
+cbar.set_label("True AV")
 plt.xlabel("MCMC AV Residuals (MCMC - true)")
 plt.ylabel("VI AV Residuals (VI - true)")
 plt.show()

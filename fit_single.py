@@ -4,10 +4,10 @@ import jax.numpy as jnp
 
 model = SEDmodel(load_model='T21_model')
 
-# dataset = 'sim_low_AV'
-dataset = 'sim_zero_AV'
+dataset = 'sim_low_AV'
+# dataset = 'sim_zero_AV'
 
-# dataset = 'T21_sim_2'
+# dataset = 'T21_sim_1'
 
 filt_map_dict = {'g': 'g_PS1', 'r': 'r_PS1', 'i': 'i_PS1', 'z': 'z_PS1'}
 model.process_dataset('foundation', 'data/lcs/tables/' + dataset + '.txt', 'data/lcs/meta/' + dataset + '_meta.txt',
@@ -25,12 +25,12 @@ model.process_dataset('foundation', 'data/lcs/tables/' + dataset + '.txt', 'data
 #model.process_dataset('YSE_full', 'data/lcs/tables/YSEfull_table.txt', 'data/lcs/meta/YSEfull_meta.txt', data_mode='flux',
 #                      map_dict=filt_map_dict)
 
-print("Fitting MCMC...")
-model.fit(250, 250, 4, dataset + '_mcmc', chain_method='parallel', init_strategy='median')
+# print("Fitting MCMC...")
+# model.fit(250, 250, 4, dataset + '_mcmc', chain_method='parallel', init_strategy='median')
 
 print("Fitting VI...")
 # model.fit_with_vi(dataset + '_vi', init_strategy='median')
-model.fit_with_vi(str(dataset) + '_vi', init_strategy=init_to_value(values={'AV':jnp.array([-0.1]), 'theta':jnp.array([1.]), 'Ds':jnp.array([35.])}))
+model.fit_with_vi_verbose(str(dataset) + '_vi', init_strategy='median', epsilons_on = True)
 
 # model.fit_with_vi2(dataset + '_vi_2', init_strategy='median')
 

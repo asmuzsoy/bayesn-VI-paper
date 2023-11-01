@@ -13,7 +13,7 @@ from numpyro.infer import MCMC, NUTS, init_to_median, init_to_sample, init_to_va
 import numpyro.distributions as dist
 from numpyro.optim import Adam, ClippedAdam
 from numpyro.infer import SVI, Trace_ELBO, TraceGraph_ELBO
-from numpyro.infer.autoguide import AutoDelta, AutoMultivariateNormal, AutoDiagonalNormal
+from numpyro.infer.autoguide import AutoDelta, AutoMultivariateNormal, AutoDiagonalNormal, AutoLaplaceApproximation
 from numpyro.distributions.transforms import LowerCholeskyAffine
 import h5py
 import sncosmo
@@ -37,6 +37,7 @@ import ruamel.yaml as yaml
 import time
 from tqdm import tqdm
 from zltn_utils import *
+import optax
 
 
 # Make plots look pretty
@@ -686,7 +687,6 @@ class SEDmodel(object):
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
             eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
-            # eps_tform = eps_mu
             eps_tform = eps_tform.T
             eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
             eps = eps.T
@@ -707,7 +707,64 @@ class SEDmodel(object):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
                                obs=obs[1, :, sn_index].T)  # _{sn_index}
 
-    def fit_model_mcmc(self, obs, weights):
+    def fit_model_vi_no_eps(self, obs, weights):
+        """
+        Numpyro model used for fitting SN properties assuming fixed global properties from a trained model. Will fit for tmax
+        as well as theta, epsilon, Av and distance modulus
+
+        Parameters
+        ----------
+        obs: array-like
+            Data to fit, from output of process_dataset
+        weights: array-like
+            Band-weights to calculate photometry
+
+        """
+        sample_size = obs.shape[-1]
+        N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
+
+        with numpyro.plate('SNe', sample_size) as sn_index:
+            Av = numpyro.sample(f'AV', My_Exponential(1 / self.tauA))
+            print("Model AV:", Av)
+            theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
+            # Rv = numpyro.sample('Rv', dist.Normal(self.mu_R, self.sigma_R))
+            tmax = numpyro.sample('tmax', dist.Uniform(-10, 10))
+            # tmax = numpyro.sample('tmax', dist.Normal(0, 0.003))
+
+            # tmax = jnp.asarray([6])
+            t = obs[0, ...] - tmax[None, sn_index]
+            hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
+            keep_shape = t.shape
+            t = t.flatten(order='F')
+            # J_t = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
+            #                                                         order='F').transpose(1, 2, 0)
+            J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
+                                                                     order='F').transpose(1, 2, 0)
+            eps_mu = jnp.zeros(N_knots_sig)
+            # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
+            eps_tform = eps_mu
+            eps_tform = eps_tform.T
+            eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
+            eps = eps.T
+            eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+            eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            eps = eps_full.at[:, 1:-1, :].set(eps)
+            # eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            band_indices = obs[-6, :, sn_index].astype(int).T
+            muhat = obs[-3, 0, sn_index]
+            mask = obs[-1, :, sn_index].T.astype(bool)
+            muhat_err = 5
+            Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
+            # Ds = numpyro.sample('Ds', dist.ImproperUniform(dist.constraints.greater_than(0), (), event_shape=()))
+            Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))  # Ds_err
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
+                                       J_t, hsiao_interp, weights)
+            with numpyro.handlers.mask(mask=mask):
+                numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
+                               obs=obs[1, :, sn_index].T)  # _{sn_index}
+
+
+    def fit_model_mcmc(self, obs, weights, epsilons_on = True):
         """
         Numpyro model used for fitting SN properties assuming fixed global properties from a trained model. Will fit for tmax
         as well as theta, epsilon, Av and distance modulus
@@ -743,7 +800,62 @@ class SEDmodel(object):
             eps_mu = jnp.zeros(N_knots_sig)
             # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
             eps_tform = numpyro.sample('eps_tform', dist.MultivariateNormal(eps_mu, jnp.eye(N_knots_sig)))
-            # eps_tform = eps_mu
+            eps_tform = eps_tform.T
+            eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
+            eps = eps.T
+            eps = jnp.reshape(eps, (sample_size, self.l_knots.shape[0] - 2, self.tau_knots.shape[0]), order='F')
+            eps_full = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            eps = eps_full.at[:, 1:-1, :].set(eps)
+            # eps = jnp.zeros((sample_size, self.l_knots.shape[0], self.tau_knots.shape[0]))
+            band_indices = obs[-6, :, sn_index].astype(int).T
+            muhat = obs[-3, 0, sn_index]
+            mask = obs[-1, :, sn_index].T.astype(bool)
+            muhat_err = 5
+            Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
+            # Ds = numpyro.sample('Ds', dist.ImproperUniform(dist.constraints.greater_than(0), (), event_shape=()))
+            Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))  # Ds_err
+            flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
+                                       J_t, hsiao_interp, weights)
+            with numpyro.handlers.mask(mask=mask):
+                numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
+                               obs=obs[1, :, sn_index].T)  # _{sn_index}
+
+    def fit_model_mcmc_no_eps(self, obs, weights):
+        """
+        Numpyro model used for fitting SN properties assuming fixed global properties from a trained model. Will fit for tmax
+        as well as theta, epsilon, Av and distance modulus
+
+        Parameters
+        ----------
+        obs: array-like
+            Data to fit, from output of process_dataset
+        weights: array-like
+            Band-weights to calculate photometry
+
+        """
+        sample_size = obs.shape[-1]
+        N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
+
+        with numpyro.plate('SNe', sample_size) as sn_index:
+            Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
+            print("Model AV:", Av)
+            theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
+            # Rv = numpyro.sample('Rv', dist.Normal(self.mu_R, self.sigma_R))
+            tmax = numpyro.sample('tmax', dist.Uniform(-10, 10))
+            # tmax = numpyro.sample('tmax', dist.Normal(0, 0.003))
+
+            # tmax = jnp.asarray([6])
+            t = obs[0, ...] - tmax[None, sn_index]
+            hsiao_interp = jnp.array([19 + jnp.floor(t), 19 + jnp.ceil(t), jnp.remainder(t, 1)])
+            keep_shape = t.shape
+            t = t.flatten(order='F')
+            # J_t = jax.vmap(self.spline_coeffs_irr_step, in_axes=(0, None, None))(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
+            #                                                         order='F').transpose(1, 2, 0)
+            J_t = self.J_t_map(t, self.tau_knots, self.KD_t).reshape((*keep_shape, self.tau_knots.shape[0]),
+                                                                     order='F').transpose(1, 2, 0)
+            eps_mu = jnp.zeros(N_knots_sig)
+            # eps = numpyro.sample('eps', dist.MultivariateNormal(eps_mu, scale_tril=self.L_Sigma))
+            eps_tform = eps_mu
             eps_tform = eps_tform.T
             eps = numpyro.deterministic('eps', jnp.matmul(self.L_Sigma, eps_tform))
             eps = eps.T
@@ -766,7 +878,7 @@ class SEDmodel(object):
 
 
 
-    def fit(self, num_samples, num_warmup, num_chains, output, model_path=None, chain_method='parallel',
+    def fit(self, num_samples, num_warmup, num_chains, output, epsilons_on, model_path=None, chain_method='parallel',
             init_strategy='median'):
         """
         Function to run fitting process and save chains and fit statistics. I'm still experimenting with the best way to
@@ -831,120 +943,14 @@ class SEDmodel(object):
 
         rng = PRNGKey(321)
         rng, rng_ = split(rng)
-        nuts_kernel = NUTS(self.fit_model_mcmc, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
 
-        def do_mcmc(data, weights):
-            """
-            Short function-in-a-function just to allow you to map over different objects and spread over multiple
-            devices. Could probably implement this better but still experimenting with it
+        if epsilons_on:
+            model = self.fit_model_mcmc
+        else:
+            model = self.fit_model_mcmc_no_eps
 
-            Parameters
-            ----------
-            obs: array-like
-                Data to fit, from output of process_dataset
-            weights: array-like
-                Band-weights to calculate photometry
+        nuts_kernel = NUTS(model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
 
-            Returns
-            -------
-
-            sample_dict: dict
-                Samples and other information from MCMC fit
-
-            """
-            rng_key = PRNGKey(123)
-            nuts_kernel = NUTS(self.fit_model_mcmc, adapt_step_size=True, init_strategy=init_strategy,
-                               max_tree_depth=10)
-            mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
-                        chain_method=chain_method, progress_bar=True)
-            mcmc.run(rng_key, data[..., None], weights[None, ...])
-            return {**mcmc.get_samples(group_by_chain=True), **mcmc.get_extra_fields(group_by_chain=True)}
-
-        # map = jax.vmap(do_mcmc, in_axes=(2, 0))
-        # start = timeit.default_timer()
-        # samples = map(self.data, self.band_weights)
-        # for key, val in samples.items():
-        #    val = np.squeeze(val)
-        #    if len(val.shape) == 4:
-        #        samples[key] = val.transpose(1, 2, 0, 3)
-        #    else:
-        #        samples[key] = val.transpose(1, 2, 0)
-        # end = timeit.default_timer()
-        # print('vmap: ', end - start)
-        # self.fit_postprocess(samples, output)
-
-        # good, bad = [], []
-        # for i in tqdm(range(self.data.shape[2])):
-        #     #if self.sn_list[i] != '2020dwg':
-        #     #    continue
-        #     #if i != 8:
-        #     #    continue
-        #     data = self.data[..., i:i+1]  # Just to subsample the data, for testing
-        #     band_weights = self.band_weights[i:i+1, ...]  # Just to subsample the data, for testing
-        #     #init_strategy = init_to_value(values=self.fit_initial_guess())
-        #     prior_predictive = Predictive(self.fit_model, num_samples=100)
-        #     redshift = data[-5, 0, 0]
-        #     redshift_error = data[-4, 0, 0]
-        #     muhat_err = 5 / (redshift * jnp.log(10)) * jnp.sqrt(
-        #         jnp.power(redshift_error, 2) + np.power(self.sigma_pec, 2))
-        #     print(f'Muhat: {data[-3, 0, 0]}')
-        #     N = 1
-        #     t = np.arange(-10, 40, 1)
-        #     bands = ['p48g', 'p48r', 'g_PS1', 'r_PS1', 'i_PS1', 'z_PS1']
-        #     preds = self.simulate_light_curve(t, N, bands, z=data[-5, 0, 0],
-        #                                       mu=data[-3, 0, 0], write_to_files=False, mag=False)
-        #     num_bands = len(bands)
-        #     num_per_band = len(t)
-        #     t = t[:, None].repeat(num_bands, axis=1).flatten(order='F')
-        #     mean, std = np.mean(preds[0], axis=1),  np.std(preds[0], axis=1)
-        #     print(self.band_dict)
-        #     fig, axs = plt.subplots(2, 3, sharex=True, sharey=True, figsize=(16, 12))
-        #     colours = ['g', 'r', 'g', 'r', 'c', 'k']
-        #     band_inds = [87, 88, 40, 41, 42, 43]
-        #     for n in range(num_bands):
-        #         ax = axs.flatten()[n]
-        #         ax.plot(t[n * num_per_band: (n + 1) * num_per_band], mean[n * num_per_band: (n + 1) * num_per_band], c=colours[n], label=bands[n])
-        #         ax.fill_between(t[n * num_per_band: (n + 1) * num_per_band], mean[n * num_per_band: (n + 1) * num_per_band] - std[n * num_per_band: (n + 1) * num_per_band],
-        #                          mean[n * num_per_band: (n + 1) * num_per_band] + std[n * num_per_band: (n + 1) * num_per_band], alpha=0.3, color=colours[n])
-        #         band_data = data[:, data[-6, :, 0] == band_inds[n]]
-        #         ax.errorbar(band_data[0, :, 0], band_data[1, :, 0], yerr=band_data[2, :, 0], fmt=f'{colours[n]}x')
-        #         ax.legend()
-        #     #ax.invert_yaxis()
-        #     plt.subplots_adjust(hspace=0, wspace=0)
-        #     #nuts_kernel = NUTS(self.fit_model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
-        #     mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
-        #                 chain_method=chain_method)
-        #     # try:
-        #     mcmc.run(rng_, data, band_weights)
-        #     mcmc.print_summary()
-        #     samples = mcmc.get_samples(group_by_chain=True)
-        #     print('------')
-        #     print(samples['Ds'].mean(axis=(0, 1)) - data[-3, 0, 0])
-        #     print('------')
-        #     summary = arviz.summary(samples)
-        #     rhat = np.mean(summary.r_hat)
-        #     plt.suptitle(f'{self.sn_list[i]}: Mean rhat = {rhat}')
-        #     plt.savefig(f'plots/YSE_DR1_bad/{self.sn_list[i]}.png')
-        #     plt.show()
-        #     for j in range(4):
-        #         plt.hist(samples['tmax'][j, :, 0], bins=np.linspace(np.min(samples['tmax'][j, ..., 0]), np.max(samples['tmax'][j, ..., 0]), 10), histtype='step')
-        #     plt.show()
-        #     if rhat > 1.05:
-        #         bad.append(i)
-        #     else:
-        #         good.append(i)
-        #     continue
-        #     #except:
-        #     #    #raise ValueError('Nope')
-        #     #    bad.append(i)
-        #     #    continue
-        # print(len(good), len(bad))
-        # print(good)
-        # print(bad)
-        # print(repr(good))
-        # print(repr(bad))
-
-        # return
 
         start = timeit.default_timer()
         mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
@@ -956,7 +962,7 @@ class SEDmodel(object):
         print('original: ', end - start)
         self.fit_postprocess_samples(samples, output)
 
-    def fit_with_vi(self, output, model_path=None, init_strategy='median'):
+    def fit_with_vi(self, output, epsilons_on, model_path=None, init_strategy='median'):
         """
         Parameters
         ----------
@@ -1000,10 +1006,15 @@ class SEDmodel(object):
         optimizer = Adam(0.01)
 
         start = timeit.default_timer() 
-        # guide = AutoMultivariateNormal(self.fit_model_vi, init_loc_fn=init_strategy)
-        guide = AutoMultiZLTNGuide(self.fit_model_vi, init_loc_fn=init_strategy)
+        
+        if epsilons_on:
+            model = self.fit_model_vi
+        else:
+            model = self.fit_model_vi_no_eps
 
-        svi = SVI(self.fit_model_vi, guide, optimizer, loss=Trace_ELBO(10))
+        guide = AutoMultiZLTNGuide(model, init_loc_fn=init_strategy)
+
+        svi = SVI(model, guide, optimizer, loss=Trace_ELBO(10))
         svi_result = svi.run(PRNGKey(123), 50000, self.data, self.band_weights)
         params, losses = svi_result.params, svi_result.losses
         # print(params)
@@ -1016,6 +1027,309 @@ class SEDmodel(object):
 
         self.fit_postprocess_samples(samples, output)
         self.fit_postprocess_params(guide, params, output)
+
+    def fit_with_vi_laplace(self, output, epsilons_on, model_path=None, init_strategy='median'):
+        """
+        Parameters
+        ----------
+        output: str
+            Name of output directory which will store results
+        model_path: str, optional
+            Name of directory containing model parameters to use for fitting. I'm using this for now to keep my
+            numpyro trained models separate from T21/M20/W22 etc. until we're confident with them. Defaults to None,
+            which means that the model loaded when initialising the SEDmodel object is used.
+            Strategy to use for initialisation, default to median. Options are:
+            ``'median'`` | Chains are initialised to prior media
+            ``'sample'`` | Chains are initialised to a random sample from the priors
+
+        """
+        if init_strategy == 'median':
+            init_strategy = init_to_median()
+        elif init_strategy == 'value':
+            init_strategy = init_to_value(values=self.fit_initial_guess())
+        elif init_strategy == 'map':
+            init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
+        elif init_strategy == 'sample':
+            init_strategy = init_to_sample()
+        # else:
+        #     raise ValueError('Invalid init strategy, must be one of median or sample')
+        if model_path is not None:
+            with open(os.path.join('results', model_path, 'chains.pkl'), 'rb') as file:
+                result = pickle.load(file)
+            self.W0 = device_put(
+                np.reshape(np.mean(result['W0'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            self.W1 = device_put(
+                np.reshape(np.mean(result['W1'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            # sigmaepsilon = np.mean(result['sigmaepsilon'], axis=(0, 1))
+            # L_Omega = np.mean(result['L_Omega'], axis=(0, 1))
+            # self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
+            self.Rv = device_put(np.mean(result['Rv'], axis=(0, 1)))
+            self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
+            self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
+
+        optimizer = Adam(0.01)
+
+        start = timeit.default_timer() 
+
+        if epsilons_on:
+            model = self.fit_model_vi
+        else:
+            model = self.fit_model_vi_no_eps
+
+        # First start with the Laplace Approximation
+        laplace_guide = AutoLaplaceApproximation(model, init_loc_fn=init_strategy)
+        svi = SVI(model, laplace_guide, optimizer, loss=Trace_ELBO(5))
+        svi_result = svi.run(PRNGKey(123), 15000, self.data, self.band_weights)
+        params, losses = svi_result.params, svi_result.losses
+        end = timeit.default_timer()
+        print('VI: ', end - start)
+        laplace_median = laplace_guide.median(params)
+
+        # Now initialize the ZLTN guide on the Laplace Approximation median (just for AV, theta, and mu)
+        new_init_dict = {k:jnp.array([laplace_median[k][0]]) for k in ('AV','Ds','theta') if k in laplace_median}
+        zltn_guide = AutoMultiZLTNGuide(model, init_loc_fn=init_to_value(values=new_init_dict))
+
+        # optimizer = optax.cosine_decay_schedule(0.01, 10)
+        # optimizer = optax.adam(optax.cosine_decay_schedule(0.01, 10))
+        # optimizer = optax.adam(0.005)
+        optimizer = Adam(0.005)
+
+
+        # And fit the ZLTN guide from there
+        svi = SVI(model, zltn_guide, optimizer, loss=Trace_ELBO(5))
+        svi_result = svi.run(PRNGKey(123), 30000, self.data, self.band_weights)
+        params, losses = svi_result.params, svi_result.losses
+        predictive = Predictive(zltn_guide, params=params, num_samples=1000)
+        samples = predictive(PRNGKey(123), data=None)
+        print(samples.keys())
+
+        self.fit_postprocess_samples(samples, output)
+        self.fit_postprocess_params(zltn_guide, params, output)
+
+    def fit_with_vi_just_laplace(self, output, epsilons_on, model_path=None, init_strategy='median'):
+        """
+        Parameters
+        ----------
+        output: str
+            Name of output directory which will store results
+        model_path: str, optional
+            Name of directory containing model parameters to use for fitting. I'm using this for now to keep my
+            numpyro trained models separate from T21/M20/W22 etc. until we're confident with them. Defaults to None,
+            which means that the model loaded when initialising the SEDmodel object is used.
+            Strategy to use for initialisation, default to median. Options are:
+            ``'median'`` | Chains are initialised to prior media
+            ``'sample'`` | Chains are initialised to a random sample from the priors
+
+        """
+        if init_strategy == 'median':
+            init_strategy = init_to_median()
+        elif init_strategy == 'value':
+            init_strategy = init_to_value(values=self.fit_initial_guess())
+        elif init_strategy == 'map':
+            init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
+        elif init_strategy == 'sample':
+            init_strategy = init_to_sample()
+        # else:
+        #     raise ValueError('Invalid init strategy, must be one of median or sample')
+        if model_path is not None:
+            with open(os.path.join('results', model_path, 'chains.pkl'), 'rb') as file:
+                result = pickle.load(file)
+            self.W0 = device_put(
+                np.reshape(np.mean(result['W0'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            self.W1 = device_put(
+                np.reshape(np.mean(result['W1'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            # sigmaepsilon = np.mean(result['sigmaepsilon'], axis=(0, 1))
+            # L_Omega = np.mean(result['L_Omega'], axis=(0, 1))
+            # self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
+            self.Rv = device_put(np.mean(result['Rv'], axis=(0, 1)))
+            self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
+            self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
+
+        optimizer = Adam(0.01)
+
+        start = timeit.default_timer() 
+
+        if epsilons_on:
+            model = self.fit_model_vi
+        else:
+            model = self.fit_model_vi_no_eps
+
+        # First start with the Laplace Approximation
+        laplace_guide = AutoLaplaceApproximation(model, init_loc_fn=init_strategy)
+        svi = SVI(model, laplace_guide, optimizer, loss=Trace_ELBO(5))
+        svi_result = svi.run(PRNGKey(123), 15000, self.data, self.band_weights)
+        params, losses = svi_result.params, svi_result.losses
+        end = timeit.default_timer()
+
+        predictive = Predictive(laplace_guide, params=params, num_samples=1000)
+        samples = predictive(PRNGKey(123), data=None)
+        print(samples.keys())
+
+        self.fit_postprocess_samples(samples, output)
+        # self.fit_postprocess_params(laplace_guide, params, output)
+
+    def fit_with_vi_laplace_multivariatenormal(self, output, epsilons_on, model_path=None, init_strategy='median'):
+        """
+        Parameters
+        ----------
+        output: str
+            Name of output directory which will store results
+        model_path: str, optional
+            Name of directory containing model parameters to use for fitting. I'm using this for now to keep my
+            numpyro trained models separate from T21/M20/W22 etc. until we're confident with them. Defaults to None,
+            which means that the model loaded when initialising the SEDmodel object is used.
+            Strategy to use for initialisation, default to median. Options are:
+            ``'median'`` | Chains are initialised to prior media
+            ``'sample'`` | Chains are initialised to a random sample from the priors
+
+        """
+        if init_strategy == 'median':
+            init_strategy = init_to_median()
+        elif init_strategy == 'value':
+            init_strategy = init_to_value(values=self.fit_initial_guess())
+        elif init_strategy == 'map':
+            init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
+        elif init_strategy == 'sample':
+            init_strategy = init_to_sample()
+        # else:
+        #     raise ValueError('Invalid init strategy, must be one of median or sample')
+        if model_path is not None:
+            with open(os.path.join('results', model_path, 'chains.pkl'), 'rb') as file:
+                result = pickle.load(file)
+            self.W0 = device_put(
+                np.reshape(np.mean(result['W0'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            self.W1 = device_put(
+                np.reshape(np.mean(result['W1'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            # sigmaepsilon = np.mean(result['sigmaepsilon'], axis=(0, 1))
+            # L_Omega = np.mean(result['L_Omega'], axis=(0, 1))
+            # self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
+            self.Rv = device_put(np.mean(result['Rv'], axis=(0, 1)))
+            self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
+            self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
+
+        optimizer = Adam(0.01)
+
+        start = timeit.default_timer() 
+
+        if epsilons_on:
+            model = self.fit_model_vi
+        else:
+            model = self.fit_model_vi_no_eps
+
+        # First start with the Laplace Approximation
+        laplace_guide = AutoLaplaceApproximation(model, init_loc_fn=init_strategy)
+        svi = SVI(model, laplace_guide, optimizer, loss=Trace_ELBO(5))
+        svi_result = svi.run(PRNGKey(123), 15000, self.data, self.band_weights)
+        params, losses = svi_result.params, svi_result.losses
+        end = timeit.default_timer()
+        print('VI: ', end - start)
+        laplace_median = laplace_guide.median(params)
+
+        # Now initialize the ZLTN guide on the Laplace Approximation median (just for AV, theta, and mu)
+        new_init_dict = {k:jnp.array([laplace_median[k][0]]) for k in ('AV','Ds','theta') if k in laplace_median}
+        normal_guide = AutoMultivariateNormal(model, init_loc_fn=init_to_value(values=new_init_dict))
+
+        # optimizer = optax.cosine_decay_schedule(0.01, 10)
+        # optimizer = optax.adam(optax.cosine_decay_schedule(0.01, 10))
+        # optimizer = optax.adam(0.005)
+        optimizer = Adam(0.005)
+
+
+        # And fit the ZLTN guide from there
+        svi = SVI(model, normal_guide, optimizer, loss=Trace_ELBO(5))
+        svi_result = svi.run(PRNGKey(123), 30000, self.data, self.band_weights)
+        params, losses = svi_result.params, svi_result.losses
+        predictive = Predictive(normal_guide, params=params, num_samples=1000)
+        samples = predictive(PRNGKey(123), data=None)
+        print(samples.keys())
+
+        self.fit_postprocess_samples(samples, output)
+        # self.fit_postprocess_params(normal_guide, params, output)
+
+    def fit_with_vi_verbose(self, output, epsilons_on, model_path=None, init_strategy='median'):
+        """
+        Parameters
+        ----------
+        output: str
+            Name of output directory which will store results
+        model_path: str, optional
+            Name of directory containing model parameters to use for fitting. I'm using this for now to keep my
+            numpyro trained models separate from T21/M20/W22 etc. until we're confident with them. Defaults to None,
+            which means that the model loaded when initialising the SEDmodel object is used.
+            Strategy to use for initialisation, default to median. Options are:
+            ``'median'`` | Chains are initialised to prior media
+            ``'sample'`` | Chains are initialised to a random sample from the priors
+
+        """
+        if init_strategy == 'median':
+            init_strategy = init_to_median()
+        elif init_strategy == 'value':
+            init_strategy = init_to_value(values=self.fit_initial_guess())
+        elif init_strategy == 'map':
+            init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
+        elif init_strategy == 'sample':
+            init_strategy = init_to_sample()
+        # else:
+        #     raise ValueError('Invalid init strategy, must be one of median or sample')
+        if model_path is not None:
+            with open(os.path.join('results', model_path, 'chains.pkl'), 'rb') as file:
+                result = pickle.load(file)
+            self.W0 = device_put(
+                np.reshape(np.mean(result['W0'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            self.W1 = device_put(
+                np.reshape(np.mean(result['W1'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            # sigmaepsilon = np.mean(result['sigmaepsilon'], axis=(0, 1))
+            # L_Omega = np.mean(result['L_Omega'], axis=(0, 1))
+            # self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
+            self.Rv = device_put(np.mean(result['Rv'], axis=(0, 1)))
+            self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
+            self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
+
+        optimizer = Adam(0.01)
+
+        start = timeit.default_timer() 
+
+        if epsilons_on:
+            model = self.fit_model_vi
+        else:
+            model = self.fit_model_vi_no_eps
+
+        # # First start with the Laplace Approximation
+        # laplace_guide = AutoLaplaceApproximation(model, init_loc_fn=init_strategy)
+        # svi = SVI(model, laplace_guide, optimizer, loss=Trace_ELBO(5))
+        # svi_result = svi.run(PRNGKey(123), 10000, self.data, self.band_weights)
+        # params, losses = svi_result.params, svi_result.losses
+        # end = timeit.default_timer()
+        # print('VI: ', end - start)
+        # laplace_median = laplace_guide.median(params)
+
+        # # Now initialize the ZLTN guide on the Laplace Approximation median (just for AV, theta, and mu)
+        # new_init_dict = {k:jnp.array([laplace_median[k][0]]) for k in ('AV','Ds','theta') if k in laplace_median}
+        # zltn_guide = AutoMultiZLTNGuide(model, init_loc_fn=init_to_value(values=new_init_dict))
+
+        zltn_guide = AutoMultiZLTNGuide(model, init_loc_fn = init_strategy)
+
+
+        # And fit the ZLTN guide from there
+        svi = SVI(model, zltn_guide, optimizer, loss=Trace_ELBO(5))
+        for i in range(50):
+            if i==0:
+                svi_result = svi.run(PRNGKey(123), 1000, self.data, self.band_weights)
+            else:
+                svi_result = svi.run(PRNGKey(123), 1000, self.data, self.band_weights, init_state=svi_result.state)
+            params, losses = svi_result.params, svi_result.losses
+            predictive = Predictive(zltn_guide, params=params, num_samples=1000)
+            samples = predictive(PRNGKey(123), data=None)
+            self.fit_postprocess_samples(samples, output + "_" + str(i))
+
 
     def fit_with_vi2(self, output, model_path=None, init_strategy='median'):
         """

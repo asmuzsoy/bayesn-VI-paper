@@ -16,9 +16,10 @@ cosmo = FlatLambdaCDM(**fiducial_cosmology)
 # dataset = 'sim_low_AV'
 # dataset = 'sim_zero_AV'
 
+
 # dataset = 'sim_population_15/1'
-dataset_number = 16
-sn_number =130
+dataset_number = 20
+sn_number = 135
 dataset = 'sim_population_' + str(dataset_number) + '/' + str(sn_number)
 true_av = np.loadtxt("sim_population_AV_" + str(dataset_number) + ".txt")[sn_number]
 true_theta = np.loadtxt("sim_population_theta_" + str(dataset_number) + ".txt")[sn_number]
@@ -49,7 +50,11 @@ print(vi_objects['AV'][0][0].shape)
 # print(vi_objects['AV'])
 
 
-
+def get_mode_from_samples(samples):
+	hist, bin_edges = np.histogram(samples, bins=50)
+	max_index = np.argmax(hist)
+	mode = (bin_edges[max_index] + bin_edges[max_index + 1])/2
+	return mode
 
 print(mcmc_objects['AV'][:,:,0].shape)
 # print(objects['AV'].shape)
@@ -109,6 +114,18 @@ for i in range(1):
 	)
 
 
+	plt.show()
+
+	mcmc_av_samples = mcmc_objects['AV'][:,:,i].reshape((1000,))
+	vi_av_samples = np.squeeze(vi_objects['AV'][:,i])
+	plt.hist(vi_av_samples, histtype='step', label='VI Samples')
+	plt.hist(mcmc_av_samples, histtype='step', label='MCMC Samples')
+	plt.axvline(np.median(vi_av_samples), color='tab:blue', linestyle='dashed', label='VI median')
+	plt.axvline(np.median(mcmc_av_samples), color='tab:orange', linestyle='dashed', label='MCMC median')
+	plt.axvline(get_mode_from_samples(vi_av_samples), color='tab:blue', linestyle='dotted', label='VI mode')
+	plt.axvline(get_mode_from_samples(mcmc_av_samples), color='tab:orange', linestyle='dotted', label='MCMC mode')
+	plt.axvline(true_av, color='k', linestyle='solid', label='True value')
+	plt.legend()
 	plt.show()
 
 	ds_samples = np.squeeze(vi_objects['Ds'][:,i])
