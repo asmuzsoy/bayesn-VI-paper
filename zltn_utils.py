@@ -77,6 +77,7 @@ class MultiZLTN(Distribution):
         scale_tril=None,
         validate_args=None,
     ):
+        print("initializing ZLTN")
         if jnp.ndim(loc) == 0:
             (loc,) = promote_shapes(loc, shape=(1,))
         # temporary append a new axis to loc
@@ -112,6 +113,8 @@ class MultiZLTN(Distribution):
         self.sigma_21 = self.sigma[1:, :1]
         self.sigma_12 = self.sigma[:1, 1:]
 
+
+        print(loc)
         self.zltn_dist = TruncatedNormal(self.mu_1, self.scale_tril[0][0], low = 0.)
         print("batch shape: ", batch_shape)
         super(MultiZLTN, self).__init__(
@@ -196,19 +199,20 @@ class AutoMultiZLTNGuide(AutoContinuous):
         init_loc_fn=init_to_median,
         init_scale=0.1,
     ):
+        print("Initializing guide...")
         if init_scale <= 0:
             raise ValueError("Expected init_scale > 0. but got {}".format(init_scale))
         self._init_scale = init_scale
         super().__init__(model, prefix=prefix, init_loc_fn=init_loc_fn)
 
     def _get_posterior(self):
+        print("getting posterior")
         loc = numpyro.param("{}_loc".format(self.prefix), self._init_latent)
         scale_tril = numpyro.param(
             "{}_scale_tril".format(self.prefix),
             jnp.identity(self.latent_dim) * self._init_scale,
             constraint=self.scale_tril_constraint,
         )
-
         return MultiZLTN(loc, scale_tril=scale_tril)
 
     def get_base_dist(self):
@@ -216,6 +220,8 @@ class AutoMultiZLTNGuide(AutoContinuous):
 
 
     def get_transform(self, params):
+        print("getting posterior2")
+
         loc = params["{}_loc".format(self.prefix)]
         scale_tril = params["{}_scale_tril".format(self.prefix)]
         return LowerCholeskyAffine(loc, scale_tril)
@@ -225,6 +231,8 @@ class AutoMultiZLTNGuide(AutoContinuous):
         """
         Returns a Multi ZLTN posterior distribution.
         """
+        print("getting posterior2")
+
         transform = self.get_transform(params)
         return MultiZLTN(transform.loc, scale_tril=transform.scale_tril)
 

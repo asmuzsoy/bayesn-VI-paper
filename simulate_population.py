@@ -5,7 +5,9 @@ import os.path
 
 model = SEDmodel(load_model='T21_model')
 
-dataset_number = 24
+
+dataset_number = 26
+
 
 epsilons_on = True
 
@@ -13,7 +15,9 @@ if os.path.exists("sim_population_AV_" + str(dataset_number) + ".txt"):
     raise ValueError("It looks like a dataset with this name already exists.")
 
 
-N = 50
+
+N = 1000
+
 start = default_timer()
 
 # AV = np.zeros(N)

@@ -521,6 +521,7 @@ class SEDmodel(object):
         """
         num_batch = theta.shape[0]
         num_observations = band_indices.shape[0]
+        print(num_batch, num_observations)
 
         model_spectra = self.get_spectra(theta, Av, W0, W1, eps, Rv, J_t, hsiao_interp)
 
@@ -701,8 +702,11 @@ class SEDmodel(object):
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
             # Ds = numpyro.sample('Ds', dist.ImproperUniform(dist.constraints.greater_than(0), (), event_shape=()))
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))  # Ds_err
+            print("a")
+            print(weights.shape)
             flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
                                        J_t, hsiao_interp, weights)
+            print("b")
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
                                obs=obs[1, :, sn_index].T)  # _{sn_index}
@@ -962,6 +966,91 @@ class SEDmodel(object):
         print('original: ', end - start)
         self.fit_postprocess_samples(samples, output)
 
+    def fit_mcmc_vmap(self, data, band_weights, num_samples=250, num_warmup=250, num_chains=4, model_path=None, chain_method='parallel',
+            init_strategy='median'):
+        """
+        Function to run fitting process and save chains and fit statistics. I'm still experimenting with the best way to
+        do this - you can either run lots of separate HMC processes or you can do one big process which fits all SNe
+        (with different SN parameters treated as independent). The latter has advantages as all flux integrals across
+        all objects are calculated in one tensor operation, but the downside is that it can make it more difficult to
+        converge as the parameter space grows.
+
+        Parameters
+        ----------
+        num_samples: int
+            Number of posterior samples
+        num_warmup: int
+            Number of warmup steps before sampling
+        num_chains: int
+            Number of chains
+        output: str
+            Name of output directory which will store results
+        model_path: str, optional
+            Name of directory containing model parameters to use for fitting. I'm using this for now to keep my
+            numpyro trained models separate from T21/M20/W22 etc. until we're confident with them. Defaults to None,
+            which means that the model loaded when initialising the SEDmodel object is used.
+        chain_method: str, optional
+            Method used to distribute different chains, defaults to parallel. Options are:
+            ``'sequential'`` | Chains are run one after the other.
+            ``'parallel'`` | Chains are spread in parallel across all available devices and run simultaneously. If you
+                           |try to run more chains than there are devices available, numpyro will automatically revert
+                           |from parallel to sequential
+            ``'vectorized'`` | Chains are run simultaneously on a single device. Only really advisable on a GPU, and
+                             | will probably lead to a memory error on CPU
+        init_strategy: str, optional
+            Strategy to use for initialisation, default to median. Options are:
+            ``'median'`` | Chains are initialised to prior media
+            ``'sample'`` | Chains are initialised to a random sample from the priors
+
+        """
+        # if init_strategy == 'median':
+        #     init_strategy = init_to_median()
+        # elif init_strategy == 'value':
+        #     init_strategy = init_to_value(values=self.fit_initial_guess())
+        # elif init_strategy == 'map':
+        #     init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
+        # elif init_strategy == 'sample':
+        #     init_strategy = init_to_sample()
+        # else:
+        #     raise ValueError('Invalid init strategy, must be one of median or sample')
+        init_strategy = init_to_median()
+        if model_path is not None:
+            with open(os.path.join('results', model_path, 'chains.pkl'), 'rb') as file:
+                result = pickle.load(file)
+            self.W0 = device_put(
+                np.reshape(np.mean(result['W0'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            self.W1 = device_put(
+                np.reshape(np.mean(result['W1'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            # sigmaepsilon = np.mean(result['sigmaepsilon'], axis=(0, 1))
+            # L_Omega = np.mean(result['L_Omega'], axis=(0, 1))
+            # self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
+            self.Rv = device_put(np.mean(result['Rv'], axis=(0, 1)))
+            self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
+            self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
+
+        rng = PRNGKey(321)
+        rng, rng_ = split(rng)
+
+        # if epsilons_on:
+        #     model = self.fit_model_mcmc
+        # else:
+        #     model = self.fit_model_mcmc_no_eps
+        model = self.fit_model_mcmc
+        nuts_kernel = NUTS(model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
+
+
+        mcmc = MCMC(nuts_kernel, num_samples=num_samples, num_warmup=num_warmup, num_chains=num_chains,
+                    chain_method=chain_method, progress_bar=False)
+        mcmc.run(rng, data[..., None],band_weights[None, ...])
+        # mcmc.print_summary()
+        samples = mcmc.get_samples(group_by_chain=True)
+
+        return samples
+        # self.fit_postprocess_samples(samples, output)
+
+
     def fit_with_vi(self, output, epsilons_on, model_path=None, init_strategy='median'):
         """
         Parameters
@@ -1108,7 +1197,10 @@ class SEDmodel(object):
         self.fit_postprocess_samples(samples, output)
         self.fit_postprocess_params(zltn_guide, params, output)
 
-    def fit_with_vi_just_laplace(self, output, epsilons_on, model_path=None, init_strategy='median'):
+
+
+
+    def fit_zltn_vmap(self, data, band_weights, output = "out_vmap", epsilons_on = True, model_path=None):
         """
         Parameters
         ----------
@@ -1123,14 +1215,97 @@ class SEDmodel(object):
             ``'sample'`` | Chains are initialised to a random sample from the priors
 
         """
-        if init_strategy == 'median':
-            init_strategy = init_to_median()
-        elif init_strategy == 'value':
-            init_strategy = init_to_value(values=self.fit_initial_guess())
-        elif init_strategy == 'map':
-            init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
-        elif init_strategy == 'sample':
-            init_strategy = init_to_sample()
+        init_strategy = init_to_median()
+
+        # if init_strategy == 'median':
+        #     init_strategy = init_to_median()
+        # elif init_strategy == 'value':
+        #     init_strategy = init_to_value(values=self.fit_initial_guess())
+        # elif init_strategy == 'map':
+        #     init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
+        # elif init_strategy == 'sample':
+        #     init_strategy = init_to_sample()
+        # else:
+        #     raise ValueError('Invalid init strategy, must be one of median or sample')
+        if model_path is not None:
+            with open(os.path.join('results', model_path, 'chains.pkl'), 'rb') as file:
+                result = pickle.load(file)
+            self.W0 = device_put(
+                np.reshape(np.mean(result['W0'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            self.W1 = device_put(
+                np.reshape(np.mean(result['W1'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            # sigmaepsilon = np.mean(result['sigmaepsilon'], axis=(0, 1))
+            # L_Omega = np.mean(result['L_Omega'], axis=(0, 1))
+            # self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
+            self.Rv = device_put(np.mean(result['Rv'], axis=(0, 1)))
+            self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
+            self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
+
+        optimizer = Adam(0.01)
+
+        # start = timeit.default_timer() 
+
+        # if data is None:
+        #     data = self.data
+        # if band_weights is None:
+        #     band_weights = self.band_weights
+
+        # if epsilons_on:
+        model = self.fit_model_vi
+        # else:
+        #     model = self.fit_model_vi_no_eps
+
+        # First start with the Laplace Approximation
+        laplace_guide = AutoLaplaceApproximation(model, init_loc_fn=init_strategy)
+        svi = SVI(model, laplace_guide, optimizer, loss=Trace_ELBO(5))
+        svi_result = svi.run(PRNGKey(123), 5000, data[..., None],band_weights[None, ...], progress_bar=False)
+        params, losses = svi_result.params, svi_result.losses
+        laplace_median = laplace_guide.median(params)
+        # Now initialize the ZLTN guide on the Laplace Approximation median (just for AV, theta, and mu)
+        new_init_dict = {k:jnp.array([laplace_median[k][0]]) for k in ('AV','Ds','theta','tmax') if k in laplace_median}
+        zltn_guide = AutoMultiZLTNGuide(model, init_loc_fn=init_to_value(values=new_init_dict))
+
+        optimizer = Adam(0.005)
+
+        # And fit the ZLTN guide from there
+        svi = SVI(model, zltn_guide, optimizer, loss=Trace_ELBO(5))
+        svi_result = svi.run(PRNGKey(123), 10000, data[..., None],band_weights[None, ...], progress_bar=False)
+        params, losses = svi_result.params, svi_result.losses
+        predictive = Predictive(zltn_guide, params=params, num_samples=1000)
+        samples = predictive(PRNGKey(123), data=None)
+        print(samples.keys())
+
+        return samples
+        # self.fit_postprocess_samples(samples, output)
+        # self.fit_postprocess_params(zltn_guide, params, output)
+
+
+    def fit_laplace_vmap(self, data, band_weights, epsilons_on=True, model_path=None, init_strategy='median'):
+        """
+        Parameters
+        ----------
+        output: str
+            Name of output directory which will store results
+        model_path: str, optional
+            Name of directory containing model parameters to use for fitting. I'm using this for now to keep my
+            numpyro trained models separate from T21/M20/W22 etc. until we're confident with them. Defaults to None,
+            which means that the model loaded when initialising the SEDmodel object is used.
+            Strategy to use for initialisation, default to median. Options are:
+            ``'median'`` | Chains are initialised to prior media
+            ``'sample'`` | Chains are initialised to a random sample from the priors
+
+        """
+        init_strategy = init_to_median()
+        # if init_strategy == 'median':
+        #     init_strategy = init_to_median()
+        # elif init_strategy == 'value':
+        #     init_strategy = init_to_value(values=self.fit_initial_guess())
+        # elif init_strategy == 'map':
+        #     init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
+        # elif init_strategy == 'sample':
+        #     init_strategy = init_to_sample()
         # else:
         #     raise ValueError('Invalid init strategy, must be one of median or sample')
         if model_path is not None:
@@ -1153,26 +1328,29 @@ class SEDmodel(object):
 
         start = timeit.default_timer() 
 
-        if epsilons_on:
-            model = self.fit_model_vi
-        else:
-            model = self.fit_model_vi_no_eps
+        # using MCMC model because it uses dist.Exponential instead of MyExponential
+        # if epsilons_on:
+        model = self.fit_model_mcmc
+        # else:
+        #     model = self.fit_model_mcmc_no_eps
+
 
         # First start with the Laplace Approximation
         laplace_guide = AutoLaplaceApproximation(model, init_loc_fn=init_strategy)
         svi = SVI(model, laplace_guide, optimizer, loss=Trace_ELBO(5))
-        svi_result = svi.run(PRNGKey(123), 15000, self.data, self.band_weights)
+        svi_result = svi.run(PRNGKey(123), 5000, data[..., None],band_weights[None, ...], progress_bar=False)
         params, losses = svi_result.params, svi_result.losses
         end = timeit.default_timer()
 
         predictive = Predictive(laplace_guide, params=params, num_samples=1000)
         samples = predictive(PRNGKey(123), data=None)
-        print(samples.keys())
+        return samples
+        # print(samples.keys())
 
-        self.fit_postprocess_samples(samples, output)
+        # self.fit_postprocess_samples(samples, output)
         # self.fit_postprocess_params(laplace_guide, params, output)
 
-    def fit_with_vi_laplace_multivariatenormal(self, output, epsilons_on, model_path=None, init_strategy='median'):
+    def fit_multivariatenormal_vmap(self, data, band_weights, epsilons_on=True, model_path=None, init_strategy='median'):
         """
         Parameters
         ----------
@@ -1187,14 +1365,16 @@ class SEDmodel(object):
             ``'sample'`` | Chains are initialised to a random sample from the priors
 
         """
-        if init_strategy == 'median':
-            init_strategy = init_to_median()
-        elif init_strategy == 'value':
-            init_strategy = init_to_value(values=self.fit_initial_guess())
-        elif init_strategy == 'map':
-            init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
-        elif init_strategy == 'sample':
-            init_strategy = init_to_sample()
+        init_strategy = init_to_median()
+
+        # if init_strategy == 'median':
+        #     init_strategy = init_to_median()
+        # elif init_strategy == 'value':
+        #     init_strategy = init_to_value(values=self.fit_initial_guess())
+        # elif init_strategy == 'map':
+        #     init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
+        # elif init_strategy == 'sample':
+        #     init_strategy = init_to_sample()
         # else:
         #     raise ValueError('Invalid init strategy, must be one of median or sample')
         if model_path is not None:
@@ -1215,42 +1395,41 @@ class SEDmodel(object):
 
         optimizer = Adam(0.01)
 
-        start = timeit.default_timer() 
+        # start = timeit.default_timer() 
 
-        if epsilons_on:
-            model = self.fit_model_vi
-        else:
-            model = self.fit_model_vi_no_eps
+        # if data is None:
+        #     data = self.data
+        # if band_weights is None:
+        #     band_weights = self.band_weights
+
+        # if epsilons_on:
+        model = self.fit_model_mcmc
+        # else:
+        #     model = self.fit_model_vi_no_eps
+
 
         # First start with the Laplace Approximation
         laplace_guide = AutoLaplaceApproximation(model, init_loc_fn=init_strategy)
         svi = SVI(model, laplace_guide, optimizer, loss=Trace_ELBO(5))
-        svi_result = svi.run(PRNGKey(123), 15000, self.data, self.band_weights)
+        svi_result = svi.run(PRNGKey(123), 5000, data[..., None],band_weights[None, ...], progress_bar=False)
         params, losses = svi_result.params, svi_result.losses
-        end = timeit.default_timer()
-        print('VI: ', end - start)
         laplace_median = laplace_guide.median(params)
-
         # Now initialize the ZLTN guide on the Laplace Approximation median (just for AV, theta, and mu)
-        new_init_dict = {k:jnp.array([laplace_median[k][0]]) for k in ('AV','Ds','theta') if k in laplace_median}
-        normal_guide = AutoMultivariateNormal(model, init_loc_fn=init_to_value(values=new_init_dict))
+        new_init_dict = {k:jnp.array([laplace_median[k][0]]) for k in ('AV','Ds','theta','tmax') if k in laplace_median}
+        zltn_guide = AutoMultivariateNormal(model, init_loc_fn=init_to_value(values=new_init_dict))
 
-        # optimizer = optax.cosine_decay_schedule(0.01, 10)
-        # optimizer = optax.adam(optax.cosine_decay_schedule(0.01, 10))
-        # optimizer = optax.adam(0.005)
         optimizer = Adam(0.005)
 
-
         # And fit the ZLTN guide from there
-        svi = SVI(model, normal_guide, optimizer, loss=Trace_ELBO(5))
-        svi_result = svi.run(PRNGKey(123), 30000, self.data, self.band_weights)
+        svi = SVI(model, zltn_guide, optimizer, loss=Trace_ELBO(5))
+        svi_result = svi.run(PRNGKey(123), 10000, data[..., None],band_weights[None, ...], progress_bar=False)
+
         params, losses = svi_result.params, svi_result.losses
-        predictive = Predictive(normal_guide, params=params, num_samples=1000)
+        predictive = Predictive(zltn_guide, params=params, num_samples=1000)
         samples = predictive(PRNGKey(123), data=None)
         print(samples.keys())
 
-        self.fit_postprocess_samples(samples, output)
-        # self.fit_postprocess_params(normal_guide, params, output)
+        return samples
 
     def fit_with_vi_verbose(self, output, epsilons_on, model_path=None, init_strategy='median'):
         """

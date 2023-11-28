@@ -86,7 +86,18 @@ for i in range(num_to_plot):
 		mcmc_uncertainties[var].append(np.std(mcmc_samples))
 		stephen_uncertainties[var].append(np.std(stephen_samples))
 
+d2=np.load("foundation_vmap_112023.npy", allow_pickle=True).item()
 
+for var in ['AV', 'mu', 'theta']:
+	if var == 'mu':
+		vi_point_estimates[var] = np.median(np.squeeze(d2['Ds']), axis = 1)
+		vi_uncertainties[var] = np.std(np.squeeze(d2['Ds']), axis = 1)
+	else:
+		vi_point_estimates[var] = np.median(np.squeeze(d2[var]), axis = 1)
+		vi_uncertainties[var] = np.std(np.squeeze(d2[var]), axis = 1)
+
+	print(vi_point_estimates[var].shape)
+# print(np.squeeze(d2['AV'][0]).shape)
 
 for var in ['AV', 'mu', 'theta']:
 	mcmc_point_estimates[var] = np.array(mcmc_point_estimates[var])
