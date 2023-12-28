@@ -41,4 +41,4 @@ print(samples_dict['AV'].shape)
 end = timeit.default_timer()
 print('Total time: ', end - start)
 
-np.save("foundation_vmap_112023.npy", samples_dict)
+#np.save("foundation_vmap_112023.npy", samples_dict)

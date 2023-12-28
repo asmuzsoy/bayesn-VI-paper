@@ -10,10 +10,23 @@ dataset = 'T21_training_set'
 sn_list = pd.read_csv('data/lcs/tables/' + dataset + '.txt', comment='#', delim_whitespace=True, names=['sn', 'source', 'files'])
 sn_names = (sn_list.sn.values)
 
-sn_number = 14
+low = False
+if low:
+	sn_number = 14
+else:
+	sn_number = 36
+print(sn_names[sn_number])
 
-with (open("results/" + dataset + "/" + str(sn_number) + "_vi/chains.pkl", "rb")) as openfile:
-	vi_objects = pickle.load(openfile)
+d2=np.load("foundation_vmap_112023.npy", allow_pickle=True).item()
+
+vi_objects = {}
+
+for var in ['AV', 'mu', 'theta']:
+	if var == 'mu':
+		vi_objects[var] = np.squeeze(d2['Ds'])[sn_number]
+	else:
+		vi_objects[var] = np.squeeze(d2[var])[sn_number]
+
 
 with (open("results/" + dataset + "/" + str(sn_number) + "_mcmc/chains.pkl", "rb")) as openfile:
 	mcmc_objects = pickle.load(openfile)
@@ -23,7 +36,8 @@ s = np.load("../dist_chains_210610_135216/" + sn_names[sn_number] + "_chains_210
 stephen_mu = s['mu']
 stephen_AV = s['AV']
 stephen_theta = s['theta']
-print(stephen_theta)
+
+print(np.mean(stephen_AV))
 
 
 stephen_data  = np.array([stephen_AV, stephen_mu, stephen_theta]).T
@@ -44,10 +58,10 @@ for i in range(1):
 	vi_results = []
 	for var in ['AV', 'mu', 'theta']:
 		mcmc_samples = mcmc_objects[var][:,:,i].reshape((1000,))
-		vi_samples = np.squeeze(vi_objects[var][:,i])
+		vi_samples = np.squeeze(vi_objects[var])
 
 		if var == 'AV':
-			vi_samples = np.squeeze(vi_objects[var][:,i])
+			vi_samples = np.squeeze(vi_objects[var])
 		mcmc_results.append(mcmc_samples)
 		vi_results.append(vi_samples)
 
@@ -56,44 +70,37 @@ mcmc_results = np.array(mcmc_results).T
 print(vi_results.shape)
 print(mcmc_results.shape)
 
-num_sigma = [3,5,3]
-# range1 = [(0.5,0.7), (34.3, 35.3), (-1.5,1.5)]
+range_low = [(-0.01,0.15), (35, 35.6), (0,1.8)]
+range_high = [(0.4, 1), (35, 35.8), (-1.6,-0.2)]
 
-# fig = corner.corner(vi_results, labels = ["$A_V$", "$\mu$", "$\\theta$"], range=range1)
-# corner.corner(mcmc_results, color = 'r', fig = fig, range=range1)
-
-fig = corner.corner(vi_results, labels = ["$A_V$", "$\mu$", "$\\theta$"])
-corner.corner(mcmc_results, color = 'r', fig = fig)
+fig = corner.corner(vi_results, labels = ["$A_V$", "$\mu$", "$\\theta$"], 
+	range=range_low if low else range_high, label_kwargs = {'fontsize':16})
+corner.corner(mcmc_results, color = 'r', fig = fig, range=range_low if low else range_high)
 
 # corner.overplot_lines(fig, [vi_mu[0],vi_mu[-1],vi_mu[1]], linestyle = 'dashed', color='g')
 # corner.overplot_lines(fig, [true_av, true_mu, true_theta], linestyle = 'solid', color='blue')
 
 colors = ['k','r']
 
-labels = ['VI Samples', 'MCMC Samples']
+labels = ['ZLTN VI', 'MCMC']
 
 plt.legend(
     handles=[
         mlines.Line2D([], [], color=colors[i], label=labels[i])
         for i in range(len(labels))
     ],
-    fontsize=14, frameon=False, bbox_to_anchor=(0.8, 3), loc="upper right"
+    fontsize=16, frameon=False, bbox_to_anchor=(0.8, 3), loc="upper right"
 )
 
 plt.show()
+fig_name = "foundation_single_low.pdf" if low else "foundation_single_high.pdf"
 
-# range1 = [(0.5,0.7), (34.5, 35.5), (-2,0)]
+fig.savefig("figures/" + fig_name, bbox_inches='tight')
 
-
-# fig = corner.corner(vi_results, labels = ["$A_V$", "$\mu$", "$\\theta$"], range=range1)
-# corner.corner(stephen_data, color = 'r', fig = fig, range=range1)
-
-fig = corner.corner(vi_results, labels = ["$A_V$", "$\mu$", "$\\theta$"])
-corner.corner(stephen_data, color = 'r', fig = fig)
-
-
-# corner.overplot_lines(fig, [vi_mu[0],vi_mu[-1],vi_mu[1]], linestyle = 'dashed', color='g')
-# corner.overplot_lines(fig, [true_av, true_mu, true_theta], linestyle = 'solid', color='blue')
+# Plot comparing to Stephen's MCMC chains
+fig = corner.corner(vi_results, labels = ["$A_V$", "$\mu$", "$\\theta$"], 
+	range=range_low if low else range_high, label_kwargs = {'fontsize':16})
+corner.corner(stephen_data, color = 'r', fig = fig, range=range_low if low else range_high)
 
 colors = ['k','r']
 

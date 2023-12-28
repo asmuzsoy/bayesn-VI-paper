@@ -9,7 +9,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 from scipy.integrate import simpson
 import numpyro
-from numpyro.infer import MCMC, NUTS, init_to_median, init_to_sample, init_to_value, Predictive
+from numpyro.infer import MCMC, NUTS, init_to_median, init_to_sample, init_to_value, Predictive, log_likelihood
 import numpyro.distributions as dist
 from numpyro.optim import Adam, ClippedAdam
 from numpyro.infer import SVI, Trace_ELBO, TraceGraph_ELBO
@@ -29,7 +29,6 @@ import astropy.table as at
 import astropy.constants as const
 import matplotlib as mpl
 from matplotlib import rc
-import arviz
 import extinction
 import timeit
 from astropy.io import fits
@@ -37,8 +36,8 @@ import ruamel.yaml as yaml
 import time
 from tqdm import tqdm
 from zltn_utils import *
-import optax
-
+from numpyro_psis import *
+import arviz as az
 
 # Make plots look pretty
 rc('font', **{'family': 'serif', 'serif': ['cmr10']})
@@ -702,11 +701,8 @@ class SEDmodel(object):
             Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
             # Ds = numpyro.sample('Ds', dist.ImproperUniform(dist.constraints.greater_than(0), (), event_shape=()))
             Ds = numpyro.sample('Ds', dist.Normal(muhat, Ds_err))  # Ds_err
-            print("a")
-            print(weights.shape)
             flux = self.get_flux_batch(theta, Av, self.W0, self.W1, eps, Ds, self.Rv, band_indices, mask,
                                        J_t, hsiao_interp, weights)
-            print("b")
             with numpyro.handlers.mask(mask=mask):
                 numpyro.sample(f'obs', dist.Normal(flux, obs[2, :, sn_index].T),
                                obs=obs[1, :, sn_index].T)  # _{sn_index}
@@ -1192,10 +1188,22 @@ class SEDmodel(object):
         params, losses = svi_result.params, svi_result.losses
         predictive = Predictive(zltn_guide, params=params, num_samples=1000)
         samples = predictive(PRNGKey(123), data=None)
-        print(samples.keys())
 
-        self.fit_postprocess_samples(samples, output)
-        self.fit_postprocess_params(zltn_guide, params, output)
+        p5_3 = params
+        m5_3 = zltn_guide
+        post = m5_3.sample_posterior(random.PRNGKey(24071847), p5_3, (1000,))
+        logprob = log_likelihood(m5_3.model, post, obs = self.data, weights = self.band_weights)['obs']
+        az5_3 = az.from_dict(
+        posterior={k: v[None, ...] for k, v in post.items()},
+        log_likelihood={"D": logprob[None, ...]},
+        )
+        PSIS_m5_3 = az.loo(az5_3, pointwise=True)
+        print(PSIS_m5_3.pareto_k.values)
+        # print(psis_diagnostic)
+        # psis_diagnostic(model, zltn_guide,self.data, self.band_weights)     
+
+        # self.fit_postprocess_samples(samples, output)
+        # self.fit_postprocess_params(zltn_guide, params, output)
 
 
 
@@ -1260,7 +1268,7 @@ class SEDmodel(object):
         # First start with the Laplace Approximation
         laplace_guide = AutoLaplaceApproximation(model, init_loc_fn=init_strategy)
         svi = SVI(model, laplace_guide, optimizer, loss=Trace_ELBO(5))
-        svi_result = svi.run(PRNGKey(123), 5000, data[..., None],band_weights[None, ...], progress_bar=False)
+        svi_result = svi.run(PRNGKey(123), 15000, data[..., None],band_weights[None, ...], progress_bar=False)
         params, losses = svi_result.params, svi_result.losses
         laplace_median = laplace_guide.median(params)
         # Now initialize the ZLTN guide on the Laplace Approximation median (just for AV, theta, and mu)
@@ -1338,7 +1346,7 @@ class SEDmodel(object):
         # First start with the Laplace Approximation
         laplace_guide = AutoLaplaceApproximation(model, init_loc_fn=init_strategy)
         svi = SVI(model, laplace_guide, optimizer, loss=Trace_ELBO(5))
-        svi_result = svi.run(PRNGKey(123), 5000, data[..., None],band_weights[None, ...], progress_bar=False)
+        svi_result = svi.run(PRNGKey(123), 15000, data[..., None],band_weights[None, ...], progress_bar=False)
         params, losses = svi_result.params, svi_result.losses
         end = timeit.default_timer()
 
@@ -1411,7 +1419,7 @@ class SEDmodel(object):
         # First start with the Laplace Approximation
         laplace_guide = AutoLaplaceApproximation(model, init_loc_fn=init_strategy)
         svi = SVI(model, laplace_guide, optimizer, loss=Trace_ELBO(5))
-        svi_result = svi.run(PRNGKey(123), 5000, data[..., None],band_weights[None, ...], progress_bar=False)
+        svi_result = svi.run(PRNGKey(123), 15000, data[..., None],band_weights[None, ...], progress_bar=False)
         params, losses = svi_result.params, svi_result.losses
         laplace_median = laplace_guide.median(params)
         # Now initialize the ZLTN guide on the Laplace Approximation median (just for AV, theta, and mu)
@@ -1510,67 +1518,6 @@ class SEDmodel(object):
             self.fit_postprocess_samples(samples, output + "_" + str(i))
 
 
-    def fit_with_vi2(self, output, model_path=None, init_strategy='median'):
-        """
-        Parameters
-        ----------
-        output: str
-            Name of output directory which will store results
-        model_path: str, optional
-            Name of directory containing model parameters to use for fitting. I'm using this for now to keep my
-            numpyro trained models separate from T21/M20/W22 etc. until we're confident with them. Defaults to None,
-            which means that the model loaded when initialising the SEDmodel object is used.
-            Strategy to use for initialisation, default to median. Options are:
-            ``'median'`` | Chains are initialised to prior media
-            ``'sample'`` | Chains are initialised to a random sample from the priors
-
-        """
-        if init_strategy == 'median':
-            init_strategy = init_to_median()
-        elif init_strategy == 'value':
-            init_strategy = init_to_value(values=self.fit_initial_guess())
-        elif init_strategy == 'map':
-            init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
-        elif init_strategy == 'sample':
-            init_strategy = init_to_sample()
-        else:
-            raise ValueError('Invalid init strategy, must be one of median or sample')
-        if model_path is not None:
-            with open(os.path.join('results', model_path, 'chains.pkl'), 'rb') as file:
-                result = pickle.load(file)
-            self.W0 = device_put(
-                np.reshape(np.mean(result['W0'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
-                           order='F'))
-            self.W1 = device_put(
-                np.reshape(np.mean(result['W1'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
-                           order='F'))
-            # sigmaepsilon = np.mean(result['sigmaepsilon'], axis=(0, 1))
-            # L_Omega = np.mean(result['L_Omega'], axis=(0, 1))
-            # self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
-            self.Rv = device_put(np.mean(result['Rv'], axis=(0, 1)))
-            self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
-            self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
-
-        optimizer = Adam(0.01)
-
-        start = timeit.default_timer() 
-        # guide = AutoMultivariateNormal(self.fit_model_vi, init_loc_fn=init_strategy)
-        guide = AutoMultiZLTNGuide(self.fit_model_vi, init_loc_fn=init_strategy)
-
-        svi = SVI(self.fit_model_vi, guide, optimizer, loss=Trace_ELBO(5))
-        svi_result = svi.run(PRNGKey(123), 30000, self.data, self.band_weights)
-        params, losses = svi_result.params, svi_result.losses
-        # print(params)
-        end = timeit.default_timer()
-        print('VI: ', end - start)
-        predictive = Predictive(guide, params=params, num_samples=1000)
-        # samples = predictive(PRNGKey(123), self.data, self.band_weights)
-        samples = predictive(PRNGKey(123), data=None)
-        print(samples.keys())
-
-        self.fit_postprocess_samples2(samples, output)
-        self.fit_postprocess_params2(guide, params, output)
-
 
     def fit_postprocess_params(self, guide, params, output):
         """
@@ -1594,30 +1541,6 @@ class SEDmodel(object):
         cov = guide.get_posterior(params).sigma
 
         np.savez(os.path.join('results', output, 'vi_params'), mu=mu, cov=cov)
-
-    # def fit_postprocess_params2(self, guide, params, output):
-    #     """
-    #     Processes output of fit function, saving the chains and calculating fitting statistics
-
-    #     Parameters
-    #     ----------
-    #     guide: AutoGuide
-    #         trained autoguide (trained with fit_with_vi())
-    #     params: dict
-    #         fit parameters of guide (trained with fit_with_vi())
-    #     output: str
-    #         Name of directory to store output files in
-
-    #     """
-    #     if not os.path.exists(os.path.join('results', output)):
-    #         os.mkdir(os.path.join('results', output))
-
-
-    #     mu = guide.get_posterior(params).mu
-    #     cov = guide.get_posterior(params).sigma
-
-    #     np.savez(os.path.join('results', output, 'vi_params'), mu=mu, cov=cov)
-
 
 
     def fit_postprocess_samples(self, samples, output):
@@ -1644,45 +1567,6 @@ class SEDmodel(object):
         delM = samples['Ds'] - mu
         samples['mu'] = mu
         samples['delM'] = delM
-        with open(os.path.join('results', output, 'chains.pkl'), 'wb') as file:
-            pickle.dump(samples, file)
-        # Save convergence data for each parameter to csv file
-        summary = arviz.summary(samples)
-        summary.to_csv(os.path.join('results', output, 'fit_summary.csv'))
-        df = pd.DataFrame(self.sn_list, columns=['sn'])
-        df['z'] = self.data[-5, 0, :]
-        df['z_err'] = self.data[-4, 0, :]
-        df['muhat'] = self.data[-3, 0, :]
-        df.to_csv(os.path.join('results', output, 'sn_props.txt'), index=False)
-
-
-    def fit_postprocess_samples2(self, samples, output):
-        """
-        Processes output of fit function, saving the chains and calculating fitting statistics
-
-        Parameters
-        ----------
-        samples: dict
-            Dictionary containing samples for all parameters from fitting process
-        output: str
-            Name of directory to store output files in
-
-        """
-        if not os.path.exists(os.path.join('results', output)):
-            os.mkdir(os.path.join('results', output))
-
-        muhat = self.data[-3, 0, :]
-        muhat_err = 10
-        Ds_err = jnp.sqrt(muhat_err * muhat_err + self.sigma0 * self.sigma0)
-        samples['delM'] = np.random.normal(0, self.sigma0, 1000)
-        samples['mu'] = samples['Ds'] - samples['delM']
-
-        # mu = np.random.normal((samples['Ds'] * np.power(muhat_err, 2) + muhat * np.power(self.sigma0, 2)) /
-        #                       np.power(Ds_err, 2),
-        #                       np.sqrt((np.power(self.sigma0, 2) * np.power(muhat_err, 2)) / np.power(Ds_err, 2)))
-        # delM = samples['Ds'] - mu
-        # samples['mu'] = mu
-        # samples['delM'] = delM
         with open(os.path.join('results', output, 'chains.pkl'), 'wb') as file:
             pickle.dump(samples, file)
         # Save convergence data for each parameter to csv file

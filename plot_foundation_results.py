@@ -50,8 +50,8 @@ def get_mode_from_samples(samples):
 
 
 for i in range(num_to_plot):
-	with (open("results/" + dataset + "/" + str(i) + "_vi/chains.pkl", "rb")) as openfile:
-		vi_objects = pickle.load(openfile)
+	# with (open("results/" + dataset + "/" + str(i) + "_vi/chains.pkl", "rb")) as openfile:
+	# 	vi_objects = pickle.load(openfile)
 
 	with (open("results/" + dataset + "/" + str(i) + "_mcmc/chains.pkl", "rb")) as openfile:
 		mcmc_objects = pickle.load(openfile)
@@ -61,28 +61,28 @@ for i in range(num_to_plot):
 
 	for var in ['AV', 'mu', 'theta']:
 		mcmc_samples = mcmc_objects[var].reshape((1000,))
-		vi_samples = np.squeeze(vi_objects[var])
+		# vi_samples = np.squeeze(vi_objects[var])
 		stephen_samples = s[var]
 
 		if var == "AV":
 			if av_stat == 'median':
-				vi_point_estimates[var].append(np.median(vi_samples))
+				# vi_point_estimates[var].append(np.median(vi_samples))
 				mcmc_point_estimates[var].append(np.median(mcmc_samples))
 				stephen_point_estimates[var].append(np.median(stephen_samples))
 			elif av_stat == 'mode':
 				mcmc_point_estimates[var].append(get_mode_from_samples(mcmc_samples))
-				vi_point_estimates[var].append(get_mode_from_samples(vi_samples))
+				# vi_point_estimates[var].append(get_mode_from_samples(vi_samples))
 				stephen_point_estimates[var].append(get_mode_from_samples(stephen_samples))
 
 
 		else: # Use sample median for mu point estimate
-			vi_point_estimates[var].append(np.median(vi_samples))
+			# vi_point_estimates[var].append(np.median(vi_samples))
 			mcmc_point_estimates[var].append(np.median(mcmc_samples))
 			stephen_point_estimates[var].append(get_mode_from_samples(stephen_samples))
 
 
-		vi_uncertainties[var].append(np.std(vi_samples))
-		vi_variances[var].append(np.var(vi_samples))
+		# vi_uncertainties[var].append(np.std(vi_samples))
+		# vi_variances[var].append(np.var(vi_samples))
 		mcmc_uncertainties[var].append(np.std(mcmc_samples))
 		stephen_uncertainties[var].append(np.std(stephen_samples))
 
@@ -92,21 +92,29 @@ for var in ['AV', 'mu', 'theta']:
 	if var == 'mu':
 		vi_point_estimates[var] = np.median(np.squeeze(d2['Ds']), axis = 1)
 		vi_uncertainties[var] = np.std(np.squeeze(d2['Ds']), axis = 1)
+		vi_variances[var] = np.var(np.squeeze(d2['Ds']), axis = 1)
+
 	else:
 		vi_point_estimates[var] = np.median(np.squeeze(d2[var]), axis = 1)
 		vi_uncertainties[var] = np.std(np.squeeze(d2[var]), axis = 1)
+		vi_variances[var] = np.var(np.squeeze(d2[var]), axis = 1)
 
-	print(vi_point_estimates[var].shape)
+
+
+print(vi_point_estimates['AV'][36])
+print(stephen_point_estimates['AV'][36])
+
+print()
 # print(np.squeeze(d2['AV'][0]).shape)
 
-for var in ['AV', 'mu', 'theta']:
-	mcmc_point_estimates[var] = np.array(mcmc_point_estimates[var])
-	vi_point_estimates[var] = np.array(vi_point_estimates[var])
-	stephen_point_estimates[var] = np.array(stephen_point_estimates[var])
+# for var in ['AV', 'mu', 'theta']:
+# 	mcmc_point_estimates[var] = np.array(mcmc_point_estimates[var])
+# 	vi_point_estimates[var] = np.array(vi_point_estimates[var])
+# 	stephen_point_estimates[var] = np.array(stephen_point_estimates[var])
 
-	vi_uncertainties[var] = np.array(vi_uncertainties[var])
-	mcmc_uncertainties[var] = np.array(mcmc_uncertainties[var])
-	stephen_uncertainties[var] = np.array(stephen_uncertainties[var])
+# 	vi_uncertainties[var] = np.array(vi_uncertainties[var])
+# 	mcmc_uncertainties[var] = np.array(mcmc_uncertainties[var])
+# 	stephen_uncertainties[var] = np.array(stephen_uncertainties[var])
 
 
 for i in range(num_to_plot - 1):
@@ -114,7 +122,7 @@ for i in range(num_to_plot - 1):
 		print(i, sn_names[i])
 
 
-print(vi_point_estimates)
+# print(vi_point_estimates)
 
 for i in range(num_to_plot):
 	if np.isnan(vi_point_estimates['AV'][i]):
@@ -204,13 +212,13 @@ linspace_z = np.linspace(0.01, 0.085)
 
 cosmo_distmod_values = np.array([cosmo.distmod(z).value for z in linspace_z])
 
-def plot_hubble_distances_and_residuals(mus, vars, z_cmbs, linspace_z = linspace_z, cosmo_distmod_values = cosmo_distmod_values):
+def plot_hubble_distances_and_residuals(mus, variances, z_cmbs, linspace_z = linspace_z, cosmo_distmod_values = cosmo_distmod_values):
   predictions = mus
   targets = np.array([cosmo.distmod(z).value for z in z_cmbs])
   rmse = np.sqrt(np.mean((predictions-targets)**2))
   
   fig, ax = plt.subplots(2,1, figsize = (6,9))
-  ax[0].errorbar(z_cmbs, mus, np.sqrt(vars), linestyle = 'None', color = 'k')
+  ax[0].errorbar(z_cmbs, mus, np.sqrt(variances), linestyle = 'None', color = 'k')
   ax[0].plot(z_cmbs, mus,'o')
   ax[0].plot(linspace_z, cosmo_distmod_values, color = 'k')
   ax[0].set_xlabel("z", fontsize =14)
@@ -223,8 +231,10 @@ def plot_hubble_distances_and_residuals(mus, vars, z_cmbs, linspace_z = linspace
   sigma_pec = 150
   c = 300000
   print(np.mean(mus - np.array(targets)), "+/-", np.std(mus - np.array(targets)) / np.sqrt(len(z_cmbs)))
+  residuals = mus - np.array(targets)
+  print(sum(residuals**2/variances) / len(mus) - 1)
 
-  ax[1].errorbar(z_cmbs, mus - np.array(targets), np.sqrt(vars), linestyle = 'None', color = 'k')
+  ax[1].errorbar(z_cmbs, mus - np.array(targets), np.sqrt(variances), linestyle = 'None', color = 'k')
   ax[1].plot(z_cmbs, mus - np.array(targets), 'o')
 
   sigma_envelope = np.array([(5 / (z * np.log(10))) * (sigma_pec / c) for z in linspace_z])
