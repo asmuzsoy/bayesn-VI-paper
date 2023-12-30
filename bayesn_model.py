@@ -23,7 +23,7 @@ import pandas as pd
 import jax
 from jax import device_put
 import jax.numpy as jnp
-from jax.random import PRNGKey, split
+from jax.random import PRNGKey, split, normal
 from astropy.cosmology import FlatLambdaCDM
 import astropy.table as at
 import astropy.constants as const
@@ -1189,16 +1189,7 @@ class SEDmodel(object):
         predictive = Predictive(zltn_guide, params=params, num_samples=1000)
         samples = predictive(PRNGKey(123), data=None)
 
-        p5_3 = params
-        m5_3 = zltn_guide
-        post = m5_3.sample_posterior(random.PRNGKey(24071847), p5_3, (1000,))
-        logprob = log_likelihood(m5_3.model, post, obs = self.data, weights = self.band_weights)['obs']
-        az5_3 = az.from_dict(
-        posterior={k: v[None, ...] for k, v in post.items()},
-        log_likelihood={"D": logprob[None, ...]},
-        )
-        PSIS_m5_3 = az.loo(az5_3, pointwise=True)
-        print(PSIS_m5_3.pareto_k.values)
+        return samples
         # print(psis_diagnostic)
         # psis_diagnostic(model, zltn_guide,self.data, self.band_weights)     
 
@@ -1283,7 +1274,7 @@ class SEDmodel(object):
         params, losses = svi_result.params, svi_result.losses
         predictive = Predictive(zltn_guide, params=params, num_samples=1000)
         samples = predictive(PRNGKey(123), data=None)
-        print(samples.keys())
+        # print(samples.keys())
 
         return samples
         # self.fit_postprocess_samples(samples, output)
@@ -1352,10 +1343,9 @@ class SEDmodel(object):
 
         predictive = Predictive(laplace_guide, params=params, num_samples=1000)
         samples = predictive(PRNGKey(123), data=None)
-        return samples
-        # print(samples.keys())
 
-        # self.fit_postprocess_samples(samples, output)
+        return samples
+
         # self.fit_postprocess_params(laplace_guide, params, output)
 
     def fit_multivariatenormal_vmap(self, data, band_weights, epsilons_on=True, model_path=None, init_strategy='median'):
@@ -1435,10 +1425,10 @@ class SEDmodel(object):
         params, losses = svi_result.params, svi_result.losses
         predictive = Predictive(zltn_guide, params=params, num_samples=1000)
         samples = predictive(PRNGKey(123), data=None)
-        print(samples.keys())
 
         return samples
 
+    # this method is just for visualization and GIF creation
     def fit_with_vi_verbose(self, output, epsilons_on, model_path=None, init_strategy='median'):
         """
         Parameters

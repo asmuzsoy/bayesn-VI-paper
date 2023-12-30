@@ -6,7 +6,7 @@ import os.path
 model = SEDmodel(load_model='T21_model')
 
 
-dataset_number = 27
+dataset_number = 28
 
 
 epsilons_on = True
@@ -21,9 +21,9 @@ N = 500
 start = default_timer()
 
 # AV = np.zeros(N)
-# AV = model.sample_AV(N)
+AV = model.sample_AV(N)
 # AV = np.random.uniform(1e-9, 0.25, N)
-AV = np.random.exponential(0.1, N)
+# AV = np.random.exponential(0.1, N)
 
 z = np.random.uniform(0.015, 0.08, N)
 theta = model.sample_theta(N)

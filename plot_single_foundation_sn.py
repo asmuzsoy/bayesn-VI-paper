@@ -17,19 +17,10 @@ else:
 	sn_number = 36
 print(sn_names[sn_number])
 
-d2=np.load("foundation_vmap_112023.npy", allow_pickle=True).item()
-
-vi_objects = {}
-
-for var in ['AV', 'mu', 'theta']:
-	if var == 'mu':
-		vi_objects[var] = np.squeeze(d2['Ds'])[sn_number]
-	else:
-		vi_objects[var] = np.squeeze(d2[var])[sn_number]
-
-
-with (open("results/" + dataset + "/" + str(sn_number) + "_mcmc/chains.pkl", "rb")) as openfile:
-	mcmc_objects = pickle.load(openfile)
+zltn_dict=np.load("foundation_vmap_zltn_122923.npy", allow_pickle=True).item()
+laplace_dict=np.load("foundation_vmap_laplace_122923.npy", allow_pickle=True).item()
+multinormal_dict=np.load("foundation_vmap_multinormal_122923.npy", allow_pickle=True).item()
+mcmc_dict=np.load("foundation_vmap_mcmc_122923.npy", allow_pickle=True).item()
 
 
 s = np.load("../dist_chains_210610_135216/" + sn_names[sn_number] + "_chains_210610_135216.npy", allow_pickle=True).item()
@@ -49,40 +40,45 @@ def get_mode_from_samples(samples):
 	mode = (bin_edges[max_index] + bin_edges[max_index + 1])/2
 	return mode
 
-print(mcmc_objects['AV'][:,:,0].shape)
-# print(objects['AV'].shape)
 
+mcmc_results = []
+zltn_results= []
+laplace_results = []
+multinormal_results = []
 
-for i in range(1):
-	mcmc_results = []
-	vi_results = []
-	for var in ['AV', 'mu', 'theta']:
-		mcmc_samples = mcmc_objects[var][:,:,i].reshape((1000,))
-		vi_samples = np.squeeze(vi_objects[var])
+for var in ['AV', 'mu', 'theta']:
+	mcmc_samples = np.squeeze(mcmc_dict[var])[sn_number].reshape((1000,))
+	print(var, np.squeeze(mcmc_dict[var]).shape)
+	zltn_samples = np.squeeze(zltn_dict[var])[sn_number]
+	laplace_samples = np.squeeze(laplace_dict[var])[sn_number]
+	multinormal_samples = np.squeeze(multinormal_dict[var])[sn_number]
 
-		if var == 'AV':
-			vi_samples = np.squeeze(vi_objects[var])
-		mcmc_results.append(mcmc_samples)
-		vi_results.append(vi_samples)
+	mcmc_results.append(mcmc_samples)
+	zltn_results.append(zltn_samples)
+	laplace_results.append(laplace_samples)
+	multinormal_results.append(multinormal_samples)
 
-vi_results = np.array(vi_results).T
+zltn_results = np.array(zltn_results).T
 mcmc_results = np.array(mcmc_results).T
-print(vi_results.shape)
-print(mcmc_results.shape)
+laplace_results = np.array(laplace_results).T
+multinormal_results = np.array(multinormal_results).T
+
+print(zltn_results.shape)
+
 
 range_low = [(-0.01,0.15), (35, 35.6), (0,1.8)]
 range_high = [(0.4, 1), (35, 35.8), (-1.6,-0.2)]
 
-fig = corner.corner(vi_results, labels = ["$A_V$", "$\mu$", "$\\theta$"], 
+fig = corner.corner(zltn_results, labels = ["$A_V$", "$\mu$", "$\\theta$"], 
 	range=range_low if low else range_high, label_kwargs = {'fontsize':16})
 corner.corner(mcmc_results, color = 'r', fig = fig, range=range_low if low else range_high)
+# corner.corner(laplace_results, color = 'r', fig = fig, range=range_low if low else range_high)
+corner.corner(multinormal_results, color = 'b', fig = fig, range=range_low if low else range_high)
 
-# corner.overplot_lines(fig, [vi_mu[0],vi_mu[-1],vi_mu[1]], linestyle = 'dashed', color='g')
-# corner.overplot_lines(fig, [true_av, true_mu, true_theta], linestyle = 'solid', color='blue')
 
-colors = ['k','r']
+colors = ['k','r', 'b']
 
-labels = ['ZLTN VI', 'MCMC']
+labels = ['ZLTN VI', 'MCMC', 'Multivariate Normal VI']
 
 plt.legend(
     handles=[
@@ -97,8 +93,10 @@ fig_name = "foundation_single_low.pdf" if low else "foundation_single_high.pdf"
 
 fig.savefig("figures/" + fig_name, bbox_inches='tight')
 
+
+
 # Plot comparing to Stephen's MCMC chains
-fig = corner.corner(vi_results, labels = ["$A_V$", "$\mu$", "$\\theta$"], 
+fig = corner.corner(zltn_results, labels = ["$A_V$", "$\mu$", "$\\theta$"], 
 	range=range_low if low else range_high, label_kwargs = {'fontsize':16})
 corner.corner(stephen_data, color = 'r', fig = fig, range=range_low if low else range_high)
 
