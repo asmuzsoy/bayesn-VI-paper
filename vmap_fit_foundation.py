@@ -51,6 +51,7 @@ def postprocess_add_mu(model, samples):
 
 start = timeit.default_timer()
 
+## rewrite these to use methods
 mcmc = jax.vmap(model.fit_mcmc_vmap, in_axes=(2, 0))
 mcmc_samples = mcmc(model.data, model.band_weights)
 mcmc_samples = postprocess_add_mu(model, mcmc_samples)

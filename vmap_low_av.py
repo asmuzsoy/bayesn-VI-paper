@@ -4,6 +4,7 @@ import os.path
 from numpyro.infer import init_to_value
 import jax
 import jax.numpy as jnp
+from jax.random import PRNGKey, normal
 import pandas as pd
 import timeit
 
@@ -38,7 +39,7 @@ def postprocess_add_mu(model, samples):
     samples['mu'] = mu
     samples['delM'] = delM
     return samples
-    
+
 start = timeit.default_timer()
 
 mcmc = jax.vmap(model.fit_mcmc_vmap, in_axes=(2, 0))

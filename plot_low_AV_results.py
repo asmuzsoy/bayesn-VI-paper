@@ -4,34 +4,14 @@ from astropy.cosmology import FlatLambdaCDM
 import pickle
 import numpy as np
 import corner
-from scipy import special
-
-
-mcmc_point_estimates = {'AV':[], 'mu':[], 'theta':[]}
-zltn_point_estimates = {'AV':[], 'mu':[], 'theta':[]}
-laplace_point_estimates = {'AV':[], 'mu':[], 'theta':[]}
-normal_point_estimates = {'AV':[], 'mu':[], 'theta':[]}
-
-
-mcmc_uncertainties = {'AV':[], 'mu':[], 'theta':[]}
-zltn_uncertainties = {'AV':[], 'mu':[], 'theta':[]}
-laplace_uncertainties = {'AV':[], 'mu':[], 'theta':[]}
-normal_uncertainties = {'AV':[], 'mu':[], 'theta':[]}
-
-mcmc_samples = {'AV':[], 'mu':[], 'theta':[]}
-zltn_samples = {'AV':[], 'mu':[], 'theta':[]}
-laplace_samples = {'AV':[], 'mu':[], 'theta':[]}
-normal_samples = {'AV':[], 'mu':[], 'theta':[]}
-
-
+from scipy import special, stats
 
 fiducial_cosmology={"H0": 73.24, "Om0": 0.28}
 cosmo = FlatLambdaCDM(**fiducial_cosmology)
 
 num_to_plot = 500
 
-dataset_number=27
-
+dataset_number=28
 
 av_stat = 'median'
 
@@ -48,106 +28,66 @@ def get_mode_from_samples(samples):
 	mode = (bin_edges[max_index] + bin_edges[max_index + 1])/2
 	return mode
 
-mcmc_file=np.load("low_av_mcmc_120723.npy", allow_pickle=True).item()
-laplace_file=np.load("low_av_laplace_120723.npy", allow_pickle=True).item()
-zltn_file=np.load("low_av_zltn_120723.npy", allow_pickle=True).item()
-multinormal_file=np.load("low_av_multinormal_120723.npy", allow_pickle=True).item()
+class Result:
+  def __init__(self, filename):
+    self.results_dict = np.load(filename, allow_pickle=True).item()
+    self.mu_samples = self.results_dict['mu'].reshape((num_to_plot, 1000,))
+    self.theta_samples = self.results_dict['theta'].reshape((num_to_plot, 1000,))
+    self.av_samples = self.results_dict['AV'].reshape((num_to_plot, 1000,))
+    self.samples_dict = {'mu':self.mu_samples, 'theta':self.theta_samples, 'AV':self.av_samples}
+    self.point_estimates = {var: np.median(self.samples_dict[var], axis=1) for var in self.samples_dict.keys()}
+    self.stds = {var: np.std(self.samples_dict[var], axis=1) for var in self.samples_dict.keys()}
+    self.variances = {var: np.var(self.samples_dict[var], axis=1) for var in self.samples_dict.keys()}
 
-for file, samples in [(mcmc_file, mcmc_samples), (laplace_file,
-	laplace_samples), (zltn_file, zltn_samples), (multinormal_file,
-	normal_samples)]:
+zltn_result = Result("sim28_zltn_122923.npy")
+mcmc_result = Result("sim28_mcmc_122923.npy")
+laplace_result = Result("sim28_laplace_122923.npy")
+multinormal_result = Result("sim28_multinormal_122923.npy")
 
-	if file is mcmc_file:
-		for var in ['AV', 'mu', 'theta']:
-			if var == 'mu':
-				samples[var] = np.squeeze(file['Ds']).reshape(num_to_plot, 1000)
-			else:
-				samples[var] = np.squeeze(file[var]).reshape(num_to_plot, 1000)
-
-	else:
-		for var in ['AV', 'mu', 'theta']:
-			if var == 'mu':
-				samples[var] = np.squeeze(file['Ds'])
-			else:
-				samples[var] = np.squeeze(file[var])
-
-labels = ['MCMC', 'Laplace', 'ZLTN', 'MultiNormal']
+labels = ['MCMC', 'ZLTN', 'Multivariate Normal']
 latex_version = {'mu': '$\\mu$', 'theta': '$\\theta$', 'AV': '$A_V$'}
-
+prob_labels = ['$p_\\mu$', '$p_{A_V}$', '$p_\\theta$']
 true_values = [true_avs, true_mus, true_thetas]
-for i, samples in enumerate([mcmc_samples, laplace_samples, zltn_samples, normal_samples]):
+
+fig, ax = plt.subplots(3,3, figsize=(9,9))
+
+for i, samples in enumerate([mcmc_result.samples_dict, zltn_result.samples_dict, multinormal_result.samples_dict]):
 	# for var in ['AV', 'mu', 'theta']:
-	fig, ax = plt.subplots(3, figsize=(5,12))
 	for k, var in enumerate(['AV', 'mu', 'theta']):
 		ratios = []
 		for j in range(num_to_plot):
 			mask = samples[var][j]> true_values[k][j]
 			ratios.append(np.sum(mask)/1000)
+		
+		p = stats.ks_2samp(ratios, 1 - np.array(ratios)).pvalue
+		ax[k][i].hist(ratios, bins=20)
+		ax[k][i].axvline(np.mean(ratios), linestyle ='dashed')
+		ax[k][i].axvline(0.5, linestyle ='solid', color='k')
+		ax[k][i].annotate("p = " + str(round(p, 3)), (0.57, 0.85), xycoords='axes fraction')
+		ax[0][i].set_title(labels[i])
+		ax[2][i].set_xlabel(prob_labels[i], fontsize=12)
+		ax[k][0].set_ylabel("Density")
+		ax[k][i].set_xlim(-0.02,1.02)
+plt.tight_layout()
+plt.show()
+
+
+# for i, samples in enumerate([mcmc_result.samples_dict, laplace_result.samples_dict, zltn_result.samples_dict, multinormal_result.samples_dict]):
+# 	# for var in ['AV', 'mu', 'theta']:
+# 	fig, ax = plt.subplots(3, figsize=(5,12))
+# 	for k, var in enumerate(['AV', 'mu', 'theta']):
+# 		ratios = []
+# 		for j in range(num_to_plot):
+# 			mask = samples[var][j]> true_values[k][j]
+# 			ratios.append(np.sum(mask)/1000)
 			
-		ax[k].hist(ratios, bins=20)
-		ax[k].axvline(np.mean(ratios), linestyle ='dashed')
-		ax[0].set_title(labels[i])
-		ax[k].set_xlabel(latex_version[var])
+# 		ax[k].hist(ratios, bins=20)
+# 		ax[k].axvline(np.mean(ratios), linestyle ='dashed')
+# 		ax[0].set_title(labels[i])
+# 		ax[k].set_xlabel(latex_version[var])
 
-	plt.show()
+# 	plt.show()
 
-
-for file, point_estimates, uncertainties in [(mcmc_file, mcmc_point_estimates, mcmc_uncertainties), (laplace_file,
-	laplace_point_estimates,laplace_uncertainties), (zltn_file, zltn_point_estimates, zltn_uncertainties), (multinormal_file,
-	normal_point_estimates, normal_uncertainties)]:
-
-	if file is mcmc_file:
-		for var in ['AV', 'mu', 'theta']:
-			if var == 'mu':
-				point_estimates[var] = np.median(np.squeeze(file['Ds']).reshape(num_to_plot, 1000), axis = 1)
-				uncertainties[var] = np.std(np.squeeze(file['Ds']).reshape(num_to_plot, 1000), axis = 1)
-			else:
-				point_estimates[var] = np.median(np.squeeze(file[var]).reshape(num_to_plot, 1000), axis = 1)
-				uncertainties[var] = np.std(np.squeeze(file[var]).reshape(num_to_plot, 1000), axis = 1)
-
-	else:
-		for var in ['AV', 'mu', 'theta']:
-			if var == 'mu':
-				point_estimates[var] = np.median(np.squeeze(file['Ds']), axis = 1)
-				uncertainties[var] = np.std(np.squeeze(file['Ds']), axis = 1)
-			# elif var == 'AV':
-			# 	point_estimates[var] = np.array([get_mode_from_samples(i) for i in np.squeeze(file[var])])
-			# 	uncertainties[var] = np.std(np.squeeze(file[var]), axis = 1)
-			else:
-				point_estimates[var] = np.median(np.squeeze(file[var]), axis = 1)
-				uncertainties[var] = np.std(np.squeeze(file[var]), axis = 1)
-
-# Calculate KL divergence with MCMC distribution
-# this is wrong becuase we need the probabilities not the samples
-# fig, ax = plt.subplots()
-# labels = ['ZLTN', 'Laplace', 'MultiNormal']
-# colors = ['r', 'b', 'g']
-# for j, samples in enumerate([zltn_samples, laplace_samples, normal_samples]):
-# 	for i, var in enumerate(['AV']):
-# 		print(var)
-# 		kldivs = np.sum(special.rel_entr(samples[var], mcmc_samples[var]), axis=1)
-# 		print(kldivs)
-# 		ax.hist(kldivs, label = labels[j], histtype='step', color = colors[j])
-# 		ax.axvline(np.median(kldivs), linestyle='dotted', color=colors[j])
-# plt.legend()
-# plt.show()
-# print(np.sum(special.rel_entr(zltn_samples['AV'], mcmc_samples['AV']), axis=1).shape)
-
-
-print(mcmc_uncertainties['mu'])
-print(zltn_uncertainties['mu'])
-
-# for var in ['AV', 'mu', 'theta']:
-# 	mcmc_point_estimates[var] = np.array(mcmc_point_estimates[var])
-# 	zltn_point_estimates[var] = np.array(zltn_point_estimates[var])
-# 	laplace_point_estimates[var] = np.array(laplace_point_estimates[var])
-# 	normal_point_estimates[var] = np.array(normal_point_estimates[var])
-
-
-# 	zltn_uncertainties[var] = np.array(zltn_uncertainties[var])
-# 	mcmc_uncertainties[var] = np.array(mcmc_uncertainties[var])
-# 	laplace_uncertainties[var] = np.array(laplace_uncertainties[var])
-# 	normal_uncertainties[var] = np.array(normal_uncertainties[var])
 
 # zltn vs true subplots
 alpha = 0.2
@@ -155,12 +95,8 @@ mcmc_color = 'r'
 vi_color = 'b'
 axis_fontsize = 12
 
-
-
 true_values = {'mu': true_mus, 'theta': true_thetas, 'AV': true_avs}
 axlims = {'mu': (-0.075, 0.08), 'theta': (-0.2, 0.02), 'AV': (-0.02, 0.035)}
-
-
 
 def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title):
 	fig, ax = plt.subplots(3,3, figsize = (9,9))
@@ -168,9 +104,9 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title):
 	for i, var in enumerate(['mu', 'theta', 'AV']):
 		print(var)
 		ax[0][i].plot(true_values[var], point_estimates[var], '.', alpha=alpha, c=vi_color, label=title)
-		ax[0][i].plot(true_values[var], mcmc_point_estimates[var], '.', c=mcmc_color, alpha=alpha, label='MCMC')
+		ax[0][i].plot(true_values[var], mcmc_result.point_estimates[var], '.', c=mcmc_color, alpha=alpha, label='MCMC')
 		ax[0][i].errorbar(true_values[var], point_estimates[var], yerr = uncertainties[var], alpha=alpha, c=vi_color, linestyle='None')
-		ax[0][i].errorbar(true_values[var], mcmc_point_estimates[var], yerr = mcmc_uncertainties[var], c=mcmc_color, alpha=alpha, linestyle='None')
+		ax[0][i].errorbar(true_values[var], mcmc_result.point_estimates[var], yerr = mcmc_result.stds[var], c=mcmc_color, alpha=alpha, linestyle='None')
 		linspace_vals = np.linspace(min(true_values[var]), max(true_values[var]))
 		ax[0][i].plot(linspace_vals, linspace_vals, c='k')
 		ax[0][i].set_ylabel(title + ' '+ latex_version[var], fontsize = axis_fontsize)
@@ -179,17 +115,17 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title):
 			ax[0][i].set_xscale('log')
 
 		ax[1][i].plot(true_values[var], point_estimates[var] - true_values[var], '.', alpha=alpha, c = vi_color, label=title)
-		ax[1][i].plot(true_values[var], mcmc_point_estimates[var] - true_values[var], '.', c=mcmc_color, alpha=alpha, label='MCMC')
+		ax[1][i].plot(true_values[var], mcmc_result.point_estimates[var] - true_values[var], '.', c=mcmc_color, alpha=alpha, label='MCMC')
 		ax[1][i].errorbar(true_values[var], point_estimates[var] - true_values[var], yerr = uncertainties[var], alpha=alpha, c=vi_color, linestyle='None')
-		ax[1][i].errorbar(true_values[var], mcmc_point_estimates[var] - true_values[var], yerr = mcmc_uncertainties[var], c=mcmc_color, alpha=alpha, linestyle='None')
+		ax[1][i].errorbar(true_values[var], mcmc_result.point_estimates[var] - true_values[var], yerr = mcmc_result.stds[var], c=mcmc_color, alpha=alpha, linestyle='None')
 		ax[1][i].axhline(0, color = 'k')
 		ax[1][i].set_ylabel('Residual ' + latex_version[var] + ' (' + title + ' - true)', fontsize = axis_fontsize)
 		ax[1][i].legend()
 		if var=='AV':
 			ax[1][i].set_xscale('log')
 
-		ax[2][i].plot(true_values[var], point_estimates[var] - mcmc_point_estimates[var], 'o', color='gray', alpha = alpha)
-		# ax[2][i].errorbar(true_values[var], point_estimates[var] - mcmc_point_estimates[var], yerr = np.max([zltn_uncertainties[var], mcmc_uncertainties[var]]), c='gray', linestyle='None')
+		ax[2][i].plot(true_values[var], point_estimates[var] - mcmc_result.point_estimates[var], 'o', color='gray', alpha = alpha)
+		# ax[2][i].errorbar(true_values[var], point_estimates[var] - mcmc_result.point_estimates[var], yerr = np.max([zltn_result.stds[var], mcmc_result.stds[var]]), c='gray', linestyle='None')
 		# ax[2][i].set_ylim(axlims[var])
 		ax[2][i].axhline(0, color = 'k')
 		ax[2][i].set_ylabel('Residual ' + latex_version[var] + ' (' + title + ' - MCMC)', fontsize = axis_fontsize)
@@ -213,14 +149,14 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title):
 	plt.show()
 
 
-	# plt.plot(point_estimates['mu'] - mcmc_point_estimates['mu'], point_estimates['theta'] - mcmc_point_estimates['theta'], 'o')
+	# plt.plot(point_estimates['mu'] - mcmc_result.point_estimates['mu'], point_estimates['theta'] - mcmc_result.point_estimates['theta'], 'o')
 	# plt.show()
 
 
-plot_compare_to_mcmc_and_truth(zltn_point_estimates, zltn_uncertainties, title = "ZLTN")
-plot_compare_to_mcmc_and_truth(laplace_point_estimates, laplace_uncertainties, title = "Laplace")
+plot_compare_to_mcmc_and_truth(zltn_result.point_estimates, zltn_result.stds, title = "ZLTN")
+plot_compare_to_mcmc_and_truth(laplace_result.point_estimates, laplace_result.stds, title = "Laplace")
 print("normal")
-plot_compare_to_mcmc_and_truth(normal_point_estimates, normal_uncertainties, title = "MultiNormal")
+plot_compare_to_mcmc_and_truth(multinormal_result.point_estimates, multinormal_result.stds, title = "MultiNormal")
 
 
 	# ax[0][0].annotate("$\\mu$: median", (36, 34.5), fontsize = 16)
@@ -231,7 +167,7 @@ colors = ['tab:blue', 'tab:red', 'tab:green', 'goldenrod']
 
 fig, ax = plt.subplots(3, figsize = (3, 10))
 for i, var in enumerate(['mu', 'theta', 'AV']):
-	for j, point_estimates in enumerate([zltn_point_estimates, laplace_point_estimates, normal_point_estimates, mcmc_point_estimates]):
+	for j, point_estimates in enumerate([zltn_result.point_estimates, laplace_result.point_estimates, multinormal_result.point_estimates, mcmc_result.point_estimates]):
 		residuals = point_estimates[var] - true_values[var]
 		if i == 0:
 			_, bins, _ = ax[i].hist(residuals, histtype='step', label=labels[j], color=colors[j])
@@ -244,7 +180,7 @@ plt.show()
 
 fig, ax = plt.subplots(3, figsize = (3, 10))
 for i, var in enumerate(['mu', 'theta', 'AV']):
-	for j, uncertainties in enumerate([zltn_uncertainties, laplace_uncertainties, normal_uncertainties, mcmc_uncertainties]):
+	for j, uncertainties in enumerate([zltn_result.stds, laplace_result.stds, multinormal_result.stds, mcmc_result.stds]):
 		# residuals = point_estimates[var] - true_values[var]
 		ax[i].hist(uncertainties[var], histtype='step', label=labels[j], color=colors[j])
 		ax[i].axvline(np.median(uncertainties[var]), color=colors[j], linestyle='dashed')
@@ -269,7 +205,6 @@ def uncertainties_corner_plot(point_estimates, title):
 	plt.title(title)
 	plt.show()
 
-# uncertainties_corner_plot(zltn_point_estimates, "ZLTN")
-# uncertainties_corner_plot(laplace_point_estimates, "Laplace")
-# uncertainties_corner_plot(normal_point_estimates, "MultiNormal")
-
+# uncertainties_corner_plot(zltn_result.point_estimates, "ZLTN")
+# uncertainties_corner_plot(laplace_result.point_estimates, "Laplace")
+# uncertainties_corner_plot(multinormal_result.point_estimates, "MultiNormal")
