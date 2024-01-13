@@ -4,8 +4,8 @@ import jax.numpy as jnp
 
 model = SEDmodel(load_model='T21_model')
 
-dataset = 'sim_low_AV'
-# dataset = 'sim_zero_AV'
+# dataset = 'sim_low_AV'
+dataset = 'sim_zero_AV'
 
 # dataset = 'T21_sim_1'
 
@@ -30,7 +30,11 @@ model.process_dataset('foundation', 'data/lcs/tables/' + dataset + '.txt', 'data
 
 print("Fitting VI...")
 # model.fit_with_vi(dataset + '_vi', init_strategy='median')
-model.fit_with_vi_verbose(str(dataset) + '_vi', init_strategy='median', epsilons_on = True)
+# model.fit_with_vi_verbose(str(dataset) + '_vi', init_strategy='median', epsilons_on = True)
+
+model.fit_with_vi_laplace(str(dataset) + '_vi', init_strategy='median', epsilons_on = True)
+
+
 
 # model.fit_with_vi2(dataset + '_vi_2', init_strategy='median')
 

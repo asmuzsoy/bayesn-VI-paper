@@ -13,7 +13,7 @@ num_to_plot = 500
 
 dataset_number=28
 
-av_stat = 'median'
+av_stat = 'mode'
 
 title_str = ""
 
@@ -23,24 +23,27 @@ true_z = np.loadtxt("sim_population_z_" + str(dataset_number) + ".txt")[:num_to_
 true_mus = np.array([cosmo.distmod(z).value for z in true_z])
 
 def get_mode_from_samples(samples):
-	hist, bin_edges = np.histogram(samples, bins=50)
-	max_index = np.argmax(hist)
-	mode = (bin_edges[max_index] + bin_edges[max_index + 1])/2
-	return mode
+  hist, bin_edges = np.histogram(samples, bins=50)
+  max_index = np.argmax(hist)
+  mode = (bin_edges[max_index] + bin_edges[max_index + 1])/2
+  return mode
 
 class Result:
-  def __init__(self, filename):
+  def __init__(self, filename, av_metric = 'median'):
     self.results_dict = np.load(filename, allow_pickle=True).item()
     self.mu_samples = self.results_dict['mu'].reshape((num_to_plot, 1000,))
     self.theta_samples = self.results_dict['theta'].reshape((num_to_plot, 1000,))
     self.av_samples = self.results_dict['AV'].reshape((num_to_plot, 1000,))
     self.samples_dict = {'mu':self.mu_samples, 'theta':self.theta_samples, 'AV':self.av_samples}
     self.point_estimates = {var: np.median(self.samples_dict[var], axis=1) for var in self.samples_dict.keys()}
+    if av_metric == 'mode':
+    	print("yes")
+    	self.point_estimates['AV'] = np.array([get_mode_from_samples(s) for s in self.av_samples])
     self.stds = {var: np.std(self.samples_dict[var], axis=1) for var in self.samples_dict.keys()}
     self.variances = {var: np.var(self.samples_dict[var], axis=1) for var in self.samples_dict.keys()}
 
 zltn_result = Result("sim28_zltn_122923.npy")
-mcmc_result = Result("sim28_mcmc_122923.npy")
+mcmc_result = Result("sim28_mcmc_122923.npy", av_metric=av_stat)
 laplace_result = Result("sim28_laplace_122923.npy")
 multinormal_result = Result("sim28_multinormal_122923.npy")
 
@@ -49,27 +52,29 @@ latex_version = {'mu': '$\\mu$', 'theta': '$\\theta$', 'AV': '$A_V$'}
 prob_labels = ['$p_\\mu$', '$p_{A_V}$', '$p_\\theta$']
 true_values = [true_avs, true_mus, true_thetas]
 
-fig, ax = plt.subplots(3,3, figsize=(9,9))
 
+# VSBC Figure
+fig, ax = plt.subplots(3,3, figsize=(9,9))
 for i, samples in enumerate([mcmc_result.samples_dict, zltn_result.samples_dict, multinormal_result.samples_dict]):
-	# for var in ['AV', 'mu', 'theta']:
 	for k, var in enumerate(['AV', 'mu', 'theta']):
 		ratios = []
 		for j in range(num_to_plot):
-			mask = samples[var][j]> true_values[k][j]
+			mask = samples[var][j] > true_values[k][j]
 			ratios.append(np.sum(mask)/1000)
 		
 		p = stats.ks_2samp(ratios, 1 - np.array(ratios)).pvalue
 		ax[k][i].hist(ratios, bins=20)
 		ax[k][i].axvline(np.mean(ratios), linestyle ='dashed')
 		ax[k][i].axvline(0.5, linestyle ='solid', color='k')
-		ax[k][i].annotate("p = " + str(round(p, 3)), (0.57, 0.85), xycoords='axes fraction')
+		ax[k][i].annotate("p = " + str(round(p, 4)), (0.57, 0.85), xycoords='axes fraction')
 		ax[0][i].set_title(labels[i])
 		ax[2][i].set_xlabel(prob_labels[i], fontsize=12)
 		ax[k][0].set_ylabel("Density")
 		ax[k][i].set_xlim(-0.02,1.02)
 plt.tight_layout()
 plt.show()
+
+fig.savefig("figures/vsbc.pdf", bbox_inches='tight')
 
 
 # for i, samples in enumerate([mcmc_result.samples_dict, laplace_result.samples_dict, zltn_result.samples_dict, multinormal_result.samples_dict]):
@@ -115,9 +120,9 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title):
 			ax[0][i].set_xscale('log')
 
 		ax[1][i].plot(true_values[var], point_estimates[var] - true_values[var], '.', alpha=alpha, c = vi_color, label=title)
-		ax[1][i].plot(true_values[var], mcmc_result.point_estimates[var] - true_values[var], '.', c=mcmc_color, alpha=alpha, label='MCMC')
+		# ax[1][i].plot(true_values[var], mcmc_result.point_estimates[var] - true_values[var], '.', c=mcmc_color, alpha=alpha, label='MCMC')
 		ax[1][i].errorbar(true_values[var], point_estimates[var] - true_values[var], yerr = uncertainties[var], alpha=alpha, c=vi_color, linestyle='None')
-		ax[1][i].errorbar(true_values[var], mcmc_result.point_estimates[var] - true_values[var], yerr = mcmc_result.stds[var], c=mcmc_color, alpha=alpha, linestyle='None')
+		# ax[1][i].errorbar(true_values[var], mcmc_result.point_estimates[var] - true_values[var], yerr = mcmc_result.stds[var], c=mcmc_color, alpha=alpha, linestyle='None')
 		ax[1][i].axhline(0, color = 'k')
 		ax[1][i].set_ylabel('Residual ' + latex_version[var] + ' (' + title + ' - true)', fontsize = axis_fontsize)
 		ax[1][i].legend()
@@ -155,7 +160,6 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title):
 
 plot_compare_to_mcmc_and_truth(zltn_result.point_estimates, zltn_result.stds, title = "ZLTN")
 plot_compare_to_mcmc_and_truth(laplace_result.point_estimates, laplace_result.stds, title = "Laplace")
-print("normal")
 plot_compare_to_mcmc_and_truth(multinormal_result.point_estimates, multinormal_result.stds, title = "MultiNormal")
 
 
@@ -165,27 +169,28 @@ plot_compare_to_mcmc_and_truth(multinormal_result.point_estimates, multinormal_r
 labels = ['ZLTN', 'Laplace', 'MultiNormal', 'MCMC']
 colors = ['tab:blue', 'tab:red', 'tab:green', 'goldenrod']
 
-fig, ax = plt.subplots(3, figsize = (3, 10))
+fig, ax = plt.subplots(3,2, figsize = (10, 8))
 for i, var in enumerate(['mu', 'theta', 'AV']):
 	for j, point_estimates in enumerate([zltn_result.point_estimates, laplace_result.point_estimates, multinormal_result.point_estimates, mcmc_result.point_estimates]):
 		residuals = point_estimates[var] - true_values[var]
 		if i == 0:
-			_, bins, _ = ax[i].hist(residuals, histtype='step', label=labels[j], color=colors[j])
+			_, bins, _ = ax[i][0].hist(residuals, histtype='step', label=labels[j], color=colors[j])
 		else:
-			ax[i].hist(residuals, histtype='step', label=labels[j], color=colors[j], bins=bins)
-		ax[i].axvline(np.median(residuals), color=colors[j], linestyle='dashed')
-		ax[i].set_xlabel(latex_version[var] + " Residual (Fit - True)")
-		ax[i].legend()
-plt.show()
+			ax[i][0].hist(residuals, histtype='step', label=labels[j], color=colors[j], bins=bins)
+		ax[i][0].axvline(np.median(residuals), color=colors[j], linestyle='dashed')
+		ax[i][0].set_xlabel(latex_version[var] + " Residual (Fit - True)")
+		ax[i][0].legend()
+# plt.tight_layout()
+# plt.show()
 
-fig, ax = plt.subplots(3, figsize = (3, 10))
 for i, var in enumerate(['mu', 'theta', 'AV']):
 	for j, uncertainties in enumerate([zltn_result.stds, laplace_result.stds, multinormal_result.stds, mcmc_result.stds]):
 		# residuals = point_estimates[var] - true_values[var]
-		ax[i].hist(uncertainties[var], histtype='step', label=labels[j], color=colors[j])
-		ax[i].axvline(np.median(uncertainties[var]), color=colors[j], linestyle='dashed')
-		ax[i].set_xlabel(latex_version[var] + " Uncertainty (stdev)")
-		ax[i].legend()
+		ax[i][1].hist(uncertainties[var], histtype='step', label=labels[j], color=colors[j])
+		ax[i][1].axvline(np.median(uncertainties[var]), color=colors[j], linestyle='dashed')
+		ax[i][1].set_xlabel(latex_version[var] + " Uncertainty (stdev)")
+		ax[i][1].legend()
+plt.tight_layout()
 plt.show()
 
 

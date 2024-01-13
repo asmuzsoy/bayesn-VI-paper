@@ -198,6 +198,6 @@ def plot_hubble_distances_and_residuals(mus, variances, z_cmbs, linspace_z = lin
 
 fig = plot_hubble_distances_and_residuals(zltn_result.point_estimates['mu'], zltn_result.variances['mu'], zcmbs)
 plt.show()
-fig.savefig("hubble_diagram.pdf")
+fig.savefig("figures/hubble_diagram.pdf", bbox_inches='tight')
 
 print(mcmc_result.stds['mu'])

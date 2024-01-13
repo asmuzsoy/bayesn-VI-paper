@@ -77,7 +77,6 @@ class MultiZLTN(Distribution):
         scale_tril=None,
         validate_args=None,
     ):
-        print("initializing ZLTN")
         if jnp.ndim(loc) == 0:
             (loc,) = promote_shapes(loc, shape=(1,))
         # temporary append a new axis to loc
@@ -103,9 +102,9 @@ class MultiZLTN(Distribution):
         # self.loc = loc[..., 0]
         self.mu = loc
         self.mu_1 = self.mu[0]
-        print("Distribution mean:", self.mu_1)
+        # print("Distribution mean:", self.mu_1)
         self.mu_2 = jnp.squeeze(self.mu[1:])
-        print("input mu 2", self.mu_2)
+        # print("input mu 2", self.mu_2)
 
         self.sigma = self.covariance_matrix
         self.sigma_11 = self.sigma[0][0]
@@ -113,10 +112,8 @@ class MultiZLTN(Distribution):
         self.sigma_21 = self.sigma[1:, :1]
         self.sigma_12 = self.sigma[:1, 1:]
 
-
-        print(loc)
         self.zltn_dist = TruncatedNormal(self.mu_1, self.scale_tril[0][0], low = 0.)
-        print("batch shape: ", batch_shape)
+        # print("batch shape: ", batch_shape)
         super(MultiZLTN, self).__init__(
             batch_shape=batch_shape,
             event_shape=event_shape,
@@ -143,7 +140,7 @@ class MultiZLTN(Distribution):
             return jnp.concatenate((first_samples,second_samples), axis=0)
 
         mu_hat = self.mu_2[:,None] + jnp.matmul(self.sigma_21, ((1.0 / self.sigma_11) * (first_samples - self.mu_1)).T)
-        print("mu hat", mu_hat)
+        # print("mu hat", mu_hat)
         sigma_hat = self.sigma_22 - jnp.matmul((self.sigma_21 * sigma_11_inverse), self.sigma_12)
         sigma_hat += 1.e-9 * jnp.eye(self.event_shape[0]-1)
 
@@ -199,14 +196,12 @@ class AutoMultiZLTNGuide(AutoContinuous):
         init_loc_fn=init_to_median,
         init_scale=0.1,
     ):
-        print("Initializing guide...")
         if init_scale <= 0:
             raise ValueError("Expected init_scale > 0. but got {}".format(init_scale))
         self._init_scale = init_scale
         super().__init__(model, prefix=prefix, init_loc_fn=init_loc_fn)
 
     def _get_posterior(self):
-        print("getting posterior")
         loc = numpyro.param("{}_loc".format(self.prefix), self._init_latent)
         scale_tril = numpyro.param(
             "{}_scale_tril".format(self.prefix),
@@ -220,8 +215,6 @@ class AutoMultiZLTNGuide(AutoContinuous):
 
 
     def get_transform(self, params):
-        print("getting posterior2")
-
         loc = params["{}_loc".format(self.prefix)]
         scale_tril = params["{}_scale_tril".format(self.prefix)]
         return LowerCholeskyAffine(loc, scale_tril)
@@ -231,8 +224,6 @@ class AutoMultiZLTNGuide(AutoContinuous):
         """
         Returns a Multi ZLTN posterior distribution.
         """
-        print("getting posterior2")
-
         transform = self.get_transform(params)
         return MultiZLTN(transform.loc, scale_tril=transform.scale_tril)
 

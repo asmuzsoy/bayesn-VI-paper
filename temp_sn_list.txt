@@ -1,2 +1,3 @@
 SNID
-1
+AT2016cyt
+ASASSN-15mf
