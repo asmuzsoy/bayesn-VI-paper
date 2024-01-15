@@ -671,7 +671,9 @@ class SEDmodel(object):
             # print("Model AV:", Av)
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
             # Rv = numpyro.sample('Rv', dist.Normal(self.mu_R, self.sigma_R))
-            tmax = numpyro.sample('tmax', dist.Uniform(-10, 10))
+            # tmax = numpyro.sample('tmax', dist.Uniform(-10, 10))
+            tmax = numpyro.sample('tmax', dist.Normal(0, 5))
+
             # tmax = numpyro.sample('tmax', dist.Normal(0, 0.003))
             # tmax = jnp.asarray([6])
             t = obs[0, ...] - tmax[None, sn_index]
@@ -1112,12 +1114,11 @@ class SEDmodel(object):
         self.fit_postprocess_params(guide, params, output)
 
     def psis(self, log_importance_ratios):
-        S = log_importance_ratios.shape[0]
+        S = log_importance_ratios.shape[0] # number of samples
         M = -int(np.ceil(np.min([S/5.0, 3.0*np.sqrt(S)]))) - 1
 
-        r_x = np.exp(log_importance_ratios)
-
-        lw, k = astats._psislw(np.log(r_x), M, np.log(np.finfo(float).tiny))
+        lw, k = astats._psislw(log_importance_ratios, M, np.log(np.finfo(float).tiny))
+        print(k)
         return k
 
 
@@ -1180,23 +1181,16 @@ class SEDmodel(object):
         print('VI: ', end - start)
         laplace_median = laplace_guide.median(params)
 
-
         num_samples = 1000
 
-
-        posterior_samples = laplace_guide.sample_posterior(PRNGKey(123), params, sample_shape=(num_samples,))
+        laplace_samples = laplace_guide.sample_posterior(PRNGKey(123), params, sample_shape=(num_samples,))
         print("Posterior samples:")
         # the array that we pass into log_prob method must be in the same order as the sample statements in the model
         sample_locs = ['AV', 'theta', 'tmax', 'eps_tform', 'Ds']
 
-        # ex_log_joint, _ = log_density(model=model, model_args=(self.data, self.band_weights),
-        #          model_kwargs = {}, params={k:np.zeros_like(posterior_samples[k][0])for k in sample_locs})
-        # print(ex_log_joint)
-        # print(x)
-
         joint_log_probs = []
         for i in range(num_samples):
-            param_samples = {k:posterior_samples[k][i] for k in sample_locs}
+            param_samples = {k:laplace_samples[k][i] for k in sample_locs}
 
             log_joint, _ = log_density(model=model, model_args=(self.data, self.band_weights),
                  model_kwargs = {}, params=param_samples)
@@ -1204,27 +1198,27 @@ class SEDmodel(object):
 
         # plt.hist(joint_log_probs)
         # plt.show()
-        print(joint_log_probs)
-        plt.scatter(posterior_samples['AV'], posterior_samples['Ds'], 
-            c = np.squeeze(np.array(joint_log_probs)))
-        plt.xlabel("$A_V$")
-        plt.ylabel("Ds")
-        cbar = plt.colorbar()
-        cbar.set_label("log prob")
-        plt.show()
+        # print(joint_log_probs)
+        # plt.scatter(laplace_samples['AV'], laplace_samples['Ds'], 
+        #     c = np.squeeze(np.array(joint_log_probs)))
+        # plt.xlabel("$A_V$")
+        # plt.ylabel("Ds")
+        # cbar = plt.colorbar()
+        # cbar.set_label("$\\log p(\\theta,y)$")
+        # plt.show()
 
-        plt.scatter(posterior_samples['theta'], posterior_samples['tmax'], 
-            c = np.squeeze(np.array(joint_log_probs)))
-        plt.xlabel("$\\theta$")
-        plt.ylabel("tmax")
-        cbar = plt.colorbar()
-        cbar.set_label("log prob")
-        plt.show()
+        # plt.scatter(laplace_samples['theta'], laplace_samples['tmax'], 
+        #     c = np.squeeze(np.array(joint_log_probs)))
+        # plt.xlabel("$\\theta$")
+        # plt.ylabel("tmax")
+        # cbar = plt.colorbar()
+        # cbar.set_label("$\\log p(\\theta,y)$")
+        # plt.show()
 
-        print(joint_log_probs)
-        # print(x)
         # Now initialize the ZLTN guide on the Laplace Approximation median (just for AV, theta, and mu)
-        new_init_dict = {k:jnp.array([laplace_median[k][0]]) for k in ('AV','Ds','theta', 'tmax') if k in laplace_median}
+        # new_init_dict = {k:jnp.array([laplace_median[k][0]]) for k in ('AV','Ds','theta', 'tmax') if k in laplace_median}
+        new_init_dict = {k:jnp.array(laplace_median[k]) for k in ('AV','Ds','theta', 'tmax') if k in laplace_median}
+
         zltn_guide = AutoMultiZLTNGuide(model, init_loc_fn=init_to_value(values=new_init_dict))
 
         optimizer = Adam(0.005)
@@ -1235,48 +1229,58 @@ class SEDmodel(object):
         svi_result = svi.run(PRNGKey(123), 30000, self.data, self.band_weights)
         params, losses = svi_result.params, svi_result.losses
         predictive = Predictive(zltn_guide, params=params, num_samples=num_samples)
-        samples = predictive(PRNGKey(123), data=None)
+        zltn_samples = predictive(PRNGKey(123), data=None)
 
+        print("params.keys()", params.keys())
 
         joint_log_probs_zltn = []
         for i in range(num_samples):
-            param_samples = {k:samples[k][i] for k in sample_locs}
-
+            param_samples = {k:zltn_samples[k][i] for k in zltn_samples.keys()}
+            # constrained = numpyro.infer.util.constrain_fn(model=model, model_args=(self.data, self.band_weights),
+            #      model_kwargs = {}, params=param_samples)
+            # unconstrained_param_samples = numpyro.infer.util.unconstrain_fn(model=model, model_args=(self.data, self.band_weights),
+            #      model_kwargs = {}, params=param_samples)
+            # for k in sample_locs:
+            #     print(param_samples[k], constrained[k], unconstrained[k])
             log_joint, _ = log_density(model=model, model_args=(self.data, self.band_weights),
                  model_kwargs = {}, params=param_samples)
+            # log_joint = -1 * numpyro.infer.util.potential_energy(model=model, model_args=(self.data, self.band_weights),
+            #      model_kwargs = {}, params=unconstrained_param_samples)
             joint_log_probs_zltn.append(log_joint)
-        print("Joint log probs from zltn samples", joint_log_probs_zltn)
-        print(np.squeeze(joint_log_probs).shape, np.squeeze(joint_log_probs_zltn).shape)
-        _, bins, _ = plt.hist(np.squeeze(joint_log_probs_zltn), label='Joint density of ZLTN samples', histtype='step')
+        # print("Joint log probs from zltn samples", joint_log_probs_zltn)
 
-        plt.hist(np.squeeze(joint_log_probs), bins=bins, label='Joint density of laplace samples', histtype='step')
-        plt.legend()
-        plt.show()
-
-
-        # comparing Laplace & ZLTN samples
-        fig, ax = plt.subplots(3,1, figsize=(9,9))
-        ax[0].hist(np.squeeze(posterior_samples['AV']), histtype='step')
-        ax[0].hist(np.squeeze(samples['AV']), histtype='step')
-        ax[1].hist(np.squeeze(posterior_samples['theta']), histtype='step')
-        ax[1].hist(np.squeeze(samples['theta']), histtype='step')
-        ax[2].hist(np.squeeze(posterior_samples['Ds']), histtype='step')
-        ax[2].hist(np.squeeze(samples['Ds']), histtype='step')
-        plt.show()
+        # _, bins, _ = plt.hist(np.squeeze(joint_log_probs_zltn), label='Joint density of ZLTN samples', histtype='step')
+        # plt.hist(np.squeeze(joint_log_probs), bins=bins, label='Joint density of laplace samples', histtype='step')
+        # plt.legend()
+        # plt.show()
 
 
-        print(samples.keys(), posterior_samples.keys())
-        # samples = posterior_samples # remove this
+        # # comparing Laplace & ZLTN samples
+        # fig, ax = plt.subplots(3,1, figsize=(9,9))
+        # ax[0].hist(np.squeeze(laplace_samples['AV']), histtype='step', label='Laplace')
+        # ax[0].hist(np.squeeze(zltn_samples['AV']), histtype='step', label='ZLTN')
+        # ax[1].hist(np.squeeze(laplace_samples['theta']), histtype='step')
+        # ax[1].hist(np.squeeze(zltn_samples['theta']), histtype='step')
+        # ax[2].hist(np.squeeze(laplace_samples['Ds']), histtype='step')
+        # ax[2].hist(np.squeeze(zltn_samples['Ds']), histtype='step')
+        # plt.show()
+
+
+        print('Laplace sample keys', laplace_samples.keys())
+        print('ZLTN sample keys', zltn_samples.keys())
+        sample_locs = ['AV', 'theta', 'tmax', 'eps_tform', 'Ds']
+
         surrogate_probs = []
         for i in range(num_samples):
             sample_vector = []
+            unconstrained_param_samples = {k:zltn_samples[k][i] for k in sample_locs}
+            # param_samples = {k:zltn_samples[k][i] for k in sample_locs}
+            # unconstrained_param_samples = numpyro.infer.util.unconstrain_fn(model=model, model_args=(self.data, self.band_weights),
+            #      model_kwargs = {}, params=param_samples)
             for k in sample_locs:
-                sample_vector = np.concatenate((sample_vector, np.squeeze(samples[k][i]).flatten(order='F')))
+                sample_vector = np.concatenate((sample_vector, np.squeeze(unconstrained_param_samples[k]).flatten()))
             guide_posteror = zltn_guide.get_posterior(params)
-            # print(guide_posteror.mu.shape)
-            # print("log prob of mu:", guide_posteror.log_prob(np.squeeze(guide_posteror.mu)))
             surrogate_probs.append(guide_posteror.log_prob(np.squeeze(sample_vector)))
-
         log_importance_ratios = np.squeeze((np.array(joint_log_probs_zltn)) - np.squeeze(np.array(surrogate_probs)))
 
         fig, ax = plt.subplots(3,1, figsize = (9,9))
@@ -1292,11 +1296,13 @@ class SEDmodel(object):
         plt.tight_layout()
         plt.show()
 
+        plt.plot(joint_log_probs_zltn, surrogate_probs, 'o')
+        plt.xlabel("$\\log p(\\theta,y)$")
+        plt.ylabel("$\\log q(\\theta)$")
+        plt.show()
+
         self.psis(log_importance_ratios)
-        # print(surrogate_probs)
         return samples
-        # print(psis_diagnostic)
-        # psis_diagnostic(model, zltn_guide,self.data, self.band_weights)     
 
         # self.fit_postprocess_samples(samples, output)
         # self.fit_postprocess_params(zltn_guide, params, output)
