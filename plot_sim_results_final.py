@@ -13,7 +13,7 @@ num_to_plot = 500
 
 dataset_number=28
 
-av_stat = 'mode'
+av_stat = 'median'
 
 title_str = ""
 
@@ -42,24 +42,26 @@ class Result:
     self.stds = {var: np.std(self.samples_dict[var], axis=1) for var in self.samples_dict.keys()}
     self.variances = {var: np.var(self.samples_dict[var], axis=1) for var in self.samples_dict.keys()}
 
-zltn_result = Result("sim28_zltn_122923.npy")
-mcmc_result = Result("sim28_mcmc_122923.npy", av_metric=av_stat)
+zltn_result = Result("sim28_zltn_122923.npy", av_metric=av_stat)
+mcmc_result = Result("sim28_mcmc_122923.npy")
 laplace_result = Result("sim28_laplace_122923.npy")
 multinormal_result = Result("sim28_multinormal_122923.npy")
 
 labels = ['MCMC', 'ZLTN', 'Multivariate Normal']
 latex_version = {'mu': '$\\mu$', 'theta': '$\\theta$', 'AV': '$A_V$'}
-prob_labels = ['$p_\\mu$', '$p_{A_V}$', '$p_\\theta$']
-true_values = [true_avs, true_mus, true_thetas]
+prob_labels = {'AV': '$p_{A_V}$', "mu": '$p_\\mu$', "theta": '$p_\\theta$'}
+true_values = {'AV': true_avs, "mu": true_mus, 'theta': true_thetas}
 
+subplots_legend = np.empty((3,3), dtype=object)
 
 # VSBC Figure
 fig, ax = plt.subplots(3,3, figsize=(9,9))
 for i, samples in enumerate([mcmc_result.samples_dict, zltn_result.samples_dict, multinormal_result.samples_dict]):
 	for k, var in enumerate(['AV', 'mu', 'theta']):
+		subplots_legend[k][i] = var + " " + labels[i]
 		ratios = []
 		for j in range(num_to_plot):
-			mask = samples[var][j] > true_values[k][j]
+			mask = samples[var][j] > true_values[var][j]
 			ratios.append(np.sum(mask)/1000)
 		
 		p = stats.ks_2samp(ratios, 1 - np.array(ratios)).pvalue
@@ -68,9 +70,12 @@ for i, samples in enumerate([mcmc_result.samples_dict, zltn_result.samples_dict,
 		ax[k][i].axvline(0.5, linestyle ='solid', color='k')
 		ax[k][i].annotate("p = " + str(round(p, 4)), (0.57, 0.85), xycoords='axes fraction')
 		ax[0][i].set_title(labels[i])
-		ax[2][i].set_xlabel(prob_labels[i], fontsize=12)
+		ax[k][i].set_xlabel(prob_labels[var], fontsize=12)
 		ax[k][0].set_ylabel("Density")
 		ax[k][i].set_xlim(-0.02,1.02)
+
+print(subplots_legend)
+
 plt.tight_layout()
 plt.show()
 
@@ -120,9 +125,9 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title):
 			ax[0][i].set_xscale('log')
 
 		ax[1][i].plot(true_values[var], point_estimates[var] - true_values[var], '.', alpha=alpha, c = vi_color, label=title)
-		# ax[1][i].plot(true_values[var], mcmc_result.point_estimates[var] - true_values[var], '.', c=mcmc_color, alpha=alpha, label='MCMC')
+		ax[1][i].plot(true_values[var], mcmc_result.point_estimates[var] - true_values[var], '.', c=mcmc_color, alpha=alpha, label='MCMC')
 		ax[1][i].errorbar(true_values[var], point_estimates[var] - true_values[var], yerr = uncertainties[var], alpha=alpha, c=vi_color, linestyle='None')
-		# ax[1][i].errorbar(true_values[var], mcmc_result.point_estimates[var] - true_values[var], yerr = mcmc_result.stds[var], c=mcmc_color, alpha=alpha, linestyle='None')
+		ax[1][i].errorbar(true_values[var], mcmc_result.point_estimates[var] - true_values[var], yerr = mcmc_result.stds[var], c=mcmc_color, alpha=alpha, linestyle='None')
 		ax[1][i].axhline(0, color = 'k')
 		ax[1][i].set_ylabel('Residual ' + latex_version[var] + ' (' + title + ' - true)', fontsize = axis_fontsize)
 		ax[1][i].legend()

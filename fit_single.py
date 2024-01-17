@@ -5,9 +5,9 @@ import jax.numpy as jnp
 model = SEDmodel(load_model='T21_model')
 
 # dataset = 'sim_low_AV'
-dataset = 'sim_zero_AV'
+# dataset = 'sim_zero_AV'
 
-# dataset = 'T21_sim_1'
+dataset = 'T21_sim_1'
 
 filt_map_dict = {'g': 'g_PS1', 'r': 'r_PS1', 'i': 'i_PS1', 'z': 'z_PS1'}
 model.process_dataset('foundation', 'data/lcs/tables/' + dataset + '.txt', 'data/lcs/meta/' + dataset + '_meta.txt',
