@@ -32,6 +32,9 @@ sn_list = pd.read_csv('data/lcs/tables/' + dataset + '.txt', comment='#', delim_
 
 sn_names = (sn_list.sn.values)
 
+best_ks = []
+last_ks = []
+
 for i, sn_name in enumerate(sn_names):
 	print(i, sn_name)
 	sn_list = [sn_name]
@@ -44,13 +47,21 @@ for i, sn_name in enumerate(sn_names):
 	model.process_dataset('foundation', 'data/lcs/tables/' + dataset + '.txt', 'data/lcs/meta/' + dataset + '_meta.txt',
 	                      filt_map_dict, data_mode='flux', sn_list="temp_sn_list.txt")
 
-	print("Fitting MCMC...")
-	model.fit(250, 250, 4, str(dataset) + "/" + str(i) + '_mcmc', 
-		epsilons_on=epsilons_on, chain_method='parallel', 
-		init_strategy='median')
+	# print("Fitting MCMC...")
+	# model.fit(250, 250, 4, str(dataset) + "/" + str(i) + '_mcmc', 
+	# 	epsilons_on=epsilons_on, chain_method='parallel', 
+	# 	init_strategy='median')
 
 	print("Fitting VI...")
 	# model.fit_with_vi(str(dataset) + "/" + str(i)  + '_vi', init_strategy=init_to_value(values={'AV':jnp.array([0.01]), 'theta':jnp.array([1.]), 'Ds':jnp.array([35.])}))
 	# model.fit_with_vi(str(dataset) + "/" + str(i)  + '_vi', init_strategy='median')
-	model.fit_with_vi_laplace(str(dataset) + "/" + str(i)  + '_vi', 
+	best_k, last_k, zltn_samples = model.fit_with_vi_laplace(str(dataset) + "/" + str(i)  + '_vi', 
 		epsilons_on=epsilons_on, init_strategy='median')
+	best_ks.append(best_k)
+	last_ks.append(last_k)
+
+	print(best_ks, last_ks)
+
+np.savetxt("foundation_results/best_ks.txt", np.array(best_ks))
+np.savetxt("foundation_results/last_ks.txt", np.array(last_ks))
+

@@ -37,10 +37,11 @@ class Result:
     self.variances = {var: np.var(self.samples_dict[var], axis=1) for var in self.samples_dict.keys()}
 
 
-zltn_result = Result("foundation_vmap_zltn_122923.npy")
+# need to re-run MCMC with new model
+zltn_result = Result("foundation_results/foundation_vmap_zltn_011724_samples.npy")
 mcmc_result = Result("foundation_vmap_mcmc_122923.npy")
-laplace_result = Result("foundation_vmap_laplace_122923.npy")
-multinormal_result = Result("foundation_vmap_multinormal_122923.npy")
+laplace_result = Result("foundation_results/foundation_vmap_laplace_011724_samples.npy")
+multinormal_result = Result("foundation_results/foundation_vmap_multinormal_011724_samples.npy")
 
 
 zcmb_dict = dict(zip(sn_info.CID.values, sn_info.zCMB.values))
