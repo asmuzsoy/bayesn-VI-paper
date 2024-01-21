@@ -1139,6 +1139,8 @@ class SEDmodel(object):
         # calculate log prob of samples under the surrogate posterior (can do these all at once)
         sample_vector = np.hstack(tuple(posterior_samples[k] for k in sample_locs))
         guide_posteror = guide.get_posterior(best_fit_params)
+        print(guide_posteror.mu)
+        print(sample_vector[0])
         surrogate_probs = (guide_posteror.log_prob(np.squeeze(sample_vector)))
 
         # calculate PSIS test statistics as in Yao et al. (2018)

@@ -201,4 +201,14 @@ fig = plot_hubble_distances_and_residuals(zltn_result.point_estimates['mu'], zlt
 plt.show()
 fig.savefig("figures/hubble_diagram.pdf", bbox_inches='tight')
 
+
+fig = plot_hubble_distances_and_residuals(multinormal_result.point_estimates['mu'], multinormal_result.variances['mu'], zcmbs)
+plt.show()
+fig.savefig("figures/hubble_diagram_multinormal.pdf", bbox_inches='tight')
+
+fig = plot_hubble_distances_and_residuals(laplace_result.point_estimates['mu'], laplace_result.variances['mu'], zcmbs)
+plt.show()
+fig.savefig("figures/hubble_diagram_laplace.pdf", bbox_inches='tight')
+
+
 print(mcmc_result.stds['mu'])

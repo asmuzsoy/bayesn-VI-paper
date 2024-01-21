@@ -10,11 +10,10 @@ best_ks = np.loadtxt("foundation_results/best_ks.txt")
 last_ks = np.loadtxt("foundation_results/last_ks.txt")
 
 plt.plot(best_ks, last_ks, 'o')
-plt.plot(np.linspace(0.4, 1.2),np.linspace(0.4, 1.2), 'k')
+plt.plot(np.linspace(0.4, 1.2),np.linspace(0.5, 1.2), 'k')
 plt.xlabel("k from best loss params")
 plt.ylabel("k from last iteration params")
 plt.show()
-print(x)
 
 
 laplace_best_params = np.load("foundation_results/foundation_vmap_laplace_011724_bestparams.npy", allow_pickle=True).item()
@@ -39,13 +38,13 @@ def reorder_params(params_dict):
 	loc = params_dict['auto_loc']
 	scale_tril = params_dict['auto_scale_tril']
 
-	new_loc = []
-	for i, param in enumerate(desired_order):
-		param_length = lengths[param]
-		current_location = np.where(original_order == param)[0][0]
-		for k in range(param_length):
-			new_loc.append(loc[current_location + k])
-	new_loc = np.squeeze(new_loc)
+	# new_loc = []
+	# for i, param in enumerate(desired_order):
+	# 	param_length = lengths[param]
+	# 	current_location = np.where(original_order == param)[0][0]
+	# 	for k in range(param_length):
+	# 		new_loc.append(loc[current_location + k])
+	# new_loc = np.squeeze(new_loc)
 
 	num_params = len(loc)
 
@@ -57,19 +56,25 @@ def reorder_params(params_dict):
 	print(new_indexes)
 	index_dict = dict(zip(new_indexes,old_indexes)) # dict[new_index] = old_index
 
-	new_loc2 = np.zeros(num_params)
+	new_loc = np.zeros(num_params)
 	for i in range(num_params):
-		new_loc2[i] = loc[index_dict[i]]
-		for j in range(num_params):
-			# if scale_tril[index_dict[i]][index_dict[j]] == 0:
-			# 	new_scale_tril[i][j] = scale_tril[index_dict[j]][index_dict[i]]
-			# else:
-			new_cov_matrix[i][j] = cov_matrix[index_dict[i]][index_dict[j]]
-			print(cov_matrix[index_dict[i]][index_dict[j]], cov_matrix[index_dict[j]][index_dict[i]])
-	new_scale_tril = np.linalg.cholesky(new_cov_matrix)
-	# print(loc)
-	# print(new_loc)
-	# print(new_loc2)
+		new_loc[i] = loc[index_dict[i]]
+	# 	for j in range(num_params):
+	# 		# if scale_tril[index_dict[i]][index_dict[j]] == 0:
+	# 		# 	new_scale_tril[i][j] = scale_tril[index_dict[j]][index_dict[i]]
+	# 		# else:
+	# 		new_cov_matrix[i][j] = cov_matrix[index_dict[i]][index_dict[j]]
+	# 		print(cov_matrix[index_dict[i]][index_dict[j]], cov_matrix[index_dict[j]][index_dict[i]])
+	# new_scale_tril = np.linalg.cholesky(new_cov_matrix)
+
+	print(new_loc)
+	# set up a permutation matrix
+	P = np.zeros((num_params, num_params), dtype=int)
+	P[new_indexes, old_indexes] = 1
+	# permute the matrix
+	new_cov_matrix = P.T @ cov_matrix @ P
+	new_scale_tril = np.linalg.cholesky(new_cov_matrix + np.eye(num_params)*1e-3)
+	# new_scale_tril = P.T @ scale_tril
 
 	fig, ax = plt.subplots(1,2)
 	ax[0].imshow(scale_tril)

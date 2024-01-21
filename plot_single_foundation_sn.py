@@ -10,18 +10,25 @@ dataset = 'T21_training_set'
 sn_list = pd.read_csv('data/lcs/tables/' + dataset + '.txt', comment='#', delim_whitespace=True, names=['sn', 'source', 'files'])
 sn_names = (sn_list.sn.values)
 
-low = False
+low = True
 if low:
-	sn_number = 14
+	sn_number = 148
 else:
 	sn_number = 36
 print(sn_names[sn_number])
 
-zltn_dict=np.load("foundation_vmap_zltn_122923.npy", allow_pickle=True).item()
-laplace_dict=np.load("foundation_vmap_laplace_122923.npy", allow_pickle=True).item()
-multinormal_dict=np.load("foundation_vmap_multinormal_122923.npy", allow_pickle=True).item()
+zltn_dict=np.load("foundation_results/foundation_vmap_zltn_011724_samples.npy", allow_pickle=True).item()
+laplace_dict=np.load("foundation_results/foundation_vmap_laplace_011724_samples.npy", allow_pickle=True).item()
+multinormal_dict=np.load("foundation_results/foundation_vmap_multinormal_011724_samples.npy", allow_pickle=True).item()
 mcmc_dict=np.load("foundation_vmap_mcmc_122923.npy", allow_pickle=True).item()
 
+
+median_avs = np.median(mcmc_dict['AV'].reshape((157,1000)),axis=1)
+print(median_avs.shape)
+print(np.sort(median_avs))
+print(np.argsort(median_avs))
+
+# print(x)
 
 s = np.load("../dist_chains_210610_135216/" + sn_names[sn_number] + "_chains_210610_135216.npy", allow_pickle=True).item()
 stephen_mu = s['mu']
@@ -52,7 +59,7 @@ for var in ['AV', 'mu', 'theta']:
 	zltn_samples = np.squeeze(zltn_dict[var])[sn_number]
 	laplace_samples = np.squeeze(laplace_dict[var])[sn_number]
 	multinormal_samples = np.squeeze(multinormal_dict[var])[sn_number]
-
+	print(laplace_samples)
 	mcmc_results.append(mcmc_samples)
 	zltn_results.append(zltn_samples)
 	laplace_results.append(laplace_samples)
@@ -63,22 +70,24 @@ mcmc_results = np.array(mcmc_results).T
 laplace_results = np.array(laplace_results).T
 multinormal_results = np.array(multinormal_results).T
 
-print(zltn_results.shape)
+print(zltn_results)
 
 
-range_low = [(-0.01,0.15), (35, 35.6), (0,1.8)]
+# range_low = [(-0.01,0.2), (35, 35.6), (-1.8,1.8)]
+range_low = [(-0.01,0.2), (36.5, 37.5), (0.7,2.5)]
+
 range_high = [(0.4, 1), (35, 35.8), (-1.6,-0.2)]
 
-fig = corner.corner(zltn_results, labels = ["$A_V$", "$\mu$", "$\\theta$"], 
+fig = corner.corner(zltn_results, labels = ["$A_V$", "$\\mu$", "$\\theta$"], 
 	range=range_low if low else range_high, label_kwargs = {'fontsize':16})
 corner.corner(mcmc_results, color = 'r', fig = fig, range=range_low if low else range_high)
-# corner.corner(laplace_results, color = 'r', fig = fig, range=range_low if low else range_high)
+corner.corner(laplace_results, color = 'g', fig = fig, range=range_low if low else range_high)
 corner.corner(multinormal_results, color = 'b', fig = fig, range=range_low if low else range_high)
 
 
-colors = ['k','r', 'b']
+colors = ['k','r', 'b', 'g']
 
-labels = ['ZLTN VI', 'MCMC', 'Multivariate Normal VI']
+labels = ['ZLTN VI', 'MCMC', 'Multivariate Normal VI', 'Laplace VI']
 
 plt.legend(
     handles=[
