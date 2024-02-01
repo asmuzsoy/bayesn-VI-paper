@@ -8,6 +8,7 @@ from jax.random import PRNGKey, normal
 import pandas as pd
 import timeit
 
+todays_date = '013024'
 
 model = SEDmodel(load_model='T21_model')
 
@@ -40,41 +41,72 @@ def postprocess_add_mu(model, samples):
     samples['delM'] = delM
     return samples
 
+
+def vmap_over_method(method, keyword):
+    print(keyword)
+    vmap_object = jax.vmap(method, in_axes=(2, 0))
+    best_samples = vmap_object(model.data, model.band_weights)
+    best_samples = postprocess_add_mu(model, best_samples)
+
+    np.save("sim28_vmap_" + keyword + "_" + todays_date + "_samples.npy", best_samples)
+    # np.save("sim28_vmap_" + keyword + "_" + todays_date + "_bestparams.npy", best_params)
+    # np.save("sim28_vmap_" + keyword + "_" + todays_date + "_lastparams.npy", last_params)
+
+
 start = timeit.default_timer()
 
-mcmc = jax.vmap(model.fit_mcmc_vmap, in_axes=(2, 0))
-mcmc_samples= mcmc(model.data, model.band_weights)
-mcmc_samples = postprocess_add_mu(model, mcmc_samples)
-np.save("sim28_mcmc_122923.npy", mcmc_samples)
 
-t1 = timeit.default_timer()
-print('MCMC: ', t1 - start)
+# vmap_over_method(model.fit_mcmc_vmap, 'mcmc')
+mcmc_time = timeit.default_timer()
+print("MCMC:", mcmc_time - start)
+
+vmap_over_method(model.fit_laplace_vmap, 'laplace')
+laplace_time = timeit.default_timer()
+print("Laplace:", laplace_time - mcmc_time)
+
+vmap_over_method(model.fit_zltn_vmap, 'zltn')
+zltn_time = timeit.default_timer()
+print("ZLTN:", zltn_time - laplace_time)
+
+vmap_over_method(model.fit_multivariatenormal_vmap, 'multinormal')
+multinormal_time = timeit.default_timer()
+print("Multinormal:", multinormal_time - zltn_time)
 
 
-laplace = jax.vmap(model.fit_laplace_vmap, in_axes=(2, 0))
-laplace_samples= laplace(model.data, model.band_weights)
-laplace_samples = postprocess_add_mu(model, laplace_samples)
-np.save("sim28_laplace_122923.npy", laplace_samples)
 
-t2 = timeit.default_timer()
-print('Laplace: ', t2 - t1)
 
-zltn = jax.vmap(model.fit_zltn_vmap, in_axes=(2, 0))
-zltn_samples= zltn(model.data, model.band_weights)
-zltn_samples = postprocess_add_mu(model, zltn_samples)
-np.save("sim28_zltn_122923.npy", zltn_samples)
+# t1 = timeit.default_timer()
+# print('MCMC: ', t1 - start)
+# mcmc = jax.vmap(model.fit_mcmc_vmap, in_axes=(2, 0))
+# mcmc_samples= mcmc(model.data, model.band_weights)
+# mcmc_samples = postprocess_add_mu(model, mcmc_samples)
+# np.save("sim28_mcmc_122923.npy", mcmc_samples)
 
-t3 = timeit.default_timer()
-print('ZLTN: ', t3 - t2)
 
-multinormal = jax.vmap(model.fit_multivariatenormal_vmap, in_axes=(2, 0))
-multinormal_samples= multinormal(model.data, model.band_weights)
-multinormal_samples = postprocess_add_mu(model, multinormal_samples)
-np.save("sim28_multinormal_122923.npy", multinormal_samples)
+# laplace = jax.vmap(model.fit_laplace_vmap, in_axes=(2, 0))
+# laplace_samples= laplace(model.data, model.band_weights)
+# laplace_samples = postprocess_add_mu(model, laplace_samples)
+# np.save("sim28_laplace_122923.npy", laplace_samples)
 
-end = timeit.default_timer()
-print('MultivariateNormal: ', end - t3)
+# t2 = timeit.default_timer()
+# print('Laplace: ', t2 - t1)
 
-print('Total time: ', end - start)
+# zltn = jax.vmap(model.fit_zltn_vmap, in_axes=(2, 0))
+# zltn_samples= zltn(model.data, model.band_weights)
+# zltn_samples = postprocess_add_mu(model, zltn_samples)
+# np.save("sim28_zltn_122923.npy", zltn_samples)
+
+# t3 = timeit.default_timer()
+# print('ZLTN: ', t3 - t2)
+
+# multinormal = jax.vmap(model.fit_multivariatenormal_vmap, in_axes=(2, 0))
+# multinormal_samples= multinormal(model.data, model.band_weights)
+# multinormal_samples = postprocess_add_mu(model, multinormal_samples)
+# np.save("sim28_multinormal_122923.npy", multinormal_samples)
+
+# end = timeit.default_timer()
+# print('MultivariateNormal: ', end - t3)
+
+# print('Total time: ', end - start)
 
 

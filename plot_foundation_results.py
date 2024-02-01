@@ -55,7 +55,7 @@ def get_mode_from_samples(samples):
 	return mode
 
 # load Stephen's MCMC chains for comparison
-
+# using names to make sure they're in the same order
 stephen_point_estimates = {'mu':[], 'theta':[], 'AV':[]}
 stephen_uncertainties = {'mu':[], 'theta':[], 'AV':[]}
 for i in range(num_to_plot):
@@ -72,6 +72,36 @@ for i in range(num_to_plot - 1):
 for i in range(num_to_plot):
 	if np.isnan(zltn_result.point_estimates['AV'][i]):
 		print(i, sn_names[i])
+
+best_ks = np.loadtxt("foundation_results/best_ks_013024.txt")
+last_ks = np.loadtxt("foundation_results/last_ks_013024.txt")
+
+best_samples = np.load("foundation_results/best_samples_013024.npz", allow_pickle = True)['arr_0']
+last_samples = np.load("foundation_results/last_samples_013024.npz", allow_pickle = True)['arr_0']
+
+best_mu_medians = np.array([np.median(best_samples[i]['Ds']) for i in range(num_to_plot)])
+last_mu_medians = np.array([np.median(last_samples[i]['Ds']) for i in range(num_to_plot)])
+
+
+plt.scatter(best_ks, last_ks, c = best_mu_medians - last_mu_medians, cmap='bwr')
+linspace_vals = np.linspace(0.3, 1.3)
+plt.plot(linspace_vals,linspace_vals, 'k')
+cbar = plt.colorbar()
+cbar.set_label('$\\Delta D_s$')
+plt.xlabel("k from best loss params")
+plt.ylabel("k from last iteration params")
+plt.show()
+
+
+plt.scatter(best_ks, last_ks, c = best_mu_medians - np.array([cosmo.distmod(z).value for z in zcmbs]), cmap='bwr')
+linspace_vals = np.linspace(0.3, 1.3)
+plt.plot(linspace_vals,linspace_vals, 'k')
+cbar = plt.colorbar()
+cbar.set_label('$D_{s, best} - \\mu(z)$')
+plt.xlabel("k from best loss params")
+plt.ylabel("k from last iteration params")
+plt.show()
+print(x)
 
 
 # VI vs MCMC subplots

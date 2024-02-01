@@ -1,6 +1,7 @@
 from bayesn_model import SEDmodel
 from numpyro.infer import init_to_value
 import jax.numpy as jnp
+import timeit
 
 model = SEDmodel(load_model='T21_model')
 
@@ -37,9 +38,12 @@ print("Fitting VI...")
 # model.fit_with_vi(dataset + '_vi', init_strategy='median')
 # model.fit_with_vi_verbose(str(dataset) + '_vi', init_strategy='median', epsilons_on = True)
 
+t1 = timeit.default_timer()
 model.fit_with_vi_laplace(str(dataset) + '_vi', init_strategy='median', epsilons_on = True)
-print("vmap method:")
-model.fit_zltn_vmap(model.data, model.band_weights)
+print("time:", timeit.default_timer() - t1)
+
+# print("vmap method:")
+# model.fit_zltn_vmap(model.data, model.band_weights)
 
 # model.fit_with_vi2(dataset + '_vi_2', init_strategy='median')
 

@@ -40,6 +40,7 @@ import time
 from tqdm import tqdm
 import arviz.stats.stats as astats
 from zltn_utils import *
+import timeit
 
 # Make plots look pretty
 rc('font', **{'family': 'serif', 'serif': ['cmr10']})
@@ -1139,8 +1140,8 @@ class SEDmodel(object):
         # calculate log prob of samples under the surrogate posterior (can do these all at once)
         sample_vector = np.hstack(tuple(posterior_samples[k] for k in sample_locs))
         guide_posteror = guide.get_posterior(best_fit_params)
-        print(guide_posteror.mu)
-        print(sample_vector[0])
+        # print(guide_posteror.mu)
+        # print(sample_vector[0])
         surrogate_probs = (guide_posteror.log_prob(np.squeeze(sample_vector)))
 
         # calculate PSIS test statistics as in Yao et al. (2018)
@@ -1187,7 +1188,7 @@ class SEDmodel(object):
 
         print(losses[best_index], losses[-1])
 
-        return best_k, last_k, best_samples
+        return best_k, last_k, best_samples, last_samples
 
 
     def fit_vi_get_best_samples(self, model, guide, data, band_weights, optimizer = Adam(0.005), loss=Trace_ELBO(5), num_iterations=30000, num_samples=1000, laplace = False):
@@ -1207,13 +1208,16 @@ class SEDmodel(object):
         best_index = np.argmin(losses)
         best_params = {k:svi_states[k][best_index] for k in svi_states.keys()}
         last_params = {k:svi_states[k][-1] for k in svi_states.keys()}
-        print(best_params['auto_loc'])
+
         if not laplace:
             predictive = Predictive(guide, params=best_params, num_samples=num_samples)
             best_samples = predictive(PRNGKey(123), data=None)
-            return best_params, last_params, best_samples
+            # return best_params, last_params, best_samples
+            return best_samples
 
-        return best_params, last_params, guide.sample_posterior(PRNGKey(123), best_params, sample_shape=(num_samples,))
+        # return best_params, last_params, guide.sample_posterior(PRNGKey(123), best_params, sample_shape=(num_samples,))
+        return guide.sample_posterior(PRNGKey(123), best_params, sample_shape=(num_samples,))
+
 
     def fit_with_vi_laplace(self, output, epsilons_on, model_path=None, init_strategy='median'):
         """
@@ -1318,16 +1322,36 @@ class SEDmodel(object):
 
         init_svi_state = svi.init(PRNGKey(123), self.data, self.band_weights)
         # init_svi_loss = svi.evaluate(init_svi_state, self.data, self.band_weights)
-        # init_params = svi.get_params(init_svi_state)
+        init_params = svi.get_params(init_svi_state)
         # print(svi.get_params(svi_state))
-        # this is copied from numpyro test code
-        def body_fn(val, i):
-            svi_state, loss = svi.update(val, self.data, self.band_weights)
-            return svi_state, (svi.get_params(svi_state), loss)
 
-        last_svi_state, history = jax.lax.scan(body_fn, init_svi_state, xs = None, length = 30000)
+        # def body_fn(val, _):
+        #     svi_state, loss = svi.update(val, self.data, self.band_weights)
+        #     return svi_state, (svi.get_params(svi_state), loss)
+
+        def body_fn(val):
+            svi_state, loss = svi.update(val, self.data, self.band_weights)
+            return svi_state, loss
+
+        t1 = timeit.default_timer()
+        # last_svi_state, history = jax.lax.scan(body_fn, init_svi_state, xs = None, length = 30000)
+        # tupl, losses = jax.lax.scan(body_fn, (init_svi_state,init_params, 10000), xs = None, length = 30000)
+
+        best_loss = 10000
+        best_params = init_params
+        svi_state = init_svi_state
+        for i in range(30000):
+            svi_state, loss = jax.jit(body_fn)(svi_state)
+            if loss < best_loss:
+                best_loss = loss
+                best_params = svi.get_params(svi_state)
+
+
+        print("Time:", timeit.default_timer() - t1)
+        print(x)
         # print(history)
         svi_states, losses = history
+        print(svi_states['auto_loc'].shape, losses.shape)
         # print(svi_states['auto_loc'].shape, svi_states['auto_scale_tril'].shape, losses.shape)
 
 
@@ -1350,7 +1374,7 @@ class SEDmodel(object):
         print(best_k, last_k)
         print(losses[best_index], losses[-1])
 
-        return best_k, last_k, best_samples
+        return best_k, last_k, best_samples, last_samples
 
         # self.fit_postprocess_samples(samples, output)
         # self.fit_postprocess_params(zltn_guide, params, output)
@@ -1422,18 +1446,19 @@ class SEDmodel(object):
         params, losses = svi_result.params, svi_result.losses
         laplace_median = laplace_guide.median(params)
 
-        print("Laplace params")
-        print(params)
+        # print("Laplace params")
+        # print(params)
 
         # Now initialize the ZLTN guide on the Laplace Approximation median (just for AV, theta, and mu)
         new_init_dict = {k:jnp.array([laplace_median[k][0]]) for k in sample_locs if k in laplace_median}
         zltn_guide = AutoMultiZLTNGuide(model, init_loc_fn=init_to_value(values=new_init_dict))
 
-        best_params, last_params, samples = self.fit_vi_get_best_samples(model, zltn_guide, data[..., None], band_weights[None, ...])
+        # best_params, last_params, best_samples, last_samples = self.fit_vi_get_best_samples(model, zltn_guide, data[..., None], band_weights[None, ...])
 
-        return (best_params, last_params, samples)
-        # self.fit_postprocess_samples(samples, output)
-        # self.fit_postprocess_params(zltn_guide, params, output)
+        # return (best_params, last_params, best_samples, last_samples)
+        best_samples = self.fit_vi_get_best_samples(model, zltn_guide, data[..., None], band_weights[None, ...])
+
+        return best_samples
 
 
     def fit_laplace_vmap(self, data, band_weights, epsilons_on=True, model_path=None, init_strategy='median'):
@@ -1493,7 +1518,7 @@ class SEDmodel(object):
         laplace_guide = AutoLaplaceApproximation(model, init_loc_fn=init_strategy)
 
 
-        best_params, last_params, samples = self.fit_vi_get_best_samples(model, laplace_guide, data[..., None], 
+        samples = self.fit_vi_get_best_samples(model, laplace_guide, data[..., None], 
             band_weights[None, ...], optimizer = optimizer, num_iterations = 15000, laplace=True)
 
         # svi = SVI(model, laplace_guide, optimizer, loss=Trace_ELBO(5))
@@ -1504,7 +1529,7 @@ class SEDmodel(object):
         # predictive = Predictive(laplace_guide, params=params, num_samples=1000)
         # samples = predictive(PRNGKey(123), data=None)
 
-        return (best_params, last_params, samples)
+        return samples
 
     def fit_multivariatenormal_vmap(self, data, band_weights, epsilons_on=True, model_path=None, init_strategy='median'):
         """
@@ -1560,9 +1585,9 @@ class SEDmodel(object):
         multinormal_guide = AutoMultivariateNormal(model, init_loc_fn=init_to_value(values=new_init_dict))
 
 
-        best_params, last_params, samples = self.fit_vi_get_best_samples(model, multinormal_guide, data[..., None], band_weights[None, ...])
+        samples = self.fit_vi_get_best_samples(model, multinormal_guide, data[..., None], band_weights[None, ...])
 
-        return (best_params, last_params, samples)
+        return samples
 
     # this method is just for visualization and GIF creation
     def fit_with_vi_verbose(self, output, epsilons_on, model_path=None, init_strategy='median'):

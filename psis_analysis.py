@@ -5,16 +5,28 @@ from zltn_utils import *
 from numpyro.infer.autoguide import AutoMultivariateNormal, AutoLaplaceApproximation
 import pandas as pd
 
+# num_sn = 157
 
-best_ks = np.loadtxt("foundation_results/best_ks.txt")
-last_ks = np.loadtxt("foundation_results/last_ks.txt")
+# best_ks = np.loadtxt("foundation_results/best_ks_013024.txt")
+# last_ks = np.loadtxt("foundation_results/last_ks_013024.txt")
 
-plt.plot(best_ks, last_ks, 'o')
-plt.plot(np.linspace(0.4, 1.2),np.linspace(0.5, 1.2), 'k')
-plt.xlabel("k from best loss params")
-plt.ylabel("k from last iteration params")
-plt.show()
+# best_samples = np.load("foundation_results/best_samples_013024.npz", allow_pickle = True)['arr_0']
+# last_samples = np.load("foundation_results/last_samples_013024.npz", allow_pickle = True)['arr_0']
 
+# best_mu_medians = np.array([np.median(best_samples[i]['Ds']) for i in range(num_sn)])
+# last_mu_medians = np.array([np.median(last_samples[i]['Ds']) for i in range(num_sn)])
+
+
+
+# plt.scatter(best_ks, last_ks, c = best_mu_medians - last_mu_medians)
+# plt.plot(np.linspace(0.4, 1.2),np.linspace(0.4, 1.2), 'k')
+# cbar = plt.colorbar()
+# cbar.set_label('$\\Delta D_s$')
+# plt.xlabel("k from best loss params")
+# plt.ylabel("k from last iteration params")
+# plt.show()
+
+# print(x)
 
 laplace_best_params = np.load("foundation_results/foundation_vmap_laplace_011724_bestparams.npy", allow_pickle=True).item()
 laplace_best_samples = np.load("foundation_results/foundation_vmap_laplace_011724_samples.npy", allow_pickle=True).item()

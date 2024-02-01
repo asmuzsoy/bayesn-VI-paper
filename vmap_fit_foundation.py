@@ -55,8 +55,10 @@ def vmap_over_method(method, keyword):
     print(keyword)
     vmap_object = jax.vmap(method, in_axes=(2, 0))
     results = vmap_object(model.data, model.band_weights)
-    best_params, last_params, samples = results
-    samples = postprocess_add_mu(model, samples)
+    best_params, last_params, best_samples, last_samples = results
+    best_samples = postprocess_add_mu(model, best_samples)
+    last_samples = postprocess_add_mu(model, last_samples)
+
     print(best_params['auto_loc'])
     # print(best_params['auto_loc'].shape, last_params['auto_loc'].shape, samples['mu'].shape)
     # print(samples['AV'])
