@@ -1196,18 +1196,18 @@ class SEDmodel(object):
 
         init_svi_state = svi.init(PRNGKey(123), data, band_weights)
 
-        def body_fn(val, i):
-            svi_state, loss = svi.update(val, data, band_weights)
-            return svi_state, (svi.get_params(svi_state), loss)
+        def body_fn(val):
+            svi_state, loss = svi.update(val, self.data, self.band_weights)
+            return svi_state, loss
 
-
-        last_svi_state, history = jax.lax.scan(body_fn, init_svi_state, xs = None, length = num_iterations)
-
-        svi_states, losses = history
-
-        best_index = np.argmin(losses)
-        best_params = {k:svi_states[k][best_index] for k in svi_states.keys()}
-        last_params = {k:svi_states[k][-1] for k in svi_states.keys()}
+        best_loss = 1e10
+        best_params = svi.get_params(init_svi_state)
+        svi_state = init_svi_state
+        for i in range(num_iterations):
+            svi_state, loss = jax.jit(body_fn)(svi_state)
+            if loss < best_loss:
+                best_loss = loss
+                best_params = svi.get_params(svi_state)
 
         if not laplace:
             predictive = Predictive(guide, params=best_params, num_samples=num_samples)
@@ -1333,9 +1333,7 @@ class SEDmodel(object):
             svi_state, loss = svi.update(val, self.data, self.band_weights)
             return svi_state, loss
 
-        t1 = timeit.default_timer()
         # last_svi_state, history = jax.lax.scan(body_fn, init_svi_state, xs = None, length = 30000)
-        # tupl, losses = jax.lax.scan(body_fn, (init_svi_state,init_params, 10000), xs = None, length = 30000)
 
         best_loss = 10000
         best_params = init_params
@@ -1347,32 +1345,18 @@ class SEDmodel(object):
                 best_params = svi.get_params(svi_state)
 
 
-        print("Time:", timeit.default_timer() - t1)
-        print(x)
-        # print(history)
-        svi_states, losses = history
-        print(svi_states['auto_loc'].shape, losses.shape)
-        # print(svi_states['auto_loc'].shape, svi_states['auto_scale_tril'].shape, losses.shape)
-
-
-        best_index = np.argmin(losses)
-        best_params = {k:svi_states[k][best_index] for k in svi_states.keys()}
-
-        # best_params2, last_params2, samples = self.fit_vi_get_best_samples(model, zltn_guide, self.data, self.band_weights)
-
-
         predictive = Predictive(zltn_guide, params=best_params, num_samples=num_samples)
         best_samples = predictive(PRNGKey(123), data=None)
         # best_k = self.get_k_for_state(model, zltn_guide, best_params)
         best_k = self.psis(model, zltn_guide, best_params, best_samples)
 
-        last_params = {k:svi_states[k][-1] for k in svi_states.keys()}
+        last_params = svi.get_params(svi_state)
         predictive = Predictive(zltn_guide, params=last_params, num_samples=num_samples)
         last_samples = predictive(PRNGKey(123), data=None)
         last_k = self.psis(model, zltn_guide, last_params, last_samples)
 
         print(best_k, last_k)
-        print(losses[best_index], losses[-1])
+        print(best_loss, loss)
 
         return best_k, last_k, best_samples, last_samples
 
