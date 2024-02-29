@@ -1043,6 +1043,9 @@ class SEDmodel(object):
         # else:
         #     model = self.fit_model_mcmc_no_eps
         model = self.fit_model_mcmc
+
+        # model = self.fit_model_vi
+
         nuts_kernel = NUTS(model, adapt_step_size=True, init_strategy=init_strategy, max_tree_depth=10)
 
 
@@ -1194,29 +1197,15 @@ class SEDmodel(object):
     def fit_vi_get_best_samples(self, model, guide, data, band_weights, optimizer = Adam(0.005), loss=Trace_ELBO(5), num_iterations=30000, num_samples=1000, laplace = False):
         svi = SVI(model, guide, optimizer, loss)
 
-        init_svi_state = svi.init(PRNGKey(123), data, band_weights)
-
-        def body_fn(val, i):
-            svi_state, loss = svi.update(val, data, band_weights)
-            return svi_state, (svi.get_params(svi_state), loss)
-
-
-        last_svi_state, history = jax.lax.scan(body_fn, init_svi_state, xs = None, length = num_iterations)
-
-        svi_states, losses = history
-
-        best_index = np.argmin(losses)
-        best_params = {k:svi_states[k][best_index] for k in svi_states.keys()}
-        last_params = {k:svi_states[k][-1] for k in svi_states.keys()}
+        svi_result = svi.run(PRNGKey(123), num_iterations, data,band_weights, progress_bar=False)
+        params, losses = svi_result.params, svi_result.losses
 
         if not laplace:
-            predictive = Predictive(guide, params=best_params, num_samples=num_samples)
+            predictive = Predictive(guide, params=params, num_samples=num_samples)
             best_samples = predictive(PRNGKey(123), data=None)
-            # return best_params, last_params, best_samples
             return best_samples
 
-        # return best_params, last_params, guide.sample_posterior(PRNGKey(123), best_params, sample_shape=(num_samples,))
-        return guide.sample_posterior(PRNGKey(123), best_params, sample_shape=(num_samples,))
+        return guide.sample_posterior(PRNGKey(123), params, sample_shape=(num_samples,))
 
 
     def fit_with_vi_laplace(self, output, epsilons_on, model_path=None, init_strategy='median'):
@@ -1303,22 +1292,26 @@ class SEDmodel(object):
         # predictive = Predictive(zltn_guide, params=params, num_samples=num_samples)
         # zltn_samples = predictive(PRNGKey(123), data=None)
 
-        # ks = []
-        # last_losses = []
-        # for i in range(30):
-        #     print(i)
-        #     if i==0:
-        #         svi_result = svi.run(PRNGKey(123), 1000, self.data, self.band_weights)
-        #     else:
-        #         svi_result = svi.run(PRNGKey(123), 1000, self.data, self.band_weights, init_state=svi_result.state)
-        #     params, losses = svi_result.params, svi_result.losses
-        #     print(losses[-1])
-        #     last_losses.append(losses[-1])
-        #     predictive = Predictive(zltn_guide, params=params, num_samples=1000)
-        #     samples = predictive(PRNGKey(123), data=None)
-        #     # self.fit_postprocess_samples(samples, output + "_" + str(i))
-        #     k = self.psis(model, zltn_guide, params, samples)
-        #     ks.append(k)
+        ks = []
+        last_losses = []
+        for i in range(10):
+            print(i)
+            if i==0:
+                svi_result = svi.run(PRNGKey(123), 1000, self.data, self.band_weights)
+            else:
+                svi_result = svi.run(PRNGKey(123), 1000, self.data, self.band_weights, init_state=svi_result.state)
+            params, losses = svi_result.params, svi_result.losses
+            print(losses[-1])
+            last_losses.append(losses[-1])
+            predictive = Predictive(zltn_guide, params=params, num_samples=100000)
+            samples = predictive(PRNGKey(123), data=None)
+            # self.fit_postprocess_samples(samples, output + "_" + str(i))
+            k = self.psis(model, zltn_guide, params, samples)
+            print(k)
+            ks.append(k)
+
+        plt.plot(ks)
+        plt.show()
 
         init_svi_state = svi.init(PRNGKey(123), self.data, self.band_weights)
         # init_svi_loss = svi.evaluate(init_svi_state, self.data, self.band_weights)
@@ -1348,33 +1341,32 @@ class SEDmodel(object):
 
 
         print("Time:", timeit.default_timer() - t1)
-        print(x)
         # print(history)
-        svi_states, losses = history
-        print(svi_states['auto_loc'].shape, losses.shape)
+        # svi_states, losses = history
+        # print(svi_states['auto_loc'].shape, losses.shape)
         # print(svi_states['auto_loc'].shape, svi_states['auto_scale_tril'].shape, losses.shape)
 
 
-        best_index = np.argmin(losses)
-        best_params = {k:svi_states[k][best_index] for k in svi_states.keys()}
+        # best_index = np.argmin(losses)
+        # best_params = {k:svi_states[k][best_index] for k in svi_states.keys()}
 
         # best_params2, last_params2, samples = self.fit_vi_get_best_samples(model, zltn_guide, self.data, self.band_weights)
 
 
-        predictive = Predictive(zltn_guide, params=best_params, num_samples=num_samples)
-        best_samples = predictive(PRNGKey(123), data=None)
-        # best_k = self.get_k_for_state(model, zltn_guide, best_params)
-        best_k = self.psis(model, zltn_guide, best_params, best_samples)
+        # predictive = Predictive(zltn_guide, params=best_params, num_samples=num_samples)
+        # best_samples = predictive(PRNGKey(123), data=None)
+        # # best_k = self.get_k_for_state(model, zltn_guide, best_params)
+        # best_k = self.psis(model, zltn_guide, best_params, best_samples)
 
-        last_params = {k:svi_states[k][-1] for k in svi_states.keys()}
-        predictive = Predictive(zltn_guide, params=last_params, num_samples=num_samples)
-        last_samples = predictive(PRNGKey(123), data=None)
-        last_k = self.psis(model, zltn_guide, last_params, last_samples)
+        # last_params = svi.get_params(svi_state)
+        # predictive = Predictive(zltn_guide, params=last_params, num_samples=num_samples)
+        # last_samples = predictive(PRNGKey(123), data=None)
+        # last_k = self.psis(model, zltn_guide, last_params, last_samples)
 
-        print(best_k, last_k)
-        print(losses[best_index], losses[-1])
+        # print(best_k, last_k)
+        # print(best_loss, loss)
 
-        return best_k, last_k, best_samples, last_samples
+        # return best_k, last_k, best_samples, last_samples
 
         # self.fit_postprocess_samples(samples, output)
         # self.fit_postprocess_params(zltn_guide, params, output)
@@ -1397,16 +1389,6 @@ class SEDmodel(object):
         """
         init_strategy = init_to_median()
 
-        # if init_strategy == 'median':
-        #     init_strategy = init_to_median()
-        # elif init_strategy == 'value':
-        #     init_strategy = init_to_value(values=self.fit_initial_guess())
-        # elif init_strategy == 'map':
-        #     init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
-        # elif init_strategy == 'sample':
-        #     init_strategy = init_to_sample()
-        # else:
-        #     raise ValueError('Invalid init strategy, must be one of median or sample')
         if model_path is not None:
             with open(os.path.join('results', model_path, 'chains.pkl'), 'rb') as file:
                 result = pickle.load(file)
@@ -1425,24 +1407,18 @@ class SEDmodel(object):
 
         optimizer = Adam(0.01)
 
-        # start = timeit.default_timer() 
-
-        # if data is None:
-        #     data = self.data
-        # if band_weights is None:
-        #     band_weights = self.band_weights
-
         # if epsilons_on:
         model = self.fit_model_vi
         # else:
         #     model = self.fit_model_vi_no_eps
 
+        start = timeit.default_timer()
         sample_locs = ['AV', 'theta', 'tmax', 'eps_tform', 'Ds']
         # First start with the Laplace Approximation
         laplace_guide = AutoLaplaceApproximation(model, init_loc_fn=init_strategy)
         svi = SVI(model, laplace_guide, optimizer, loss=Trace_ELBO(5))
+        
         svi_result = svi.run(PRNGKey(123), 15000, data[..., None],band_weights[None, ...], progress_bar=False)
-
         params, losses = svi_result.params, svi_result.losses
         laplace_median = laplace_guide.median(params)
 
@@ -1453,15 +1429,24 @@ class SEDmodel(object):
         new_init_dict = {k:jnp.array([laplace_median[k][0]]) for k in sample_locs if k in laplace_median}
         zltn_guide = AutoMultiZLTNGuide(model, init_loc_fn=init_to_value(values=new_init_dict))
 
-        # best_params, last_params, best_samples, last_samples = self.fit_vi_get_best_samples(model, zltn_guide, data[..., None], band_weights[None, ...])
+        # svi = SVI(model, zltn_guide, optimizer, loss)
+        # svi_result = svi.run(PRNGKey(123), num_iterations, data[..., None],band_weights[None, ...], progress_bar=False)
+        # params, losses = svi_result.params, svi_result.losses
 
-        # return (best_params, last_params, best_samples, last_samples)
-        best_samples = self.fit_vi_get_best_samples(model, zltn_guide, data[..., None], band_weights[None, ...])
+        # predictive = Predictive(zltn_guide, params=params, num_samples=1000)
+        # best_samples = predictive(PRNGKey(123), data=None)
+        # return best_samples
+
+
+
+        best_samples = self.fit_vi_get_best_samples(model, zltn_guide, data[..., None], band_weights[None, ...], num_iterations = 10000)
+        # best_samples = self.fit_vi_get_best_samples(model, zltn_guide, data, band_weights)
+
 
         return best_samples
 
 
-    def fit_laplace_vmap(self, data, band_weights, epsilons_on=True, model_path=None, init_strategy='median'):
+    def fit_laplace_vmap(self, data, band_weights, epsilons_on=True, model_path=None):
         """
         Parameters
         ----------
@@ -1477,16 +1462,7 @@ class SEDmodel(object):
 
         """
         init_strategy = init_to_median()
-        # if init_strategy == 'median':
-        #     init_strategy = init_to_median()
-        # elif init_strategy == 'value':
-        #     init_strategy = init_to_value(values=self.fit_initial_guess())
-        # elif init_strategy == 'map':
-        #     init_strategy = init_to_value(self.map_initial_guess(mode='fit'))
-        # elif init_strategy == 'sample':
-        #     init_strategy = init_to_sample()
-        # else:
-        #     raise ValueError('Invalid init strategy, must be one of median or sample')
+
         if model_path is not None:
             with open(os.path.join('results', model_path, 'chains.pkl'), 'rb') as file:
                 result = pickle.load(file)
@@ -1505,11 +1481,12 @@ class SEDmodel(object):
 
         optimizer = Adam(0.01)
 
-        start = timeit.default_timer() 
 
         # using MCMC model because it uses dist.Exponential instead of MyExponential
         # if epsilons_on:
         model = self.fit_model_mcmc
+        # model = self.fit_model_vi
+
         # else:
         #     model = self.fit_model_mcmc_no_eps
 
@@ -1524,14 +1501,15 @@ class SEDmodel(object):
         # svi = SVI(model, laplace_guide, optimizer, loss=Trace_ELBO(5))
         # svi_result = svi.run(PRNGKey(123), 15000, data[..., None],band_weights[None, ...], progress_bar=False)
         # params, losses = svi_result.params, svi_result.losses
-        # end = timeit.default_timer()
 
         # predictive = Predictive(laplace_guide, params=params, num_samples=1000)
         # samples = predictive(PRNGKey(123), data=None)
 
+        # samples = laplace_guide.sample_posterior(PRNGKey(123), params, sample_shape=(1000,))
+
         return samples
 
-    def fit_multivariatenormal_vmap(self, data, band_weights, epsilons_on=True, model_path=None, init_strategy='median'):
+    def fit_multivariatenormal_vmap(self, data, band_weights, epsilons_on=True, model_path=None):
         """
         Parameters
         ----------
@@ -1568,6 +1546,8 @@ class SEDmodel(object):
 
         # if epsilons_on:
         model = self.fit_model_mcmc
+        # model = self.fit_model_vi
+
         # else:
         #     model = self.fit_model_vi_no_eps
         sample_locs = ['AV', 'theta', 'tmax', 'eps_tform', 'Ds']
@@ -1585,7 +1565,7 @@ class SEDmodel(object):
         multinormal_guide = AutoMultivariateNormal(model, init_loc_fn=init_to_value(values=new_init_dict))
 
 
-        samples = self.fit_vi_get_best_samples(model, multinormal_guide, data[..., None], band_weights[None, ...])
+        samples = self.fit_vi_get_best_samples(model, multinormal_guide, data[..., None], band_weights[None, ...], num_iterations=10000)
 
         return samples
 

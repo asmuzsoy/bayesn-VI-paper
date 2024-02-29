@@ -40,9 +40,9 @@ print("Fitting VI...")
 
 t1 = timeit.default_timer()
 model.fit_with_vi_laplace(str(dataset) + '_vi', init_strategy='median', epsilons_on = True)
-print("time:", timeit.default_timer() - t1)
+t2 = timeit.default_timer()
+print("time:", t2 - t1)
 
-# print("vmap method:")
 # model.fit_zltn_vmap(model.data, model.band_weights)
 
 # model.fit_with_vi2(dataset + '_vi_2', init_strategy='median')

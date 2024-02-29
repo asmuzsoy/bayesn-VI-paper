@@ -42,21 +42,44 @@ class Result:
     self.stds = {var: np.std(self.samples_dict[var], axis=1) for var in self.samples_dict.keys()}
     self.variances = {var: np.var(self.samples_dict[var], axis=1) for var in self.samples_dict.keys()}
 
-zltn_result = Result("sim28_zltn_122923.npy", av_metric=av_stat)
-mcmc_result = Result("sim28_mcmc_122923.npy")
-laplace_result = Result("sim28_laplace_122923.npy")
-multinormal_result = Result("sim28_multinormal_122923.npy")
+zltn_result = Result("sim28_vmap_zltn_020124_samples.npy", av_metric=av_stat)
+mcmc_result = Result("sim28_vmap_mcmc_020524_samples.npy")
+laplace_result = Result("sim28_vmap_laplace_020724_samples.npy")
+multinormal_result = Result("sim28_vmap_multinormal_020124_samples.npy")
 
-labels = ['MCMC', 'ZLTN', 'Multivariate Normal']
+fig, ax = plt.subplots(1,2, figsize=(8,4))
+ax[0].plot(true_mus, mcmc_result.point_estimates['mu'] - true_mus, 'o')
+ax[0].axhline(np.median(mcmc_result.point_estimates['mu'] - true_mus), linestyle='dashed', label='median residual')
+ax[0].axhline(0, color='k')
+ax[0].set_title("AV Constrained to be positive")
+ax[0].set_ylim(-0.5, 0.5)
+ax[0].set_xlabel("True $\\mu$")
+ax[0].set_ylabel("MCMC Fit $\\mu$")
+ax[0].legend()
+
+
+mcmc_result_negative = Result("sim28_vmap_mcmc_020824_NEGATIVE_samples.npy")
+ax[1].plot(true_mus, mcmc_result_negative.point_estimates['mu'] - true_mus, 'o')
+ax[1].axhline(np.median(mcmc_result_negative.point_estimates['mu'] - true_mus), linestyle='dashed', label='median residual')
+ax[1].set_title("AV not constrained to be positive")
+ax[1].axhline(0, color='k')
+ax[1].set_ylim(-0.5, 0.5)
+ax[1].set_xlabel("True $\\mu$")
+ax[1].set_ylabel("MCMC Fit $\\mu$")
+ax[1].legend()
+
+plt.show()
+
+labels = ['MCMC', 'ZLTN', 'Multivariate Normal', 'Laplace Approximation']
 latex_version = {'mu': '$\\mu$', 'theta': '$\\theta$', 'AV': '$A_V$'}
 prob_labels = {'AV': '$p_{A_V}$', "mu": '$p_\\mu$', "theta": '$p_\\theta$'}
 true_values = {'AV': true_avs, "mu": true_mus, 'theta': true_thetas}
 
-subplots_legend = np.empty((3,3), dtype=object)
+subplots_legend = np.empty((3,4), dtype=object)
 
 # VSBC Figure
-fig, ax = plt.subplots(3,3, figsize=(9,9))
-for i, samples in enumerate([mcmc_result.samples_dict, zltn_result.samples_dict, multinormal_result.samples_dict]):
+fig, ax = plt.subplots(3,4, figsize=(12,9))
+for i, samples in enumerate([mcmc_result.samples_dict, zltn_result.samples_dict, multinormal_result.samples_dict, laplace_result.samples_dict]):
 	for k, var in enumerate(['AV', 'mu', 'theta']):
 		subplots_legend[k][i] = var + " " + labels[i]
 		ratios = []
@@ -68,7 +91,7 @@ for i, samples in enumerate([mcmc_result.samples_dict, zltn_result.samples_dict,
 		ax[k][i].hist(ratios, bins=20)
 		ax[k][i].axvline(np.mean(ratios), linestyle ='dashed')
 		ax[k][i].axvline(0.5, linestyle ='solid', color='k')
-		ax[k][i].annotate("p = " + str(round(p, 4)), (0.57, 0.85), xycoords='axes fraction')
+		ax[k][i].annotate("p = " + str(round(p, 4)), (0.1, 0.85), xycoords='axes fraction')
 		ax[0][i].set_title(labels[i])
 		ax[k][i].set_xlabel(prob_labels[var], fontsize=12)
 		ax[k][0].set_ylabel("Density")
@@ -80,7 +103,6 @@ plt.tight_layout()
 plt.show()
 
 fig.savefig("figures/vsbc.pdf", bbox_inches='tight')
-
 
 # for i, samples in enumerate([mcmc_result.samples_dict, laplace_result.samples_dict, zltn_result.samples_dict, multinormal_result.samples_dict]):
 # 	# for var in ['AV', 'mu', 'theta']:

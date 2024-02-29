@@ -6,7 +6,7 @@ import os.path
 model = SEDmodel(load_model='T21_model')
 
 
-dataset_number = 28
+dataset_number = 29
 
 
 epsilons_on = True
@@ -15,8 +15,7 @@ epsilons_on = True
 #     raise ValueError("It looks like a dataset with this name already exists.")
 
 
-
-N = 500
+N = 1000
 
 start = default_timer()
 

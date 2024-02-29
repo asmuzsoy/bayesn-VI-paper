@@ -8,11 +8,11 @@ from jax.random import PRNGKey, normal
 import pandas as pd
 import timeit
 
-todays_date = '013024'
+todays_date = '022824'
 
 model = SEDmodel(load_model='T21_model')
 
-dataset = 'sim_population_28'
+dataset = 'sim_population_29'
 	
 filt_map_dict = {'g': 'g_PS1', 'r': 'r_PS1', 'i': 'i_PS1', 'z': 'z_PS1'}
 
@@ -27,7 +27,7 @@ def postprocess_add_mu(model, samples):
     num_sn = samples['Ds'].shape[0]
     samples['Ds'] = samples['Ds'].reshape((num_sn,1000))
     muhat = model.data[-3, 0, :]
-    print(muhat.shape)
+    # print(muhat.shape)
     muhat_err = 10
     Ds_err = jnp.sqrt(muhat_err * muhat_err + model.sigma0 * model.sigma0)
     mu_mean = (np.squeeze(samples['Ds']) * jnp.power(muhat_err, 2) + muhat[...,None] * jnp.power(model.sigma0, 2)) / jnp.power(Ds_err, 2)
@@ -35,7 +35,7 @@ def postprocess_add_mu(model, samples):
     mu_sigma = jnp.sqrt((jnp.power(model.sigma0, 2) * jnp.power(muhat_err, 2)) / jnp.power(Ds_err, 2))
     standard_normal_samples = normal(PRNGKey(123), shape=mu_mean.shape)
     mu = mu_mean + standard_normal_samples * mu_sigma
-    print(mu.shape)
+    # print(mu.shape)
     delM = np.squeeze(samples['Ds']) - mu
     samples['mu'] = mu
     samples['delM'] = delM
@@ -48,7 +48,7 @@ def vmap_over_method(method, keyword):
     best_samples = vmap_object(model.data, model.band_weights)
     best_samples = postprocess_add_mu(model, best_samples)
 
-    np.save("sim28_vmap_" + keyword + "_" + todays_date + "_samples.npy", best_samples)
+    np.save("sim29_vmap_" + keyword + "_" + todays_date + "_samples.npy", best_samples)
     # np.save("sim28_vmap_" + keyword + "_" + todays_date + "_bestparams.npy", best_params)
     # np.save("sim28_vmap_" + keyword + "_" + todays_date + "_lastparams.npy", last_params)
 
@@ -56,7 +56,7 @@ def vmap_over_method(method, keyword):
 start = timeit.default_timer()
 
 
-# vmap_over_method(model.fit_mcmc_vmap, 'mcmc')
+vmap_over_method(model.fit_mcmc_vmap, 'mcmc')
 mcmc_time = timeit.default_timer()
 print("MCMC:", mcmc_time - start)
 

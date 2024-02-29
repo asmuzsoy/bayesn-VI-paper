@@ -24,9 +24,9 @@ mcmc_dict=np.load("foundation_vmap_mcmc_122923.npy", allow_pickle=True).item()
 
 
 median_avs = np.median(mcmc_dict['AV'].reshape((157,1000)),axis=1)
-print(median_avs.shape)
-print(np.sort(median_avs))
-print(np.argsort(median_avs))
+# print(median_avs.shape)
+# print(np.sort(median_avs))
+# print(np.argsort(median_avs))
 
 # print(x)
 
@@ -35,11 +35,11 @@ stephen_mu = s['mu']
 stephen_AV = s['AV']
 stephen_theta = s['theta']
 
-print(np.mean(stephen_AV))
+# print(np.mean(stephen_AV))
 
 
 stephen_data  = np.array([stephen_AV, stephen_mu, stephen_theta]).T
-print(stephen_data.shape)
+# print(stephen_data.shape)
 
 def get_mode_from_samples(samples):
 	hist, bin_edges = np.histogram(samples, bins=50)
@@ -55,11 +55,11 @@ multinormal_results = []
 
 for var in ['AV', 'mu', 'theta']:
 	mcmc_samples = np.squeeze(mcmc_dict[var])[sn_number].reshape((1000,))
-	print(var, np.squeeze(mcmc_dict[var]).shape)
+	# print(var, np.squeeze(mcmc_dict[var]).shape)
 	zltn_samples = np.squeeze(zltn_dict[var])[sn_number]
 	laplace_samples = np.squeeze(laplace_dict[var])[sn_number]
 	multinormal_samples = np.squeeze(multinormal_dict[var])[sn_number]
-	print(laplace_samples)
+	# print(laplace_samples)
 	mcmc_results.append(mcmc_samples)
 	zltn_results.append(zltn_samples)
 	laplace_results.append(laplace_samples)
@@ -69,8 +69,6 @@ zltn_results = np.array(zltn_results).T
 mcmc_results = np.array(mcmc_results).T
 laplace_results = np.array(laplace_results).T
 multinormal_results = np.array(multinormal_results).T
-
-print(zltn_results)
 
 
 # range_low = [(-0.01,0.2), (35, 35.6), (-1.8,1.8)]
@@ -85,9 +83,9 @@ corner.corner(laplace_results, color = 'g', fig = fig, range=range_low if low el
 corner.corner(multinormal_results, color = 'b', fig = fig, range=range_low if low else range_high)
 
 
-colors = ['k','r', 'b', 'g']
+colors = ['r', 'k', 'b', 'g']
 
-labels = ['ZLTN VI', 'MCMC', 'Multivariate Normal VI', 'Laplace VI']
+labels = [ 'MCMC', 'ZLTN VI','Multivariate Normal VI', 'Laplace Approximation']
 
 plt.legend(
     handles=[

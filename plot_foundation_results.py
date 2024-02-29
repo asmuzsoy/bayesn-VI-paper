@@ -38,10 +38,10 @@ class Result:
 
 
 # need to re-run MCMC with new model
-zltn_result = Result("foundation_results/foundation_vmap_zltn_011724_samples.npy")
+zltn_result = Result("foundation_vmap_zltn_122923.npy")
 mcmc_result = Result("foundation_vmap_mcmc_122923.npy")
-laplace_result = Result("foundation_results/foundation_vmap_laplace_011724_samples.npy")
-multinormal_result = Result("foundation_results/foundation_vmap_multinormal_011724_samples.npy")
+laplace_result = Result("foundation_vmap_laplace_122923.npy")
+multinormal_result = Result("foundation_vmap_multinormal_122923.npy")
 
 
 zcmb_dict = dict(zip(sn_info.CID.values, sn_info.zCMB.values))
@@ -82,15 +82,16 @@ last_samples = np.load("foundation_results/last_samples_013024.npz", allow_pickl
 best_mu_medians = np.array([np.median(best_samples[i]['Ds']) for i in range(num_to_plot)])
 last_mu_medians = np.array([np.median(last_samples[i]['Ds']) for i in range(num_to_plot)])
 
-
-plt.scatter(best_ks, last_ks, c = best_mu_medians - last_mu_medians, cmap='bwr')
+fig, ax = plt.subplots()
+t = ax.scatter(best_ks, last_ks, c = best_mu_medians - last_mu_medians, cmap='bwr')
 linspace_vals = np.linspace(0.3, 1.3)
-plt.plot(linspace_vals,linspace_vals, 'k')
-cbar = plt.colorbar()
-cbar.set_label('$\\Delta D_s$')
-plt.xlabel("k from best loss params")
-plt.ylabel("k from last iteration params")
+ax.plot(linspace_vals,linspace_vals, 'k')
+cbar = fig.colorbar(t)
+cbar.set_label('$\\Delta \\mu$')
+ax.set_xlabel("k from best-loss parameters")
+ax.set_ylabel("k from last-loss parameters")
 plt.show()
+fig.savefig("figures/bestvslastk.pdf", bbox_inches='tight')
 
 
 plt.scatter(best_ks, last_ks, c = best_mu_medians - np.array([cosmo.distmod(z).value for z in zcmbs]), cmap='bwr')
@@ -101,7 +102,6 @@ cbar.set_label('$D_{s, best} - \\mu(z)$')
 plt.xlabel("k from best loss params")
 plt.ylabel("k from last iteration params")
 plt.show()
-print(x)
 
 
 # VI vs MCMC subplots
