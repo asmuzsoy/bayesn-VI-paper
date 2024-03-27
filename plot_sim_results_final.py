@@ -9,9 +9,9 @@ from scipy import special, stats
 fiducial_cosmology={"H0": 73.24, "Om0": 0.28}
 cosmo = FlatLambdaCDM(**fiducial_cosmology)
 
-num_to_plot = 500
+num_to_plot = 1000
 
-dataset_number=28
+dataset_number=29
 
 av_stat = 'median'
 
@@ -42,10 +42,13 @@ class Result:
     self.stds = {var: np.std(self.samples_dict[var], axis=1) for var in self.samples_dict.keys()}
     self.variances = {var: np.var(self.samples_dict[var], axis=1) for var in self.samples_dict.keys()}
 
-zltn_result = Result("sim28_vmap_zltn_020124_samples.npy", av_metric=av_stat)
-mcmc_result = Result("sim28_vmap_mcmc_020524_samples.npy")
-laplace_result = Result("sim28_vmap_laplace_020724_samples.npy")
-multinormal_result = Result("sim28_vmap_multinormal_020124_samples.npy")
+zltn_result = Result("sim29_vmap_zltn_022824_samples.npy", av_metric=av_stat)
+mcmc_result = Result("sim29_vmap_mcmc_022824_samples.npy")
+laplace_result = Result("sim29_vmap_laplace_022824_samples.npy")
+multinormal_result = Result("sim29_vmap_multinormal_022824_samples.npy")
+
+
+print(sum((laplace_result.av_samples).flatten() < 0))
 
 fig, ax = plt.subplots(1,2, figsize=(8,4))
 ax[0].plot(true_mus, mcmc_result.point_estimates['mu'] - true_mus, 'o')
@@ -58,17 +61,16 @@ ax[0].set_ylabel("MCMC Fit $\\mu$")
 ax[0].legend()
 
 
-mcmc_result_negative = Result("sim28_vmap_mcmc_020824_NEGATIVE_samples.npy")
-ax[1].plot(true_mus, mcmc_result_negative.point_estimates['mu'] - true_mus, 'o')
-ax[1].axhline(np.median(mcmc_result_negative.point_estimates['mu'] - true_mus), linestyle='dashed', label='median residual')
-ax[1].set_title("AV not constrained to be positive")
-ax[1].axhline(0, color='k')
-ax[1].set_ylim(-0.5, 0.5)
-ax[1].set_xlabel("True $\\mu$")
-ax[1].set_ylabel("MCMC Fit $\\mu$")
-ax[1].legend()
-
-plt.show()
+# mcmc_result_negative = Result("sim28_vmap_mcmc_020824_NEGATIVE_samples.npy")
+# ax[1].plot(true_mus, mcmc_result_negative.point_estimates['mu'] - true_mus, 'o')
+# ax[1].axhline(np.median(mcmc_result_negative.point_estimates['mu'] - true_mus), linestyle='dashed', label='median residual')
+# ax[1].set_title("AV not constrained to be positive")
+# ax[1].axhline(0, color='k')
+# ax[1].set_ylim(-0.5, 0.5)
+# ax[1].set_xlabel("True $\\mu$")
+# ax[1].set_ylabel("MCMC Fit $\\mu$")
+# ax[1].legend()
+# plt.show()
 
 labels = ['MCMC', 'ZLTN', 'Multivariate Normal', 'Laplace Approximation']
 latex_version = {'mu': '$\\mu$', 'theta': '$\\theta$', 'AV': '$A_V$'}
@@ -83,11 +85,13 @@ for i, samples in enumerate([mcmc_result.samples_dict, zltn_result.samples_dict,
 	for k, var in enumerate(['AV', 'mu', 'theta']):
 		subplots_legend[k][i] = var + " " + labels[i]
 		ratios = []
+		print(samples[var].shape, true_values[var].shape)
 		for j in range(num_to_plot):
-			mask = samples[var][j] > true_values[var][j]
-			ratios.append(np.sum(mask)/1000)
+			mask = samples[var][j] > true_values[var][j] # num samples greater than true value
+			ratios.append(np.sum(mask)/1000) # divide by 1000 samples per SN
 		
 		p = stats.ks_2samp(ratios, 1 - np.array(ratios)).pvalue
+		# p = stats.skewtest(ratios).pvalue
 		ax[k][i].hist(ratios, bins=20)
 		ax[k][i].axvline(np.mean(ratios), linestyle ='dashed')
 		ax[k][i].axvline(0.5, linestyle ='solid', color='k')
@@ -130,7 +134,7 @@ axis_fontsize = 12
 true_values = {'mu': true_mus, 'theta': true_thetas, 'AV': true_avs}
 axlims = {'mu': (-0.075, 0.08), 'theta': (-0.2, 0.02), 'AV': (-0.02, 0.035)}
 
-def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title):
+def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title, filename=None):
 	fig, ax = plt.subplots(3,3, figsize = (9,9))
 
 	for i, var in enumerate(['mu', 'theta', 'AV']):
@@ -141,7 +145,7 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title):
 		ax[0][i].errorbar(true_values[var], mcmc_result.point_estimates[var], yerr = mcmc_result.stds[var], c=mcmc_color, alpha=alpha, linestyle='None')
 		linspace_vals = np.linspace(min(true_values[var]), max(true_values[var]))
 		ax[0][i].plot(linspace_vals, linspace_vals, c='k')
-		ax[0][i].set_ylabel(title + ' '+ latex_version[var], fontsize = axis_fontsize)
+		ax[0][i].set_ylabel('Fit '+ latex_version[var], fontsize = axis_fontsize)
 		ax[0][i].legend()
 		if var=='AV':
 			ax[0][i].set_xscale('log')
@@ -151,7 +155,7 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title):
 		ax[1][i].errorbar(true_values[var], point_estimates[var] - true_values[var], yerr = uncertainties[var], alpha=alpha, c=vi_color, linestyle='None')
 		ax[1][i].errorbar(true_values[var], mcmc_result.point_estimates[var] - true_values[var], yerr = mcmc_result.stds[var], c=mcmc_color, alpha=alpha, linestyle='None')
 		ax[1][i].axhline(0, color = 'k')
-		ax[1][i].set_ylabel('Residual ' + latex_version[var] + ' (' + title + ' - true)', fontsize = axis_fontsize)
+		ax[1][i].set_ylabel('Residual ' + latex_version[var] + ' (fit - true)', fontsize = axis_fontsize)
 		ax[1][i].legend()
 		if var=='AV':
 			ax[1][i].set_xscale('log')
@@ -180,14 +184,17 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title):
 	plt.tight_layout()
 	plt.show()
 
+	if filename is not None:
+		fig.savefig(filename, bbox_inches = 'tight')
+
 
 	# plt.plot(point_estimates['mu'] - mcmc_result.point_estimates['mu'], point_estimates['theta'] - mcmc_result.point_estimates['theta'], 'o')
 	# plt.show()
 
 
-plot_compare_to_mcmc_and_truth(zltn_result.point_estimates, zltn_result.stds, title = "ZLTN")
-plot_compare_to_mcmc_and_truth(laplace_result.point_estimates, laplace_result.stds, title = "Laplace")
-plot_compare_to_mcmc_and_truth(multinormal_result.point_estimates, multinormal_result.stds, title = "MultiNormal")
+plot_compare_to_mcmc_and_truth(zltn_result.point_estimates, zltn_result.stds, title = "ZLTN", filename='figures/zltn_mcmc_sims.pdf')
+plot_compare_to_mcmc_and_truth(laplace_result.point_estimates, laplace_result.stds, title = "Laplace", filename='figures/laplace_mcmc_sims.pdf')
+plot_compare_to_mcmc_and_truth(multinormal_result.point_estimates, multinormal_result.stds, title = "MultiNormal", filename='figures/multiinormal_mcmc_sims.pdf')
 
 
 	# ax[0][0].annotate("$\\mu$: median", (36, 34.5), fontsize = 16)

@@ -57,19 +57,18 @@ for i, sn_name in enumerate(sn_names):
 	print("Fitting VI...")
 	# model.fit_with_vi(str(dataset) + "/" + str(i)  + '_vi', init_strategy=init_to_value(values={'AV':jnp.array([0.01]), 'theta':jnp.array([1.]), 'Ds':jnp.array([35.])}))
 	# model.fit_with_vi(str(dataset) + "/" + str(i)  + '_vi', init_strategy='median')
-	best_k, last_k, best_samples, last_samples = model.fit_with_vi_laplace(str(dataset) + "/" + str(i)  + '_vi', 
-		epsilons_on=epsilons_on, init_strategy='median')
+	best_k, last_k, best_samples, last_samples = model.fit_zltn_get_ks(model.data, model.band_weights)
 	best_ks.append(best_k)
 	last_ks.append(last_k)
 	best_samples_arr.append(best_samples)
 	last_samples_arr.append(last_samples)
 
 	print(best_ks, last_ks)
-	print(best_samples)
+	# print(best_samples)
 
-	np.savetxt("foundation_results/best_ks_013024.txt", np.array(best_ks))
-	np.savetxt("foundation_results/last_ks_013024.txt", np.array(last_ks))
-	np.savez("foundation_results/best_samples_013024", np.array(best_samples_arr))
-	np.savez("foundation_results/last_samples_013024", np.array(last_samples_arr))
+	np.savetxt("foundation_results/best_ks_032724.txt", np.array(best_ks))
+	np.savetxt("foundation_results/last_ks_032724.txt", np.array(last_ks))
+	np.savez("foundation_results/best_samples_032724", np.array(best_samples_arr))
+	np.savez("foundation_results/last_samples_032724", np.array(last_samples_arr))
 
 

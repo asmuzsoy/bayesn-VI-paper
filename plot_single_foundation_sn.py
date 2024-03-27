@@ -4,6 +4,9 @@ import pickle
 import numpy as np
 import corner
 import pandas as pd
+from stephen_corner_plots import *
+# import pairplots
+
 
 dataset = 'T21_training_set'
 
@@ -17,18 +20,17 @@ else:
 	sn_number = 36
 print(sn_names[sn_number])
 
-zltn_dict=np.load("foundation_results/foundation_vmap_zltn_011724_samples.npy", allow_pickle=True).item()
-laplace_dict=np.load("foundation_results/foundation_vmap_laplace_011724_samples.npy", allow_pickle=True).item()
-multinormal_dict=np.load("foundation_results/foundation_vmap_multinormal_011724_samples.npy", allow_pickle=True).item()
-mcmc_dict=np.load("foundation_vmap_mcmc_122923.npy", allow_pickle=True).item()
+# zltn_dict=np.load("foundation_results/foundation_vmap_zltn_011724_samples.npy", allow_pickle=True).item()
+# laplace_dict=np.load("foundation_results/foundation_vmap_laplace_011724_samples.npy", allow_pickle=True).item()
+# multinormal_dict=np.load("foundation_results/foundation_vmap_multinormal_011724_samples.npy", allow_pickle=True).item()
+# mcmc_dict=np.load("foundation_vmap_mcmc_122923.npy", allow_pickle=True).item()
+zltn_dict=np.load("foundation_results/foundation_vmap_zltn_032624_samples.npy", allow_pickle=True).item()
+laplace_dict=np.load("foundation_results/foundation_vmap_laplace_032624_samples.npy", allow_pickle=True).item()
+multinormal_dict=np.load("foundation_results/foundation_vmap_multinormal_032624_samples.npy", allow_pickle=True).item()
+mcmc_dict=np.load("foundation_results/foundation_vmap_mcmc_032624_samples.npy", allow_pickle=True).item()
 
 
 median_avs = np.median(mcmc_dict['AV'].reshape((157,1000)),axis=1)
-# print(median_avs.shape)
-# print(np.sort(median_avs))
-# print(np.argsort(median_avs))
-
-# print(x)
 
 s = np.load("../dist_chains_210610_135216/" + sn_names[sn_number] + "_chains_210610_135216.npy", allow_pickle=True).item()
 stephen_mu = s['mu']
@@ -70,17 +72,73 @@ mcmc_results = np.array(mcmc_results).T
 laplace_results = np.array(laplace_results).T
 multinormal_results = np.array(multinormal_results).T
 
+# range_low = [[-0.01,0.2], [36.5, 37.5], [0.7,2.5]]
+# bounds=[[-0.1,None], [None, None], [None, None]]
+# range_high = [(0.4, 1), (35, 35.8), (-1.6,-0.2)]
+# smoothing = 1.1
 
-# range_low = [(-0.01,0.2), (35, 35.6), (-1.8,1.8)]
+# fig, ax = stephen_corner(zltn_results.T, 
+# 			names=["$A_V$", "$\\mu$", "$\\theta$"], 
+# 			colour = 'k', 
+# 			lims=range_low if low else range_high, 
+# 			bounds=bounds, smoothing=smoothing)
+# fig, ax = stephen_corner(mcmc_results.T, 
+# 			names=["$A_V$", "$\\mu$", "$\\theta$"], 
+# 				fig_ax = (fig, ax), colour = 'red', 
+# 				lims=range_low if low else range_high, 
+# 				bounds=bounds, smoothing=smoothing)
+# fig, ax = stephen_corner(laplace_results.T, 
+# 			names=["$A_V$", "$\\mu$", "$\\theta$"], 
+# 			fig_ax = (fig, ax), colour = 'g', 
+# 			lims=range_low if low else range_high, 
+# 			smoothing=smoothing)
+# fig, ax = stephen_corner(multinormal_results.T, 
+# 			names=["$A_V$", "$\\mu$", "$\\theta$"], 
+# 				fig_ax = (fig, ax), colour = 'b', 
+# 				lims=range_low if low else range_high, 
+# 				smoothing=smoothing)
+# colors = ['r', 'k', 'b', 'g']
+
+# labels = [ 'MCMC', 'ZLTN VI','Multivariate Normal VI', 'Laplace Approximation']
+
+# plt.legend(
+#     handles=[
+#         mlines.Line2D([], [], color=colors[i], label=labels[i])
+#         for i in range(len(labels))
+#     ],
+#     fontsize=16, frameon=False, bbox_to_anchor=(0.8, 3), loc="upper right"
+# )
+
+# plt.show()
+
+# args = (pairplots.Contour(),pairplots.MarginDensity())
+
+# pairplots.pairplot_interactive(zltn_results, mcmc_results, 
+# 	laplace_results, multinormal_results,labels = {
+#     '1':pairplots.latex(r"A_V"),
+#     # Makie rich text
+#     '2':pairplots.latex(r"\mu"),
+#     # LaTeX String
+#     '3':pairplots.latex(r"\theta"),
+# })
+# pairplots.pairplot_interactive((pairplots.series(zltn_results, label='ZLTN VI'), args),
+# 	(pairplots.series(mcmc_results, label='MCMC'),args), (pairplots.series(laplace_results, label='Laplace Approximation'),args),
+# 	(pairplots.series(multinormal_results, label='Multivariate Normal VI'), args), labels=["$A_V$", "$\mu$", "$\\theta$"])
+range_low = [(-0.01,0.2), (35, 35.6), (-1.8,1.8)]
+
 range_low = [(-0.01,0.2), (36.5, 37.5), (0.7,2.5)]
-
 range_high = [(0.4, 1), (35, 35.8), (-1.6,-0.2)]
-
-fig = corner.corner(zltn_results, labels = ["$A_V$", "$\\mu$", "$\\theta$"], 
-	range=range_low if low else range_high, label_kwargs = {'fontsize':16})
-corner.corner(mcmc_results, color = 'r', fig = fig, range=range_low if low else range_high)
-corner.corner(laplace_results, color = 'g', fig = fig, range=range_low if low else range_high)
-corner.corner(multinormal_results, color = 'b', fig = fig, range=range_low if low else range_high)
+factor = 0.5
+fig = corner.corner(zltn_results, 
+	labels = ["$A_V$", "$\\mu$", "$\\theta$"], 
+	range=range_low if low else range_high, 
+	label_kwargs = {'fontsize':16})
+corner.corner(mcmc_results,  color = 'r', fig = fig, 
+	range=range_low if low else range_high)
+corner.corner(laplace_results, color = 'g', fig = fig, 
+	range=range_low if low else range_high)
+corner.corner(multinormal_results, color = 'b', fig = fig, 
+	range=range_low if low else range_high)
 
 
 colors = ['r', 'k', 'b', 'g']

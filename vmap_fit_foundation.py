@@ -14,7 +14,7 @@ model = SEDmodel(load_model='T21_model')
 dataset = 'T21_training_set'
 
 output_title = 'foundation'
-todays_date = '011724'
+todays_date = '032624'
 
 epsilons_on = True # this doesn't work need to fix it
 
@@ -28,7 +28,7 @@ start = timeit.default_timer()
 
 
 model.process_dataset('foundation', 'data/lcs/tables/' + dataset + '.txt', 'data/lcs/meta/' + dataset + '_meta.txt',
-                      filt_map_dict, data_mode='flux', sn_list = 'temp_sn_list.txt')
+                      filt_map_dict, data_mode='flux')
 
 
 def postprocess_add_mu(model, samples):
@@ -49,35 +49,45 @@ def postprocess_add_mu(model, samples):
     samples['delM'] = delM
     return samples
 
-start = timeit.default_timer()
 
 def vmap_over_method(method, keyword):
     print(keyword)
     vmap_object = jax.vmap(method, in_axes=(2, 0))
-    results = vmap_object(model.data, model.band_weights)
-    best_params, last_params, best_samples, last_samples = results
-    best_samples = postprocess_add_mu(model, best_samples)
-    last_samples = postprocess_add_mu(model, last_samples)
+    samples = vmap_object(model.data, model.band_weights)
+    samples = postprocess_add_mu(model, samples)
+    # results = vmap_object(model.data, model.band_weights)
+    # best_params, last_params, best_samples, last_samples = results
+    # best_samples = postprocess_add_mu(model, best_samples)
+    # last_samples = postprocess_add_mu(model, last_samples)
 
-    print(best_params['auto_loc'])
+    # print(best_params['auto_loc'])
     # print(best_params['auto_loc'].shape, last_params['auto_loc'].shape, samples['mu'].shape)
     # print(samples['AV'])
-    # np.save("foundation_results/foundation_vmap_" + keyword + "_" + todays_date + "_samples.npy", samples)
+    np.save("foundation_results/foundation_vmap_" + keyword + "_" + todays_date + "_samples.npy", samples)
     # np.save("foundation_results/foundation_vmap_" + keyword + "_" + todays_date + "_bestparams.npy", best_params)
     # np.save("foundation_results/foundation_vmap_" + keyword + "_" + todays_date + "_lastparams.npy", last_params)
 
-# vmap_over_method(model.fit_laplace_vmap, 'laplace')
-# laplace_time = timeit.default_timer()
-# print(laplace_time - start)
+
+start = timeit.default_timer()
+
+
+vmap_over_method(model.fit_mcmc_vmap, 'mcmc')
+mcmc_time = timeit.default_timer()
+print("MCMC:", mcmc_time - start)
+
+
+vmap_over_method(model.fit_laplace_vmap, 'laplace')
+laplace_time = timeit.default_timer()
+print(laplace_time - mcmc_time)
 
 vmap_over_method(model.fit_zltn_vmap, 'zltn')
-# zltn_time = timeit.default_timer()
-# print(zltn_time - laplace_time)
+zltn_time = timeit.default_timer()
+print(zltn_time - laplace_time)
 
 
-# vmap_over_method(model.fit_multivariatenormal_vmap, 'multinormal')
-# multinormal_time = timeit.default_timer()
-# print(multinormal_time - zltn_time)
+vmap_over_method(model.fit_multivariatenormal_vmap, 'multinormal')
+multinormal_time = timeit.default_timer()
+print(multinormal_time - zltn_time)
 
 
 

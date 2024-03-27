@@ -1150,10 +1150,22 @@ class SEDmodel(object):
         # calculate PSIS test statistics as in Yao et al. (2018)
         log_importance_ratios = np.squeeze((np.array(joint_log_probs)) - np.squeeze(np.array(surrogate_probs)))
 
+        # Here I tried to use the built-in log_importance_weights function
+        # but it returns a dictionary based on sample loc which is not what we want
+        # importance_ratios = []
+        # for i in range(num_samples):
+        #     param_samples = {k:posterior_samples[k][i] for k in posterior_samples.keys()}
+        #     model_log_probs, guide_log_probs = numpyro.infer.elbo.get_importance_log_probs(model, 
+        #                 guide, args=(self.data, self.band_weights), kwargs={}, params=param_samples)
+        #     print(model_log_probs)
+        #     print(guide_log_probs)
+        #     importance_ratios.append(model_log_probs - guide_log_probs)
+
         S = log_importance_ratios.shape[0] # number of samples
         M = -int(np.ceil(np.min([S/5.0, 3.0*np.sqrt(S)]))) - 1
-
+        print(M)
         lw, k = astats._psislw(log_importance_ratios, M, np.log(np.finfo(float).tiny))
+
         return k
 
     def surrogate_probs(self, guide, best_fit_params, posterior_samples):
@@ -1166,7 +1178,7 @@ class SEDmodel(object):
         return surrogate_probs
 
 
-    def fit_vi_get_ks_and_samples(self, model, guide, data, band_weights, optimizer = Adam(0.005), loss=Trace_ELBO(5), num_iterations=30000):
+    def fit_vi_get_ks_and_samples(self, model, guide, data, band_weights, optimizer = Adam(0.005), loss=Trace_ELBO(5), num_iterations=10000):
         svi = SVI(model, guide, optimizer, loss)
 
         init_svi_state = svi.init(PRNGKey(123), data, band_weights)
@@ -1187,8 +1199,9 @@ class SEDmodel(object):
         last_params = {k:svi_states[k][-1] for k in svi_states.keys()}
         predictive = Predictive(guide, params=last_params, num_samples=1000)
         last_samples = predictive(PRNGKey(123), data=None)
-        last_k = self.psis(model, guide, last_params, best_samples)
+        last_k = self.psis(model, guide, last_params, last_samples)
 
+        print(best_k, last_k)
         print(losses[best_index], losses[-1])
 
         return best_k, last_k, best_samples, last_samples
@@ -1210,18 +1223,7 @@ class SEDmodel(object):
 
     def fit_with_vi_laplace(self, output, epsilons_on, model_path=None, init_strategy='median'):
         """
-        Parameters
-        ----------
-        output: str
-            Name of output directory which will store results
-        model_path: str, optional
-            Name of directory containing model parameters to use for fitting. I'm using this for now to keep my
-            numpyro trained models separate from T21/M20/W22 etc. until we're confident with them. Defaults to None,
-            which means that the model loaded when initialising the SEDmodel object is used.
-            Strategy to use for initialisation, default to median. Options are:
-            ``'median'`` | Chains are initialised to prior media
-            ``'sample'`` | Chains are initialised to a random sample from the priors
-
+        This method has devolved into a sort of playground for me to test out things
         """
         if init_strategy == 'median':
             init_strategy = init_to_median()
@@ -1280,7 +1282,6 @@ class SEDmodel(object):
         new_init_dict = {k:jnp.array(laplace_median[k]) for k in sample_locs if k in laplace_median}
 
         zltn_guide = AutoMultiZLTNGuide(model, init_loc_fn=init_to_value(values=new_init_dict))
-        # guide = AutoMultivariateNormal(model, init_loc_fn=init_to_value(values=new_init_dict))
 
         optimizer = Adam(0.005)
 
@@ -1303,7 +1304,7 @@ class SEDmodel(object):
             params, losses = svi_result.params, svi_result.losses
             print(losses[-1])
             last_losses.append(losses[-1])
-            predictive = Predictive(zltn_guide, params=params, num_samples=100000)
+            predictive = Predictive(zltn_guide, params=params, num_samples=1000)
             samples = predictive(PRNGKey(123), data=None)
             # self.fit_postprocess_samples(samples, output + "_" + str(i))
             k = self.psis(model, zltn_guide, params, samples)
@@ -1372,6 +1373,65 @@ class SEDmodel(object):
         # self.fit_postprocess_params(zltn_guide, params, output)
 
 
+    def fit_zltn_get_ks(self, data, band_weights, epsilons_on = True, model_path=None):
+        """
+        Parameters
+        ----------
+        output: str
+            Name of output directory which will store results
+        model_path: str, optional
+            Name of directory containing model parameters to use for fitting. I'm using this for now to keep my
+            numpyro trained models separate from T21/M20/W22 etc. until we're confident with them. Defaults to None,
+            which means that the model loaded when initialising the SEDmodel object is used.
+            Strategy to use for initialisation, default to median. Options are:
+            ``'median'`` | Chains are initialised to prior media
+            ``'sample'`` | Chains are initialised to a random sample from the priors
+
+        """
+        init_strategy = init_to_median()
+
+        if model_path is not None:
+            with open(os.path.join('results', model_path, 'chains.pkl'), 'rb') as file:
+                result = pickle.load(file)
+            self.W0 = device_put(
+                np.reshape(np.mean(result['W0'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            self.W1 = device_put(
+                np.reshape(np.mean(result['W1'], axis=(0, 1)), (self.l_knots.shape[0], self.tau_knots.shape[0]),
+                           order='F'))
+            # sigmaepsilon = np.mean(result['sigmaepsilon'], axis=(0, 1))
+            # L_Omega = np.mean(result['L_Omega'], axis=(0, 1))
+            # self.L_Sigma = device_put(jnp.matmul(jnp.diag(sigmaepsilon), L_Omega))
+            self.Rv = device_put(np.mean(result['Rv'], axis=(0, 1)))
+            self.sigma0 = device_put(np.mean(result['sigma0'], axis=(0, 1)))
+            self.tauA = device_put(np.mean(result['tauA'], axis=(0, 1)))
+
+        optimizer = Adam(0.01)
+
+        # if epsilons_on:
+        model = self.fit_model_vi
+        # else:
+        #     model = self.fit_model_vi_no_eps
+
+        start = timeit.default_timer()
+        sample_locs = ['AV', 'theta', 'tmax', 'eps_tform', 'Ds']
+        # First start with the Laplace Approximation
+        laplace_guide = AutoLaplaceApproximation(model, init_loc_fn=init_strategy)
+        svi = SVI(model, laplace_guide, optimizer, loss=Trace_ELBO(5))
+        
+        svi_result = svi.run(PRNGKey(123), 15000, data,band_weights, progress_bar=False)
+        params, losses = svi_result.params, svi_result.losses
+        laplace_median = laplace_guide.median(params)
+
+        # Now initialize the ZLTN guide on the Laplace Approximation median (just for AV, theta, and mu)
+        new_init_dict = {k:jnp.array([laplace_median[k][0]]) for k in sample_locs if k in laplace_median}
+        zltn_guide = AutoMultiZLTNGuide(model, init_loc_fn=init_to_value(values=new_init_dict))
+
+        best_k, last_k, best_samples, last_samples = self.fit_vi_get_ks_and_samples(model, zltn_guide, data, band_weights)
+
+        return best_k, last_k, best_samples, last_samples
+
+
     def fit_zltn_vmap(self, data, band_weights, epsilons_on = True, model_path=None):
         """
         Parameters
@@ -1421,9 +1481,6 @@ class SEDmodel(object):
         svi_result = svi.run(PRNGKey(123), 15000, data[..., None],band_weights[None, ...], progress_bar=False)
         params, losses = svi_result.params, svi_result.losses
         laplace_median = laplace_guide.median(params)
-
-        # print("Laplace params")
-        # print(params)
 
         # Now initialize the ZLTN guide on the Laplace Approximation median (just for AV, theta, and mu)
         new_init_dict = {k:jnp.array([laplace_median[k][0]]) for k in sample_locs if k in laplace_median}
