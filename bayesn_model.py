@@ -670,7 +670,9 @@ class SEDmodel(object):
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
 
         with numpyro.plate('SNe', sample_size) as sn_index:
-            Av = numpyro.sample(f'AV', My_Exponential(1 / self.tauA))
+            # Av = numpyro.sample(f'AV', My_Exponential(1 / self.tauA)) TODO CHANGE THIS BACK
+            Av = numpyro.sample(f'AV', dist.Uniform(-10, 10))
+
             # print("Model AV:", Av)
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
             # Rv = numpyro.sample('Rv', dist.Normal(self.mu_R, self.sigma_R))
@@ -786,7 +788,8 @@ class SEDmodel(object):
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
 
         with numpyro.plate('SNe', sample_size) as sn_index:
-            Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA))
+            # Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA)) # TODO CHANGE THIS BACK
+            Av = numpyro.sample(f'AV', dist.Uniform(-10, 10))
             # print("Model AV:", Av)
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
             # Rv = numpyro.sample('Rv', dist.Normal(self.mu_R, self.sigma_R))
@@ -1163,7 +1166,7 @@ class SEDmodel(object):
 
         S = log_importance_ratios.shape[0] # number of samples
         M = -int(np.ceil(np.min([S/5.0, 3.0*np.sqrt(S)]))) - 1
-        print(M)
+        # print(M)
         lw, k = astats._psislw(log_importance_ratios, M, np.log(np.finfo(float).tiny))
 
         return k
@@ -1178,7 +1181,7 @@ class SEDmodel(object):
         return surrogate_probs
 
 
-    def fit_vi_get_ks_and_samples(self, model, guide, data, band_weights, optimizer = Adam(0.005), loss=Trace_ELBO(5), num_iterations=10000):
+    def fit_vi_get_ks_and_samples(self, model, guide, data, band_weights, optimizer = Adam(0.005), loss=Trace_ELBO(5), num_iterations=10000, num_samples=1000):
         svi = SVI(model, guide, optimizer, loss)
 
         init_svi_state = svi.init(PRNGKey(123), data, band_weights)
@@ -1192,12 +1195,12 @@ class SEDmodel(object):
 
         best_index = np.argmin(losses)
         best_params = {k:svi_states[k][best_index] for k in svi_states.keys()}
-        predictive = Predictive(guide, params=best_params, num_samples=1000)
+        predictive = Predictive(guide, params=best_params, num_samples=num_samples)
         best_samples = predictive(PRNGKey(123), data=None)
         best_k = self.psis(model, guide, best_params, best_samples)
 
         last_params = {k:svi_states[k][-1] for k in svi_states.keys()}
-        predictive = Predictive(guide, params=last_params, num_samples=1000)
+        predictive = Predictive(guide, params=last_params, num_samples=num_samples)
         last_samples = predictive(PRNGKey(123), data=None)
         last_k = self.psis(model, guide, last_params, last_samples)
 
@@ -1427,7 +1430,7 @@ class SEDmodel(object):
         new_init_dict = {k:jnp.array([laplace_median[k][0]]) for k in sample_locs if k in laplace_median}
         zltn_guide = AutoMultiZLTNGuide(model, init_loc_fn=init_to_value(values=new_init_dict))
 
-        best_k, last_k, best_samples, last_samples = self.fit_vi_get_ks_and_samples(model, zltn_guide, data, band_weights)
+        best_k, last_k, best_samples, last_samples = self.fit_vi_get_ks_and_samples(model, zltn_guide, data, band_weights, num_samples=5000)
 
         return best_k, last_k, best_samples, last_samples
 

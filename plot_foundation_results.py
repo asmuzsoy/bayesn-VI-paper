@@ -78,14 +78,18 @@ for i in range(num_to_plot):
 	if np.isnan(zltn_result.point_estimates['AV'][i]):
 		print(i, sn_names[i])
 
-best_ks = np.loadtxt("foundation_results/best_ks_013024.txt")
-last_ks = np.loadtxt("foundation_results/last_ks_013024.txt")
+best_ks = np.loadtxt("foundation_results/best_ks_032824.txt")
+last_ks = np.loadtxt("foundation_results/last_ks_032824.txt")
 
-best_samples = np.load("foundation_results/best_samples_013024.npz", allow_pickle = True)['arr_0']
-last_samples = np.load("foundation_results/last_samples_013024.npz", allow_pickle = True)['arr_0']
+best_samples = np.load("foundation_results/best_samples_032824.npz", allow_pickle = True)['arr_0']
+last_samples = np.load("foundation_results/last_samples_032824.npz", allow_pickle = True)['arr_0']
 
 best_mu_medians = np.array([np.median(best_samples[i]['Ds']) for i in range(num_to_plot)])
 last_mu_medians = np.array([np.median(last_samples[i]['Ds']) for i in range(num_to_plot)])
+
+best_mu_std = np.array([np.std(best_samples[i]['Ds']) for i in range(num_to_plot)])
+last_mu_std = np.array([np.std(last_samples[i]['Ds']) for i in range(num_to_plot)])
+
 
 fig, ax = plt.subplots()
 t = ax.scatter(best_ks, last_ks, c = best_mu_medians - last_mu_medians, cmap='bwr')
@@ -108,6 +112,40 @@ plt.xlabel("k from best loss params")
 plt.ylabel("k from last iteration params")
 plt.show()
 
+
+plt.scatter(best_ks, last_ks, c = best_mu_std - last_mu_std, cmap='bwr')
+linspace_vals = np.linspace(0.3, 1.3)
+plt.plot(linspace_vals,linspace_vals, 'k')
+cbar = plt.colorbar()
+cbar.set_label('$D_{s, best} - \\mu(z)$')
+plt.xlabel("k from best loss params")
+plt.ylabel("k from last iteration params")
+plt.show()
+
+plt.plot(best_ks - last_ks, best_mu_std - last_mu_std, 'o')
+plt.xlabel("delta k (best - last)")
+plt.ylabel("delta stdev (best - last)")
+plt.show()
+
+fig = plt.figure()
+plt.plot(last_ks, last_mu_medians - mcmc_result.point_estimates['mu'], 'o')
+plt.axvline(0.7, linestyle='dashed', color='k')
+plt.xlabel("$\\hat{k}$", fontsize = 14)
+plt.ylabel("ZLTN VI $\\mu$ - MCMC $\\mu$", fontsize = 14)
+fig.savefig("figures/khat_mu_comparison.pdf", bbox_inches = 'tight')
+plt.show()
+
+plt.plot(last_ks, last_mu_medians - np.array([cosmo.distmod(z).value for z in zcmbs]), 'o')
+plt.xlabel("$\hat{k}$")
+plt.ylabel("VI $\mu$ - $\\mu(z)$")
+plt.show()
+
+
+# regularized_k = (96 * last_ks + 10*0.5) / (96 + 10)
+# plt.plot(regularized_k, last_mu_medians - mcmc_result.point_estimates['mu'], 'o')
+# plt.xlabel("$\hat{k}$")
+# plt.ylabel("VI $\mu$ - MCMC $\mu$")
+# plt.show()
 
 # VI vs MCMC subplots
 alpha = 0.2
@@ -137,7 +175,6 @@ for i, var in enumerate(['mu', 'theta', 'AV']):
 	# ax[2][i].axhline(0, color = 'k')
 	# ax[2][i].set_ylabel('Residual ' + latex_version[var] + ' (VI - MCMC)', fontsize = axis_fontsize)
 
-# py
 
 for axis in ax.flatten():
   axis.tick_params(axis='x', labelsize=12)
@@ -244,6 +281,10 @@ fig.savefig("figures/hubble_diagram_multinormal.pdf", bbox_inches='tight')
 fig = plot_hubble_distances_and_residuals(laplace_result.point_estimates['mu'], laplace_result.variances['mu'], zcmbs)
 plt.show()
 fig.savefig("figures/hubble_diagram_laplace.pdf", bbox_inches='tight')
+
+fig = plot_hubble_distances_and_residuals(mcmc_result.point_estimates['mu'], mcmc_result.variances['mu'], zcmbs)
+plt.show()
+fig.savefig("figures/hubble_diagram_mcmc.pdf", bbox_inches='tight')
 
 
 print(mcmc_result.stds['mu'])

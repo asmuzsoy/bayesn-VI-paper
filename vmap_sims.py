@@ -8,11 +8,11 @@ from jax.random import PRNGKey, normal
 import pandas as pd
 import timeit
 
-todays_date = '022824'
+todays_date = '040424'
 
 model = SEDmodel(load_model='T21_model')
 
-dataset = 'sim_population_29'
+dataset = 'sim_population_28'
 	
 filt_map_dict = {'g': 'g_PS1', 'r': 'r_PS1', 'i': 'i_PS1', 'z': 'z_PS1'}
 
@@ -48,7 +48,7 @@ def vmap_over_method(method, keyword):
     best_samples = vmap_object(model.data, model.band_weights)
     best_samples = postprocess_add_mu(model, best_samples)
 
-    np.save("sim29_vmap_" + keyword + "_" + todays_date + "_samples.npy", best_samples)
+    np.save("sim28_vmap_" + keyword + "_" + todays_date + "_samples.npy", best_samples)
     # np.save("sim28_vmap_" + keyword + "_" + todays_date + "_bestparams.npy", best_params)
     # np.save("sim28_vmap_" + keyword + "_" + todays_date + "_lastparams.npy", last_params)
 

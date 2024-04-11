@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
+from matplotlib.colors import TwoSlopeNorm
 from astropy.cosmology import FlatLambdaCDM
 import pickle
 import numpy as np
@@ -9,9 +10,9 @@ from scipy import special, stats
 fiducial_cosmology={"H0": 73.24, "Om0": 0.28}
 cosmo = FlatLambdaCDM(**fiducial_cosmology)
 
-num_to_plot = 1000
+num_to_plot = 500
 
-dataset_number=29
+dataset_number=28
 
 av_stat = 'median'
 
@@ -42,35 +43,16 @@ class Result:
     self.stds = {var: np.std(self.samples_dict[var], axis=1) for var in self.samples_dict.keys()}
     self.variances = {var: np.var(self.samples_dict[var], axis=1) for var in self.samples_dict.keys()}
 
-zltn_result = Result("sim29_vmap_zltn_022824_samples.npy", av_metric=av_stat)
-mcmc_result = Result("sim29_vmap_mcmc_022824_samples.npy")
-laplace_result = Result("sim29_vmap_laplace_022824_samples.npy")
-multinormal_result = Result("sim29_vmap_multinormal_022824_samples.npy")
+# zltn_result = Result("sim29_vmap_zltn_022824_samples.npy", av_metric=av_stat)
+# mcmc_result = Result("sim29_vmap_mcmc_022824_samples.npy")
+# laplace_result = Result("sim29_vmap_laplace_022824_samples.npy")
+# multinormal_result = Result("sim29_vmap_multinormal_022824_samples.npy")
 
+mcmc_result = Result("sim28_vmap_mcmc_020524_samples.npy")
+zltn_result = Result("sim28_vmap_zltn_040424_samples.npy")
+laplace_result = Result("sim28_vmap_laplace_040424_samples.npy")
+multinormal_result = Result("sim28_vmap_multinormal_040424_samples.npy")
 
-print(sum((laplace_result.av_samples).flatten() < 0))
-
-fig, ax = plt.subplots(1,2, figsize=(8,4))
-ax[0].plot(true_mus, mcmc_result.point_estimates['mu'] - true_mus, 'o')
-ax[0].axhline(np.median(mcmc_result.point_estimates['mu'] - true_mus), linestyle='dashed', label='median residual')
-ax[0].axhline(0, color='k')
-ax[0].set_title("AV Constrained to be positive")
-ax[0].set_ylim(-0.5, 0.5)
-ax[0].set_xlabel("True $\\mu$")
-ax[0].set_ylabel("MCMC Fit $\\mu$")
-ax[0].legend()
-
-
-# mcmc_result_negative = Result("sim28_vmap_mcmc_020824_NEGATIVE_samples.npy")
-# ax[1].plot(true_mus, mcmc_result_negative.point_estimates['mu'] - true_mus, 'o')
-# ax[1].axhline(np.median(mcmc_result_negative.point_estimates['mu'] - true_mus), linestyle='dashed', label='median residual')
-# ax[1].set_title("AV not constrained to be positive")
-# ax[1].axhline(0, color='k')
-# ax[1].set_ylim(-0.5, 0.5)
-# ax[1].set_xlabel("True $\\mu$")
-# ax[1].set_ylabel("MCMC Fit $\\mu$")
-# ax[1].legend()
-# plt.show()
 
 labels = ['MCMC', 'ZLTN', 'Multivariate Normal', 'Laplace Approximation']
 latex_version = {'mu': '$\\mu$', 'theta': '$\\theta$', 'AV': '$A_V$'}
