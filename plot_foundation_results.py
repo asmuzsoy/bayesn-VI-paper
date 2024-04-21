@@ -246,7 +246,7 @@ def plot_hubble_distances_and_residuals(mus, variances, z_cmbs, linspace_z = lin
   ax[0].set_ylabel("$\\mu$", fontsize = 14)
   plt.text(0.07, 1.0, "Foundation DR1", fontsize = 16, horizontalalignment = 'center')
   plt.text(0.07, 0.9, "N = " + str(len(z_cmbs)), fontsize = 16, horizontalalignment = 'center')
-  plt.text(0.07, 0.8, "RMSE = " + str(round(rmse,4)), fontsize = 16, horizontalalignment = 'center')
+  plt.text(0.07, 0.8, "RMSE = " + '{:.3f}'.format(round(rmse, 3)), fontsize = 16, horizontalalignment = 'center')
 
 
   sigma_pec = 150

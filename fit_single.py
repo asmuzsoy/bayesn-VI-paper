@@ -31,9 +31,10 @@ model.process_dataset('foundation', 'data/lcs/tables/' + dataset + '.txt', 'data
 #model.process_dataset('YSE_full', 'data/lcs/tables/YSEfull_table.txt', 'data/lcs/meta/YSEfull_meta.txt', data_mode='flux',
 #                      map_dict=filt_map_dict)
 
-# print("Fitting MCMC...")
-# model.fit(250, 250, 4, dataset + '_mcmc', chain_method='parallel', init_strategy='median')
+print("Fitting MCMC...")
+model.fit(250, 250, 4, dataset + '_mcmc', chain_method='parallel', init_strategy='median', epsilons_on=True)
 
+print(x)
 print("Fitting VI...")
 # model.fit_with_vi(dataset + '_vi', init_strategy='median')
 # model.fit_with_vi_verbose(str(dataset) + '_vi', init_strategy='median', epsilons_on = True)

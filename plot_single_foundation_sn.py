@@ -130,15 +130,26 @@ range_low = [(-0.01,0.2), (36.5, 37.5), (0.7,2.5)]
 range_high = [(0.4, 1), (35, 35.8), (-1.6,-0.2)]
 factor = 0.5
 fig = corner.corner(zltn_results, 
-	labels = ["$A_V$", "$\\mu$", "$\\theta$"], 
+	labels = ["$A_V$", "$\\mu$", "$\\theta_1$"], 
 	range=range_low if low else range_high, 
-	label_kwargs = {'fontsize':16})
+	label_kwargs = {'fontsize':18})
 corner.corner(mcmc_results,  color = 'r', fig = fig, 
 	range=range_low if low else range_high)
 corner.corner(laplace_results, color = 'g', fig = fig, 
 	range=range_low if low else range_high)
 corner.corner(multinormal_results, color = 'b', fig = fig, 
 	range=range_low if low else range_high)
+axes = fig.get_axes()
+for ax in axes:
+	# print(ax.get_xticks())
+	ax.tick_params(axis='both', labelsize=14)
+
+# remove a pesky label that looks bad
+if low:
+	axes[6].set_xticks(axes[6].get_xticks()[:-1])
+else:
+	axes[3].set_yticks(axes[3].get_yticks()[:-1])
+	axes[7].set_xticks(axes[7].get_xticks()[:-1])
 
 
 colors = ['r', 'k', 'b', 'g']
@@ -150,8 +161,9 @@ plt.legend(
         mlines.Line2D([], [], color=colors[i], label=labels[i])
         for i in range(len(labels))
     ],
-    fontsize=16, frameon=False, bbox_to_anchor=(0.8, 3), loc="upper right"
+    fontsize=18, frameon=False, bbox_to_anchor=(1, 3), loc="upper right"
 )
+plt.tight_layout()
 
 plt.show()
 fig_name = "foundation_single_low.pdf" if low else "foundation_single_high.pdf"

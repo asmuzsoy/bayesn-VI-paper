@@ -41,6 +41,7 @@ from tqdm import tqdm
 import arviz.stats.stats as astats
 from zltn_utils import *
 import timeit
+import arviz
 
 # Make plots look pretty
 rc('font', **{'family': 'serif', 'serif': ['cmr10']})
