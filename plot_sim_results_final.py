@@ -70,11 +70,11 @@ for i, samples in enumerate([mcmc_result.samples_dict, zltn_result.samples_dict,
 			ratios.append(np.sum(mask)/num_samples_per_sn) # divide by 1000 samples per SN
 		
 		p = stats.ks_2samp(ratios, 1 - np.array(ratios)).pvalue
-		print(var, p)
+		# print(var, p)
 		# p = stats.skewtest(ratios).pvalue
-		ax[k][i].hist(ratios, bins=20, weights = 1/num_to_plot * np.ones(num_to_plot), color='teal')
+		ax[k][i].hist(ratios, bins=20, weights = 1/num_to_plot * np.ones(num_to_plot))
 
-		ax[k][i].axvline(np.mean(ratios), linestyle ='dashed', color='teal')
+		ax[k][i].axvline(np.mean(ratios), linestyle ='dashed')
 		ax[k][i].axvline(0.5, linestyle ='solid', color='k', lw=0.6)
 		# ax[k][i].set_ylim(0, 0.35)
 		p_coords = (0.08, 0.9)
@@ -113,7 +113,7 @@ fig.savefig("figures/vsbc.pdf", bbox_inches='tight')
 
 
 # zltn vs true subplots
-alpha = 0.2
+alpha = 0.5
 mcmc_color = 'r'
 vi_color = 'b'
 axis_fontsize = 12
@@ -123,34 +123,49 @@ axlims = {'mu': (-0.075, 0.08), 'theta': (-0.2, 0.02), 'AV': (-0.02, 0.035)}
 
 def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title, filename=None):
 	fig, ax = plt.subplots(3,3, figsize = (9,9), 
-		gridspec_kw = {'hspace':0, 'wspace':0.6}, sharex='col')
+		gridspec_kw = {'hspace':0, 'wspace':0.33}, sharex='col')
 
 	for i, var in enumerate(['mu', 'theta', 'AV']):
 		print(var)
-		ax[0][i].plot(true_values[var], point_estimates[var], '.', alpha=alpha, c=vi_color, label=title)
 		ax[0][i].plot(true_values[var], mcmc_result.point_estimates[var], 'o', fillstyle='none', c=mcmc_color, alpha=alpha, label='MCMC')
-		ax[0][i].errorbar(true_values[var], point_estimates[var], yerr = uncertainties[var], alpha=alpha, c=vi_color, linestyle='None')
+		ax[0][i].plot(true_values[var], point_estimates[var], '.', alpha=alpha, c=vi_color, label=title)
 		ax[0][i].errorbar(true_values[var], mcmc_result.point_estimates[var], yerr = mcmc_result.stds[var], c=mcmc_color, alpha=alpha, linestyle='None')
+		ax[0][i].errorbar(true_values[var], point_estimates[var], yerr = uncertainties[var], alpha=alpha, c=vi_color, linestyle='None')
 		linspace_vals = np.linspace(min(true_values[var]), max(true_values[var]))
 		ax[0][i].plot(linspace_vals, linspace_vals, c='k')
-		ax[0][i].set_ylabel('Fit '+ latex_version[var], fontsize = axis_fontsize)
+		if i == 0:
+			ax[0][i].set_ylabel('Fit value', fontsize = axis_fontsize)
+		ax[0][i].set_title(latex_version[var])
 		ax[0][i].legend()
 		if var=='AV':
 			ax[0][i].set_xscale('log')
+		# 	ax[1][i].set_xscale('log')
+		# 	ax[2][i].set_xscale('log')
 		# 	ax[0][i].set_yscale('log')
 
-
-		ax[1][i].plot(true_values[var], point_estimates[var] - true_values[var], '.', alpha=alpha, c = vi_color, label=title)
 		ax[1][i].plot(true_values[var], mcmc_result.point_estimates[var] - true_values[var], 'o', fillstyle='none', c=mcmc_color, alpha=alpha, label='MCMC')
-		ax[1][i].errorbar(true_values[var], point_estimates[var] - true_values[var], yerr = uncertainties[var], alpha=alpha, c=vi_color, linestyle='None')
+		ax[1][i].plot(true_values[var], point_estimates[var] - true_values[var], '.', alpha=alpha, c = vi_color, label=title)
 		ax[1][i].errorbar(true_values[var], mcmc_result.point_estimates[var] - true_values[var], yerr = mcmc_result.stds[var], c=mcmc_color, alpha=alpha, linestyle='None')
+
+		ax[1][i].errorbar(true_values[var], point_estimates[var] - true_values[var], yerr = uncertainties[var], alpha=alpha, c=vi_color, linestyle='None')
 		ax[1][i].axhline(0, color = 'k')
-		ax[1][i].set_ylabel('Residual ' + latex_version[var] + ' (fit - true)', fontsize = axis_fontsize)
-		ax[1][i].legend()
+		if i == 0:
+			ax[1][i].set_ylabel('Residual (fit - true)', fontsize = axis_fontsize)
+		# ax[1][i].legend()
 		# if var=='AV':
 		# 	ax[1][i].set_xscale('log')
 
-		ax[2][i].plot(true_values[var], point_estimates[var] - mcmc_result.point_estimates[var], 'o', color='gray', alpha = alpha)
+		# plot a few, evenly spaced representative error bars
+		num_vals = 10
+		if var=='AV':
+			vals = np.logspace(np.log10(min(true_values[var])), np.log10(max(true_values[var])), num_vals)
+		else:
+			vals = np.linspace(min(true_values[var]), max(true_values[var]), num_vals)
+		idx = np.array([np.argsort(np.abs(true_values[var] - q))[0] for q in vals])
+		ax[2][i].errorbar(true_values[var][idx], np.zeros_like(true_values[var])[idx], yerr = mcmc_result.stds[var][idx], color='r', alpha=0.1)
+
+		ax[2][i].plot(true_values[var], point_estimates[var] - mcmc_result.point_estimates[var], 'o', color='gray', alpha = 0.3)
+		ax[2][i].axhline(np.median(point_estimates[var] - mcmc_result.point_estimates[var]), color='k', linestyle='dashed')
 		
 		# ax[2][i].plot(true_values[var], (point_estimates[var] - mcmc_result.point_estimates[var])/mcmc_result.stds[var], 'o', color='gray', alpha = alpha)
 
@@ -158,14 +173,15 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title, filena
 		# ax[2][i].errorbar(true_values[var], point_estimates[var] - mcmc_result.point_estimates[var], yerr = np.max([zltn_result.stds[var], mcmc_result.stds[var]]), c='gray', linestyle='None')
 		# ax[2][i].set_ylim(axlims[var])
 		ax[2][i].axhline(0, color = 'k')
-		ax[2][i].set_ylabel('Residual ' + latex_version[var] + ' (' + title + ' - MCMC)', fontsize = axis_fontsize)
+		if i==0:
+			ax[2][i].set_ylabel('Residual (' + title + ' - MCMC)', fontsize = axis_fontsize)
 
 		# ax[2][i].set_ylabel('Res. ' + latex_version[var] + ' (' + title + ' - MCMC) / $\\sigma$(MCMC)', fontsize = axis_fontsize)
 		ax[2][i].set_xlabel('True ' + latex_version[var], fontsize = axis_fontsize)
 		# if var=='AV':
 		# 	ax[2][i].set_xscale('log')
 
-		ax[2][2].set_yticks([0.01, 0, -0.01])
+		# ax[2][2].set_yticks([0.01, 0, -0.01])
 		# ax[2][2].set_xticks([0, 0.5,  1, 1.5])
 	# ax[0][0].annotate("$\\mu$: median", (36, 34.5), fontsize = 16)
 	# ax[0][1].annotate("$\\theta$: median", (0,-1.5), fontsize = 16)
@@ -181,7 +197,7 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title, filena
 	  axis.tick_params(axis='y', labelsize=12)
 
 	# fig.annotate("$N_{SN} = 1000$", (0.85, 0.97), xycoords='axes fraction')
-	ax[2][2].text(0.4,0.05, "$N_{SN} = 1000$", transform=ax[2][2].transAxes, 
+	ax[0][0].text(0.45,0.05, "$N_{SN} = 1000$", transform=ax[0][0].transAxes, 
             size=12)
 	plt.tight_layout()
 	plt.show()
@@ -189,9 +205,18 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title, filena
 	if filename is not None:
 		fig.savefig(filename, bbox_inches = 'tight')
 
+	# var = 'AV'
+	# plt.plot(true_values[var], (point_estimates[var] - mcmc_result.point_estimates[var]), 'o')
+	# plt.fill_between(true_values[var],0, mcmc_result.stds[var], alpha=0.2)
+	# plt.xlabel("True AV", fontsize=16)
+	# plt.ylabel("$\\frac{ZLTN-MCMC}{\sigma(MCMC)}$", fontsize=16)
+	# plt.title(title)
+	# plt.show()
+
 
 	# plt.plot(point_estimates['mu'] - mcmc_result.point_estimates['mu'], point_estimates['theta'] - mcmc_result.point_estimates['theta'], 'o')
 	# plt.show()
+
 
 def plot_marginal_zscores(point_estimates, point_estimates2, title1, title2, filename=None):
 	# fig, ax = plt.subplots(3,3, figsize = (9,9), 
@@ -219,13 +244,14 @@ def plot_marginal_zscores(point_estimates, point_estimates2, title1, title2, fil
 	if filename is not None:
 		fig.savefig(filename, bbox_inches = 'tight')
 
-plot_marginal_zscores(zltn_result.point_estimates,None, title1 = "ZLTN", title2="MN", filename='figures/zltn_zscores.pdf')
+#plot_marginal_zscores(zltn_result.point_estimates,None, title1 = "ZLTN", title2="MN", filename='figures/zltn_zscores.pdf')
 
 plot_compare_to_mcmc_and_truth(zltn_result.point_estimates, zltn_result.stds, title = "ZLTN", filename='figures/zltn_mcmc_sims.pdf')
+
 plot_compare_to_mcmc_and_truth(multinormal_result.point_estimates, multinormal_result.stds, title = "MN", filename='figures/multiinormal_mcmc_sims.pdf')
+
+
 print(x)
-
-
 
 
 plot_compare_to_mcmc_and_truth(laplace_result.point_estimates, laplace_result.stds, title = "Laplace", filename='figures/laplace_mcmc_sims.pdf')
