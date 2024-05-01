@@ -13,7 +13,7 @@ dataset = 'T21_training_set'
 sn_list = pd.read_csv('data/lcs/tables/' + dataset + '.txt', comment='#', delim_whitespace=True, names=['sn', 'source', 'files'])
 sn_names = (sn_list.sn.values)
 
-low = False
+low = True
 if low:
 	sn_number = 148
 else:
@@ -77,25 +77,25 @@ multinormal_results = np.array(multinormal_results).T
 # range_high = [(0.4, 1), (35, 35.8), (-1.6,-0.2)]
 # smoothing = 1.1
 
-# fig, ax = stephen_corner(zltn_results.T, 
-# 			names=["$A_V$", "$\\mu$", "$\\theta$"], 
-# 			colour = 'k', 
-# 			lims=range_low if low else range_high, 
+# fig, ax = stephen_corner(zltn_results.T,
+# 			names=["$A_V$", "$\\mu$", "$\\theta$"],
+# 			colour = 'k',
+# 			lims=range_low if low else range_high,
 # 			bounds=bounds, smoothing=smoothing)
-# fig, ax = stephen_corner(mcmc_results.T, 
-# 			names=["$A_V$", "$\\mu$", "$\\theta$"], 
-# 				fig_ax = (fig, ax), colour = 'red', 
-# 				lims=range_low if low else range_high, 
+# fig, ax = stephen_corner(mcmc_results.T,
+# 			names=["$A_V$", "$\\mu$", "$\\theta$"],
+# 				fig_ax = (fig, ax), colour = 'red',
+# 				lims=range_low if low else range_high,
 # 				bounds=bounds, smoothing=smoothing)
-# fig, ax = stephen_corner(laplace_results.T, 
-# 			names=["$A_V$", "$\\mu$", "$\\theta$"], 
-# 			fig_ax = (fig, ax), colour = 'g', 
-# 			lims=range_low if low else range_high, 
+# fig, ax = stephen_corner(laplace_results.T,
+# 			names=["$A_V$", "$\\mu$", "$\\theta$"],
+# 			fig_ax = (fig, ax), colour = 'g',
+# 			lims=range_low if low else range_high,
 # 			smoothing=smoothing)
-# fig, ax = stephen_corner(multinormal_results.T, 
-# 			names=["$A_V$", "$\\mu$", "$\\theta$"], 
-# 				fig_ax = (fig, ax), colour = 'b', 
-# 				lims=range_low if low else range_high, 
+# fig, ax = stephen_corner(multinormal_results.T,
+# 			names=["$A_V$", "$\\mu$", "$\\theta$"],
+# 				fig_ax = (fig, ax), colour = 'b',
+# 				lims=range_low if low else range_high,
 # 				smoothing=smoothing)
 # colors = ['r', 'k', 'b', 'g']
 
@@ -113,7 +113,7 @@ multinormal_results = np.array(multinormal_results).T
 
 # args = (pairplots.Contour(),pairplots.MarginDensity())
 
-# pairplots.pairplot_interactive(zltn_results, mcmc_results, 
+# pairplots.pairplot_interactive(zltn_results, mcmc_results,
 # 	laplace_results, multinormal_results,labels = {
 #     '1':pairplots.latex(r"A_V"),
 #     # Makie rich text
@@ -129,15 +129,15 @@ multinormal_results = np.array(multinormal_results).T
 range_low = [(-0.01,0.2), (36.5, 37.5), (0.7,2.5)]
 range_high = [(0.4, 1), (35, 35.8), (-1.6,-0.2)]
 factor = 0.5
-fig = corner.corner(zltn_results, 
-	labels = ["$A_V$", "$\\mu$", "$\\theta_1$"], 
-	range=range_low if low else range_high, 
+fig = corner.corner(zltn_results,
+	labels = ["$A_V$", "$\\mu$", "$\\theta_1$"],
+	range=range_low if low else range_high,
 	label_kwargs = {'fontsize':24})
-corner.corner(mcmc_results,  color = 'r', fig = fig, 
+corner.corner(mcmc_results,  color = 'r', fig = fig,
 	range=range_low if low else range_high)
-corner.corner(laplace_results, color = 'g', fig = fig, 
+corner.corner(laplace_results, color = 'g', fig = fig,
 	range=range_low if low else range_high)
-corner.corner(multinormal_results, color = 'b', fig = fig, 
+corner.corner(multinormal_results, color = 'b', fig = fig,
 	range=range_low if low else range_high)
 axes = fig.get_axes()
 for ax in axes:
@@ -174,7 +174,7 @@ fig.savefig("figures/" + fig_name, bbox_inches='tight')
 
 
 # Plot comparing to Stephen's MCMC chains
-fig = corner.corner(zltn_results, labels = ["$A_V$", "$\mu$", "$\\theta$"], 
+fig = corner.corner(zltn_results, labels = ["$A_V$", "$\mu$", "$\\theta$"],
 	range=range_low if low else range_high, label_kwargs = {'fontsize':16})
 corner.corner(stephen_data, color = 'r', fig = fig, range=range_low if low else range_high)
 
