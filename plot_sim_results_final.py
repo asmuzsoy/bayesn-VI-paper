@@ -77,16 +77,18 @@ for i, samples in enumerate([mcmc_result.samples_dict, zltn_result.samples_dict,
 		ax[k][i].axvline(np.mean(ratios), linestyle ='dashed')
 		ax[k][i].axvline(0.5, linestyle ='solid', color='k', lw=0.6)
 		# ax[k][i].set_ylim(0, 0.35)
-		p_coords = (0.08, 0.9)
+		p_coords = (0.02, 0.9)
 		if p > 1e-6:
-			ax[k][i].annotate("p = " + '{:.4f}'.format(round(p, 4)),p_coords , xycoords='axes fraction')
+			ax[k][i].annotate("$p_{KS} = $" + '{:.4f}'.format(round(p, 4)),p_coords , xycoords='axes fraction', fontsize=11)
 		else:
-			ax[k][i].annotate("p = " + '{:.2e}'.format(Decimal(p)), p_coords, xycoords='axes fraction')
+			ax[k][i].annotate("$p_{KS} = $" + '{:.2e}'.format(Decimal(p)), p_coords, xycoords='axes fraction', fontsize=11)
 
-		ax[0][i].set_title(labels[i])
-		ax[k][i].set_xlabel(prob_labels[var], fontsize=12)
-		ax[k][0].set_ylabel("Density")
+		ax[0][i].set_title(labels[i], fontsize=18)
+		ax[k][i].set_xlabel(prob_labels[var], fontsize=18)
+		ax[k][0].set_ylabel("Density", fontsize=18)
 		ax[k][i].set_xlim(-0.02,1.02)
+		ax[k][i].tick_params(axis='both', labelsize=14)
+
 
 print(subplots_legend)
 
@@ -148,7 +150,7 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title, filena
 		ax[1][i].errorbar(true_values[var], mcmc_result.point_estimates[var] - true_values[var], yerr = mcmc_result.stds[var], c=mcmc_color, alpha=alpha, linestyle='None')
 
 		ax[1][i].errorbar(true_values[var], point_estimates[var] - true_values[var], yerr = uncertainties[var], alpha=alpha, c=vi_color, linestyle='None')
-		ax[1][i].axhline(0, color = 'k')
+		ax[1][i].axhline(0, color = 'k', lw=0.8)
 		if i == 0:
 			ax[1][i].set_ylabel('Residual (fit - true)', fontsize = axis_fontsize)
 		# ax[1][i].legend()
@@ -159,20 +161,24 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title, filena
 		num_vals = 10
 		if var=='AV':
 			vals = np.logspace(np.log10(min(true_values[var])), np.log10(max(true_values[var])), num_vals)
+			idx = np.array([np.argsort(np.abs(true_values[var] - q))[0] for q in vals])
+			idx[5] = np.argsort(np.abs(true_values[var] - vals[5]))[1] # to avoid a weirdly small error bar
 		else:
 			vals = np.linspace(min(true_values[var]), max(true_values[var]), num_vals)
-		idx = np.array([np.argsort(np.abs(true_values[var] - q))[0] for q in vals])
-		ax[2][i].errorbar(true_values[var][idx], np.zeros_like(true_values[var])[idx], yerr = mcmc_result.stds[var][idx], color='r', alpha=0.1)
+			idx = np.array([np.argsort(np.abs(true_values[var] - q))[0] for q in vals])
+
+		ax[2][i].errorbar(true_values[var][idx], (point_estimates[var] - mcmc_result.point_estimates[var])[idx], 
+			yerr = mcmc_result.stds[var][idx], color='r', alpha=0.4, fmt='None', lw=2)
 
 		ax[2][i].plot(true_values[var], point_estimates[var] - mcmc_result.point_estimates[var], 'o', color='gray', alpha = 0.3)
-		ax[2][i].axhline(np.median(point_estimates[var] - mcmc_result.point_estimates[var]), color='k', linestyle='dashed')
+		ax[2][i].axhline(np.median(point_estimates[var] - mcmc_result.point_estimates[var]), color='k', linestyle='dashed', lw=0.8)
 		
 		# ax[2][i].plot(true_values[var], (point_estimates[var] - mcmc_result.point_estimates[var])/mcmc_result.stds[var], 'o', color='gray', alpha = alpha)
 
 
 		# ax[2][i].errorbar(true_values[var], point_estimates[var] - mcmc_result.point_estimates[var], yerr = np.max([zltn_result.stds[var], mcmc_result.stds[var]]), c='gray', linestyle='None')
 		# ax[2][i].set_ylim(axlims[var])
-		ax[2][i].axhline(0, color = 'k')
+		ax[2][i].axhline(0, color = 'k', lw=0.8)
 		if i==0:
 			ax[2][i].set_ylabel('Residual (' + title + ' - MCMC)', fontsize = axis_fontsize)
 

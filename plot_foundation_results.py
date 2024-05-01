@@ -130,8 +130,10 @@ plt.show()
 fig = plt.figure()
 plt.plot(last_ks, last_mu_medians - mcmc_result.point_estimates['mu'], 'o')
 plt.axvline(0.7, linestyle='dashed', color='k')
-plt.xlabel("$\\hat{k}$", fontsize = 14)
-plt.ylabel("ZLTN VI $\\mu$ - MCMC $\\mu$", fontsize = 14)
+plt.xlabel("$\\hat{k}$", fontsize = 20)
+plt.xticks(fontsize=18)
+plt.yticks(fontsize=18)
+plt.ylabel("ZLTN VI $\\mu$ - MCMC $\\mu$", fontsize = 20)
 fig.savefig("figures/khat_mu_comparison.pdf", bbox_inches = 'tight')
 plt.show()
 
@@ -238,15 +240,16 @@ def plot_hubble_distances_and_residuals(mus, variances, z_cmbs, linspace_z = lin
   targets = np.array([cosmo.distmod(z).value for z in z_cmbs])
   rmse = np.sqrt(np.mean((predictions-targets)**2))
   
-  fig, ax = plt.subplots(2,1, figsize = (6,9))
+  fig, ax = plt.subplots(2,1, figsize = (6,9), sharex='col', gridspec_kw = {'hspace':0})
   ax[0].errorbar(z_cmbs, mus, np.sqrt(variances), linestyle = 'None', color = 'k')
   ax[0].plot(z_cmbs, mus,'o')
   ax[0].plot(linspace_z, cosmo_distmod_values, color = 'k')
-  ax[0].set_xlabel("z", fontsize =14)
-  ax[0].set_ylabel("$\\mu$", fontsize = 14)
-  plt.text(0.07, 1.0, "Foundation DR1", fontsize = 16, horizontalalignment = 'center')
-  plt.text(0.07, 0.9, "N = " + str(len(z_cmbs)), fontsize = 16, horizontalalignment = 'center')
-  plt.text(0.07, 0.8, "RMSE = " + '{:.3f}'.format(round(rmse, 3)), fontsize = 16, horizontalalignment = 'center')
+  ax[0].set_xlabel("z", fontsize =20)
+  ax[0].set_ylabel("$\\mu$", fontsize = 20)
+  print(rmse)
+  plt.text(0.07, 0.8, "Foundation DR1", fontsize = 16, horizontalalignment = 'center')
+  plt.text(0.07, 0.7, "N = " + str(len(z_cmbs)), fontsize = 16, horizontalalignment = 'center')
+  plt.text(0.07, 0.6, "RMSE = " + '{:.3f}'.format(round(rmse, 3)), fontsize = 16, horizontalalignment = 'center')
 
 
   sigma_pec = 150
@@ -264,9 +267,10 @@ def plot_hubble_distances_and_residuals(mus, variances, z_cmbs, linspace_z = lin
 
   ax[1].axhline(0., color = 'k')
 
-  ax[1].set_xlabel("z", fontsize = 14)
-  ax[1].set_ylabel("Hubble Residual", fontsize = 14)
-
+  ax[1].set_xlabel("z", fontsize = 20)
+  ax[1].set_ylabel("Hubble Residual", fontsize = 20)
+  ax[0].tick_params(axis='both', labelsize=18)
+  ax[1].tick_params(axis='both', labelsize=18)
   return fig
 
 fig = plot_hubble_distances_and_residuals(zltn_result.point_estimates['mu'], zltn_result.variances['mu'], zcmbs)

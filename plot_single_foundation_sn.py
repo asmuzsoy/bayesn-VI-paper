@@ -13,7 +13,7 @@ dataset = 'T21_training_set'
 sn_list = pd.read_csv('data/lcs/tables/' + dataset + '.txt', comment='#', delim_whitespace=True, names=['sn', 'source', 'files'])
 sn_names = (sn_list.sn.values)
 
-low = True
+low = False
 if low:
 	sn_number = 148
 else:
@@ -124,7 +124,7 @@ multinormal_results = np.array(multinormal_results).T
 # pairplots.pairplot_interactive((pairplots.series(zltn_results, label='ZLTN VI'), args),
 # 	(pairplots.series(mcmc_results, label='MCMC'),args), (pairplots.series(laplace_results, label='Laplace Approximation'),args),
 # 	(pairplots.series(multinormal_results, label='Multivariate Normal VI'), args), labels=["$A_V$", "$\mu$", "$\\theta$"])
-range_low = [(-0.01,0.2), (35, 35.6), (-1.8,1.8)]
+# range_low = [(-0.01,0.2), (35, 35.6), (-1.8,1.8)]
 
 range_low = [(-0.01,0.2), (36.5, 37.5), (0.7,2.5)]
 range_high = [(0.4, 1), (35, 35.8), (-1.6,-0.2)]
@@ -132,7 +132,7 @@ factor = 0.5
 fig = corner.corner(zltn_results, 
 	labels = ["$A_V$", "$\\mu$", "$\\theta_1$"], 
 	range=range_low if low else range_high, 
-	label_kwargs = {'fontsize':18})
+	label_kwargs = {'fontsize':24})
 corner.corner(mcmc_results,  color = 'r', fig = fig, 
 	range=range_low if low else range_high)
 corner.corner(laplace_results, color = 'g', fig = fig, 
@@ -142,11 +142,12 @@ corner.corner(multinormal_results, color = 'b', fig = fig,
 axes = fig.get_axes()
 for ax in axes:
 	# print(ax.get_xticks())
-	ax.tick_params(axis='both', labelsize=14)
+	ax.tick_params(axis='both', labelsize=16)
 
 # remove a pesky label that looks bad
 if low:
 	axes[6].set_xticks(axes[6].get_xticks()[:-1])
+	# axes[3].set_yticks(axes[3].get_yticks()[1:])
 else:
 	axes[3].set_yticks(axes[3].get_yticks()[:-1])
 	axes[7].set_xticks(axes[7].get_xticks()[:-1])
