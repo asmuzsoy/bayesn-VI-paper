@@ -49,7 +49,7 @@ mcmc_result = Result("sim29_vmap_mcmc_022824_samples.npy")
 laplace_result = Result("sim29_vmap_laplace_022824_samples.npy")
 multinormal_result = Result("sim29_vmap_multinormal_022824_samples.npy")
 
-labels = ['MCMC', 'ZLTN', 'Multivariate Normal', 'Laplace Approximation']
+labels = ['MCMC', 'MVZLTN', 'Multivariate Normal', 'Laplace Approximation']
 latex_version = {'mu': '$\\mu$', 'theta': '$\\theta_1$', 'AV': '$A_V$'}
 prob_labels = {'AV': '$p_{A_V}$', "mu": '$p_\\mu$', "theta": '$p_{\\theta_1}$'}
 true_values = {'AV': true_avs, "mu": true_mus, 'theta': true_thetas}
@@ -77,11 +77,13 @@ for i, samples in enumerate([mcmc_result.samples_dict, zltn_result.samples_dict,
 		ax[k][i].axvline(np.mean(ratios), linestyle ='dashed')
 		ax[k][i].axvline(0.5, linestyle ='solid', color='k', lw=0.6)
 		# ax[k][i].set_ylim(0, 0.35)
-		p_coords = (0.02, 0.9)
+		
 		if p > 1e-6:
-			ax[k][i].annotate("$p_{KS} = $" + '{:.4f}'.format(round(p, 4)),p_coords , xycoords='axes fraction', fontsize=11)
+			p_coords = (0.055, 0.9)
+			ax[k][i].annotate("$p_{KS} = $" + '{:.3f}'.format(round(p, 3)),p_coords , xycoords='axes fraction', fontsize=12)
 		else:
-			ax[k][i].annotate("$p_{KS} = $" + '{:.2e}'.format(Decimal(p)), p_coords, xycoords='axes fraction', fontsize=11)
+			p_coords = (0.02, 0.9)
+			ax[k][i].annotate("$p_{KS} = $" + '{:.1e}'.format(Decimal(p)), p_coords, xycoords='axes fraction', fontsize=12)
 
 		ax[0][i].set_title(labels[i], fontsize=18)
 		ax[k][i].set_xlabel(prob_labels[var], fontsize=18)
@@ -126,6 +128,7 @@ axlims = {'mu': (-0.075, 0.08), 'theta': (-0.2, 0.02), 'AV': (-0.02, 0.035)}
 def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title, filename=None):
 	fig, ax = plt.subplots(3,3, figsize = (9,9), 
 		gridspec_kw = {'hspace':0, 'wspace':0.33}, sharex='col')
+	print(title)
 
 	for i, var in enumerate(['mu', 'theta', 'AV']):
 		print(var)
@@ -144,6 +147,12 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title, filena
 		# 	ax[1][i].set_xscale('log')
 		# 	ax[2][i].set_xscale('log')
 		# 	ax[0][i].set_yscale('log')
+
+
+		standardized_residuals_mcmc = (mcmc_result.point_estimates[var] - true_values[var]) / mcmc_result.stds[var]
+		standardized_residuals_vi = (point_estimates[var] - true_values[var])/uncertainties[var]
+
+		print('VI', np.median(standardized_residuals_vi), "MCMC", np.median(standardized_residuals_mcmc))
 
 		ax[1][i].plot(true_values[var], mcmc_result.point_estimates[var] - true_values[var], 'o', fillstyle='none', c=mcmc_color, alpha=alpha, label='MCMC')
 		ax[1][i].plot(true_values[var], point_estimates[var] - true_values[var], '.', alpha=alpha, c = vi_color, label=title)
@@ -170,7 +179,9 @@ def plot_compare_to_mcmc_and_truth(point_estimates, uncertainties, title, filena
 		ax[2][i].errorbar(true_values[var][idx], (point_estimates[var] - mcmc_result.point_estimates[var])[idx], 
 			yerr = mcmc_result.stds[var][idx], color='r', alpha=0.4, fmt='None', lw=2)
 
-		ax[2][i].plot(true_values[var], point_estimates[var] - mcmc_result.point_estimates[var], 'o', color='gray', alpha = 0.3)
+		print("VI - MCMC", np.median((point_estimates[var] - mcmc_result.point_estimates[var])/mcmc_result.stds[var]))
+
+		ax[2][i].plot(true_values[var], point_estimates[var] - mcmc_result.point_estimates[var], 'o', color='gray', alpha = 0.5)
 		ax[2][i].axhline(np.median(point_estimates[var] - mcmc_result.point_estimates[var]), color='k', linestyle='dashed', lw=0.8)
 		
 		# ax[2][i].plot(true_values[var], (point_estimates[var] - mcmc_result.point_estimates[var])/mcmc_result.stds[var], 'o', color='gray', alpha = alpha)
@@ -243,7 +254,7 @@ def plot_marginal_zscores(point_estimates, point_estimates2, title1, title2, fil
 
 	plt.legend()
 	plt.ylabel("Frequency", fontsize=16)
-	plt.xlabel("$\\frac{ZLTN-MCMC}{\sigma(MCMC)}$", fontsize=16)
+	plt.xlabel("$\\frac{MVZLTN-MCMC}{\sigma(MCMC)}$", fontsize=16)
 	plt.tight_layout()
 	plt.show()
 
@@ -252,7 +263,7 @@ def plot_marginal_zscores(point_estimates, point_estimates2, title1, title2, fil
 
 #plot_marginal_zscores(zltn_result.point_estimates,None, title1 = "ZLTN", title2="MN", filename='figures/zltn_zscores.pdf')
 
-plot_compare_to_mcmc_and_truth(zltn_result.point_estimates, zltn_result.stds, title = "ZLTN", filename='figures/zltn_mcmc_sims.pdf')
+plot_compare_to_mcmc_and_truth(zltn_result.point_estimates, zltn_result.stds, title = "MVZLTN", filename='figures/zltn_mcmc_sims.pdf')
 
 plot_compare_to_mcmc_and_truth(multinormal_result.point_estimates, multinormal_result.stds, title = "MN", filename='figures/multiinormal_mcmc_sims.pdf')
 
@@ -267,7 +278,7 @@ plot_compare_to_mcmc_and_truth(laplace_result.point_estimates, laplace_result.st
 	# ax[0][0].annotate("$\\mu$: median", (36, 34.5), fontsize = 16)
 	# ax[0][1].annotate("$\\theta$: median", (0,-1.5), fontsize = 16)
 
-labels = ['ZLTN', 'Laplace', 'MultiNormal', 'MCMC']
+labels = ['MVZLTN', 'Laplace', 'MultiNormal', 'MCMC']
 colors = ['tab:blue', 'tab:red', 'tab:green', 'goldenrod']
 
 fig, ax = plt.subplots(3,2, figsize = (10, 8))

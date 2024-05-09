@@ -133,7 +133,7 @@ plt.axvline(0.7, linestyle='dashed', color='k')
 plt.xlabel("$\\hat{k}$", fontsize = 20)
 plt.xticks(fontsize=18)
 plt.yticks(fontsize=18)
-plt.ylabel("ZLTN VI $\\mu$ - MCMC $\\mu$", fontsize = 20)
+plt.ylabel("MVZLTN VI $\\mu$ - MCMC $\\mu$", fontsize = 20)
 fig.savefig("figures/khat_mu_comparison.pdf", bbox_inches = 'tight')
 plt.show()
 

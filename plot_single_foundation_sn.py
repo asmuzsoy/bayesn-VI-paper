@@ -13,7 +13,7 @@ dataset = 'T21_training_set'
 sn_list = pd.read_csv('data/lcs/tables/' + dataset + '.txt', comment='#', delim_whitespace=True, names=['sn', 'source', 'files'])
 sn_names = (sn_list.sn.values)
 
-low = True
+low = False
 if low:
 	sn_number = 148
 else:
@@ -155,7 +155,7 @@ else:
 
 colors = ['r', 'k', 'b', 'g']
 
-labels = [ 'MCMC', 'ZLTN VI','Multivariate Normal VI', 'Laplace Approximation']
+labels = [ 'MCMC', 'MVZLTN VI','Multivariate Normal VI', 'Laplace Approximation']
 
 plt.legend(
     handles=[
