@@ -14,7 +14,7 @@ model = SEDmodel(load_model='T21_model')
 dataset = 'T21_training_set'
 
 output_title = 'foundation'
-todays_date = '032624'
+todays_date = '090924'
 
 epsilons_on = True # this doesn't work need to fix it
 
@@ -53,7 +53,7 @@ def postprocess_add_mu(model, samples):
 def vmap_over_method(method, keyword):
     print(keyword)
     vmap_object = jax.vmap(method, in_axes=(2, 0))
-    samples = vmap_object(model.data, model.band_weights)
+    samples, mu, cov = vmap_object(model.data, model.band_weights)
     samples = postprocess_add_mu(model, samples)
     # results = vmap_object(model.data, model.band_weights)
     # best_params, last_params, best_samples, last_samples = results
@@ -64,6 +64,7 @@ def vmap_over_method(method, keyword):
     # print(best_params['auto_loc'].shape, last_params['auto_loc'].shape, samples['mu'].shape)
     # print(samples['AV'])
     np.save("foundation_results/foundation_vmap_" + keyword + "_" + todays_date + "_samples.npy", samples)
+    np.savez("foundation_results/foundation_vmap_" + keyword + "_" + todays_date + "_params.npz", mu=mu, cov=cov)
     # np.save("foundation_results/foundation_vmap_" + keyword + "_" + todays_date + "_bestparams.npy", best_params)
     # np.save("foundation_results/foundation_vmap_" + keyword + "_" + todays_date + "_lastparams.npy", last_params)
 
@@ -71,7 +72,7 @@ def vmap_over_method(method, keyword):
 start = timeit.default_timer()
 
 
-vmap_over_method(model.fit_mcmc_vmap, 'mcmc')
+# vmap_over_method(model.fit_mcmc_vmap, 'mcmc')
 mcmc_time = timeit.default_timer()
 print("MCMC:", mcmc_time - start)
 

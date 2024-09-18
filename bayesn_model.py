@@ -671,8 +671,8 @@ class SEDmodel(object):
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
 
         with numpyro.plate('SNe', sample_size) as sn_index:
-            # Av = numpyro.sample(f'AV', My_Exponential(1 / self.tauA)) TODO CHANGE THIS BACK
-            Av = numpyro.sample(f'AV', dist.Uniform(-10, 10))
+            Av = numpyro.sample(f'AV', My_Exponential(1 / self.tauA)) 
+            # Av = numpyro.sample(f'AV', dist.Uniform(-10, 10))
 
             # print("Model AV:", Av)
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
@@ -789,8 +789,8 @@ class SEDmodel(object):
         N_knots_sig = (self.l_knots.shape[0] - 2) * self.tau_knots.shape[0]
 
         with numpyro.plate('SNe', sample_size) as sn_index:
-            # Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA)) # TODO CHANGE THIS BACK
-            Av = numpyro.sample(f'AV', dist.Uniform(-10, 10))
+            Av = numpyro.sample(f'AV', dist.Exponential(1 / self.tauA)) # TODO CHANGE THIS BACK
+            # Av = numpyro.sample(f'AV', dist.Uniform(-10, 10))
             # print("Model AV:", Av)
             theta = numpyro.sample(f'theta', dist.Normal(0, 1.0))
             # Rv = numpyro.sample('Rv', dist.Normal(self.mu_R, self.sigma_R))
@@ -1211,7 +1211,7 @@ class SEDmodel(object):
         return best_k, last_k, best_samples, last_samples
 
 
-    def fit_vi_get_best_samples(self, model, guide, data, band_weights, optimizer = Adam(0.005), loss=Trace_ELBO(5), num_iterations=30000, num_samples=1000, laplace = False):
+    def fit_vi_get_samples(self, model, guide, data, band_weights, optimizer = Adam(0.005), loss=Trace_ELBO(5), num_iterations=30000, num_samples=1000, laplace = False):
         svi = SVI(model, guide, optimizer, loss)
 
         svi_result = svi.run(PRNGKey(123), num_iterations, data,band_weights, progress_bar=False)
@@ -1223,6 +1223,29 @@ class SEDmodel(object):
             return best_samples
 
         return guide.sample_posterior(PRNGKey(123), params, sample_shape=(num_samples,))
+
+
+    def fit_vi_get_samples_and_params(self, model, guide, data, band_weights, optimizer = Adam(0.005), loss=Trace_ELBO(5), num_iterations=30000, num_samples=1000, laplace = False):
+        svi = SVI(model, guide, optimizer, loss)
+
+        svi_result = svi.run(PRNGKey(123), num_iterations, data,band_weights, progress_bar=False)
+        params, losses = svi_result.params, svi_result.losses
+
+        try:
+            mu = guide.get_posterior(params).mu
+            cov = guide.get_posterior(params).sigma
+        except:
+            mu = guide.get_posterior(params).loc
+            cov = guide.get_posterior(params).covariance_matrix          
+
+
+        if not laplace:
+            predictive = Predictive(guide, params=params, num_samples=num_samples)
+            best_samples = predictive(PRNGKey(123), data=None)
+            return best_samples, mu, cov
+
+
+        return guide.sample_posterior(PRNGKey(123), params, sample_shape=(num_samples,)), mu, cov
 
 
     def fit_with_vi_laplace(self, output, epsilons_on, model_path=None, init_strategy='median'):
@@ -1500,11 +1523,12 @@ class SEDmodel(object):
 
 
 
-        best_samples = self.fit_vi_get_best_samples(model, zltn_guide, data[..., None], band_weights[None, ...], num_iterations = 10000)
-        # best_samples = self.fit_vi_get_best_samples(model, zltn_guide, data, band_weights)
+        # best_samples = self.fit_vi_get_samples(model, zltn_guide, data[..., None], band_weights[None, ...], num_iterations = 10000)
+        # # best_samples = self.fit_vi_get_best_samples(model, zltn_guide, data, band_weights)
+        # return best_samples
 
-
-        return best_samples
+        samples, mu, cov = self.fit_vi_get_samples_and_params(model, zltn_guide, data[..., None], band_weights[None, ...], num_iterations = 10000)
+        return samples, mu, cov
 
 
     def fit_laplace_vmap(self, data, band_weights, epsilons_on=True, model_path=None):
@@ -1556,19 +1580,14 @@ class SEDmodel(object):
         laplace_guide = AutoLaplaceApproximation(model, init_loc_fn=init_strategy)
 
 
-        samples = self.fit_vi_get_best_samples(model, laplace_guide, data[..., None], 
+        # samples = self.fit_vi_get_samples(model, laplace_guide, data[..., None], 
+        #     band_weights[None, ...], optimizer = optimizer, num_iterations = 15000, laplace=True)
+
+        # return samples
+        samples, mu, cov = self.fit_vi_get_samples_and_params(model, laplace_guide, data[..., None], 
             band_weights[None, ...], optimizer = optimizer, num_iterations = 15000, laplace=True)
 
-        # svi = SVI(model, laplace_guide, optimizer, loss=Trace_ELBO(5))
-        # svi_result = svi.run(PRNGKey(123), 15000, data[..., None],band_weights[None, ...], progress_bar=False)
-        # params, losses = svi_result.params, svi_result.losses
-
-        # predictive = Predictive(laplace_guide, params=params, num_samples=1000)
-        # samples = predictive(PRNGKey(123), data=None)
-
-        # samples = laplace_guide.sample_posterior(PRNGKey(123), params, sample_shape=(1000,))
-
-        return samples
+        return samples, mu, cov
 
     def fit_multivariatenormal_vmap(self, data, band_weights, epsilons_on=True, model_path=None):
         """
@@ -1626,9 +1645,10 @@ class SEDmodel(object):
         multinormal_guide = AutoMultivariateNormal(model, init_loc_fn=init_to_value(values=new_init_dict))
 
 
-        samples = self.fit_vi_get_best_samples(model, multinormal_guide, data[..., None], band_weights[None, ...], num_iterations=10000)
-
-        return samples
+        # samples = self.fit_vi_get_samples(model, multinormal_guide, data[..., None], band_weights[None, ...], num_iterations=10000)
+        # return samples
+        samples, mu, cov = self.fit_vi_get_samples_and_params(model, multinormal_guide, data[..., None], band_weights[None, ...], num_iterations=10000)
+        return samples, mu, cov
 
     # this method is just for visualization and GIF creation
     def fit_with_vi_verbose(self, output, epsilons_on, model_path=None, init_strategy='median'):
